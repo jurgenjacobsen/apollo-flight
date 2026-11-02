@@ -1,0 +1,29 @@
+[package]
+name = "apollo-flight"
+version = "0.0.1"
+description = "Modern flight tracking, telemetry analysis, and IFR companion for Microsoft Flight Simulator."
+authors = ["Jürgen Jacobsen"]
+edition = "2021"
+
+[lib]
+name = "apollo_flight_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = ["tray-icon", "image-ico", "image-png"] }
+tauri-plugin-shell = "2.0.0"
+tauri-plugin-updater = "2.0.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+log = "0.4"
+env_logger = "0.11"
+
+[target.'cfg(windows)'.dependencies]
+fsuipc = "0.5.1"

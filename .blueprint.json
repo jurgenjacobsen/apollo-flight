@@ -1,0 +1,10 @@
+﻿{
+    "version":  "0.0.1",
+    "installedAt":  "2026-10-29T11:34:41.5346603+00:00",
+    "source":  "https://jurgen.fyi/blueprint",
+    "installedFiles":  [
+                           ".editorconfig",
+                           ".prettierrc",
+                           "installer.ps1"
+                       ]
+}

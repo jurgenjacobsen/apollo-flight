@@ -1,0 +1,59 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
+  "productName": "Apollo Flight",
+  "version": "0.0.1",
+  "identifier": "com.apollo.flight",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Apollo Flight",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 1280,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "Jürgen Jacobsen",
+    "copyright": "Copyright © 2026 Jürgen Jacobsen",
+    "category": "Simulation",
+    "shortDescription": "Modern flight tracking, telemetry analysis, and IFR companion for Microsoft Flight Simulator.",
+    "longDescription": "Apollo Flight is an offline-first desktop companion for Microsoft Flight Simulator 2020 & 2024. Featuring real-time FSUIPC7 telemetry logging, embedded SQLite storage, synchronized profile scrubbing, procedural IFR/holding pattern trainers, multi-touchdown G-force analysis, and intelligent route dispatch.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "../data/airports.csv",
+      "../data/countries.csv",
+      "../data/runways.csv"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgyNDE2NEVCMUJGNEM1M0YKUldRL3hmUWI2MlJCZ3M0MFlieVVqRk5ObE5GemFCZlptNWVwWjZFN2dJOUhWWmZHdmR3eHErSWUK",
+      "endpoints": [
+        "https://github.com/jurgenjacobsen/apollo-flight/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
