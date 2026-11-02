@@ -32,7 +32,7 @@
     "targets": "all",
     "publisher": "Jürgen Jacobsen",
     "copyright": "Copyright © 2026 Jürgen Jacobsen",
-    "category": "Simulation",
+    "category": "Utility",
     "shortDescription": "Modern flight tracking, telemetry analysis, and IFR companion for Microsoft Flight Simulator.",
     "longDescription": "Apollo Flight is an offline-first desktop companion for Microsoft Flight Simulator 2020 & 2024. Featuring real-time FSUIPC7 telemetry logging, embedded SQLite storage, synchronized profile scrubbing, procedural IFR/holding pattern trainers, multi-touchdown G-force analysis, and intelligent route dispatch.",
     "icon": [
