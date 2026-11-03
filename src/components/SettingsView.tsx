@@ -14,10 +14,12 @@ import {
   Info,
   HardDrive,
   Cpu,
-  ArrowUpCircle
+  ArrowUpCircle,
+  Download
 } from 'lucide-react';
 
 import packageJson from '../../package.json'; 
+import type { Update } from '@tauri-apps/plugin-updater'; 
 
 export const SettingsView: React.FC = () => {
   const { 
@@ -35,6 +37,9 @@ export const SettingsView: React.FC = () => {
 
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
 
   const notifySaved = () => {
@@ -61,11 +66,14 @@ export const SettingsView: React.FC = () => {
   const handleCheckForUpdates = async () => {
     setIsCheckingUpdate(true);
     setUpdateMessage(null);
+    setAvailableUpdate(null);
+    setDownloadProgress(null);
     try {
       if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
         const { check } = await import('@tauri-apps/plugin-updater');
         const update = await check();
-        if (update?.available) {
+        if (update) {
+          setAvailableUpdate(update);
           setUpdateMessage(`Update v${update.version} is available!`);
         } else {
           setUpdateMessage(`Apollo Flight is up to date (v${packageJson.version})`);
@@ -77,6 +85,42 @@ export const SettingsView: React.FC = () => {
       setUpdateMessage(`Already running latest version`);
     } finally {
       setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!availableUpdate) return;
+    setIsInstallingUpdate(true);
+    setDownloadProgress(0);
+    setUpdateMessage('Starting download...');
+    try {
+      let totalBytes = 0;
+      let downloadedBytes = 0;
+
+      await availableUpdate.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          totalBytes = event.data?.contentLength ?? 0;
+          setDownloadProgress(0);
+          setUpdateMessage('Downloading update...');
+        } else if (event.event === 'Progress') {
+          downloadedBytes += event.data.chunkLength;
+          if (totalBytes > 0) {
+            const pct = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100));
+            setDownloadProgress(pct);
+            setUpdateMessage(`Downloading update: ${pct}%`);
+          } else {
+            const mb = (downloadedBytes / (1024 * 1024)).toFixed(1);
+            setUpdateMessage(`Downloading update: ${mb} MB`);
+          }
+        } else if (event.event === 'Finished') {
+          setDownloadProgress(100);
+          setUpdateMessage('Installing update and restarting...');
+        }
+      });
+    } catch (err: unknown) {
+      setIsInstallingUpdate(false);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setUpdateMessage(`Update failed: ${errMsg}`);
     }
   };
 
@@ -426,28 +470,64 @@ export const SettingsView: React.FC = () => {
                   <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
                     Software Updates
                   </h3>
-                    {updateMessage && (
+                  {updateMessage && (
                     <span className="text-[11px] text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-black/50 py-0.5 px-2 rounded-sm border border-neutral-200 dark:border-geist-hairline animate-fade-in">
-                        {updateMessage}
+                      {updateMessage}
                     </span>
-                    )}
+                  )}
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                  Check for newer releases from our Github repository.
+                  Check for newer releases from our GitHub repository and install updates automatically.
                 </p>
-                
+                {isInstallingUpdate && downloadProgress !== null && (
+                  <div className="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-1.5 overflow-hidden mt-2">
+                    <div
+                      className="bg-emerald-500 h-1.5 transition-all duration-150 ease-out"
+                      style={{ width: `${downloadProgress}%` }}
+                    />
+                  </div>
+                )}
               </div>
 
-              <div className="shrink-0 flex items-center">
+              <div className="shrink-0 flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleCheckForUpdates}
-                  disabled={isCheckingUpdate}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+                  onClick={availableUpdate ? handleInstallUpdate : handleCheckForUpdates}
+                  disabled={isCheckingUpdate || isInstallingUpdate}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 ${
+                    availableUpdate
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white focus-visible:ring-emerald-400 shadow-sm'
+                      : 'bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black focus-visible:ring-neutral-400'
+                  }`}
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-                  <span>{isCheckingUpdate ? 'Checking...' : 'Check for Updates'}</span>
+                  {isInstallingUpdate ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>{downloadProgress !== null ? `Downloading ${downloadProgress}%` : 'Installing...'}</span>
+                    </>
+                  ) : availableUpdate ? (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Install v{availableUpdate.version} & Restart</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                      <span>{isCheckingUpdate ? 'Checking...' : 'Check for Updates'}</span>
+                    </>
+                  )}
                 </button>
+                {availableUpdate && !isInstallingUpdate && (
+                  <button
+                    type="button"
+                    onClick={handleCheckForUpdates}
+                    disabled={isCheckingUpdate}
+                    title="Check again"
+                    className="p-1.5 rounded-sm text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                  </button>
+                )}
               </div>
             </div>
 
