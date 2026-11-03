@@ -1,17 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useFlightStore } from './store/flightStore';
 import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
 import { DashboardView } from './components/DashboardView';
 import { NewRouteView } from './components/NewRouteView';
+import { SavedRoutesView } from './components/SavedRoutesView';
 import { LogbookView } from './components/LogbookView';
 import { FlightDetailView } from './components/FlightDetailView';
-import { VisitedWorldView } from './components/VisitedWorldView';
+import { VisitedWorldView, preloadCountriesGeoJson } from './components/VisitedWorldView';
 import { IfrTrainer } from './components/IfrTrainer';
 import { HoldTrainer } from './components/HoldTrainer';
 import { SettingsView } from './components/SettingsView';
 import { SimBridge } from './components/SimBridge';
-import { Radio, Cpu, Database, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { 
@@ -23,6 +23,15 @@ export const App: React.FC = () => {
     syncOurAirports,
     lastSyncMessage 
   } = useFlightStore();
+
+  useEffect(() => {
+    // Silently preheat the GeoJSON country borders in the background during idle time
+    // so switching to 'Visited Destinations' has zero network latency
+    const timer = setTimeout(() => {
+      preloadCountriesGeoJson();
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div className="flex h-screen w-screen bg-neutral-50 dark:bg-black text-neutral-900 dark:text-[#ededed] overflow-hidden font-sans selection:bg-neutral-200 dark:selection:bg-[#333333] transition-colors duration-150">
@@ -41,6 +50,7 @@ export const App: React.FC = () => {
         <main className="flex-1 flex flex-col overflow-hidden">
           {activeView === 'dashboard' && <DashboardView />}
           {activeView === 'new-route' && <NewRouteView />}
+          {activeView === 'saved-routes' && <SavedRoutesView />}
           {activeView === 'logbook' && <LogbookView />}
           {activeView === 'flight-detail' && <FlightDetailView />}
           {activeView === 'visited' && <VisitedWorldView />}
@@ -54,4 +64,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

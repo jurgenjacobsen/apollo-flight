@@ -27,6 +27,7 @@ import {
   Globe,
   FileSpreadsheet,
   ChevronDown,
+  Loader2,
 } from 'lucide-react';
 import { calculateTouchdownGForce } from '../utils/touchdownPhysics';
 
@@ -190,6 +191,15 @@ export const FlightDetailView: React.FC = () => {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const [isHeavyReady, setIsHeavyReady] = useState(false);
+
+  useEffect(() => {
+    // Immediate frame paint for layout, selectors & cards; defer heavy Leaflet & Recharts mount by 40ms
+    const timer = setTimeout(() => {
+      setIsHeavyReady(true);
+    }, 40);
+    return () => clearTimeout(timer);
+  }, [selectedFlightId]);
 
   useEffect(() => {
     if (!showExportMenu) return;
@@ -221,32 +231,96 @@ export const FlightDetailView: React.FC = () => {
   const targetFlightId = flight?.id || selectedFlightId;
   const hasTelemetryPoints = (flight?.telemetryPoints && flight.telemetryPoints.length > 0) || false;
 
-  // Automatically fetch full telemetry trajectory dataset from SQLite if not loaded yet
+  // Automatically fetch full telemetry trajectory dataset from SQLite if not loaded yet, or auto-heal distance if 0
   useEffect(() => {
-    if (targetFlightId && !hasTelemetryPoints) {
+    if (targetFlightId && (!hasTelemetryPoints || !flight?.distanceFlownNm || flight.distanceFlownNm <= 0)) {
       loadFlightDetails(targetFlightId);
     }
-  }, [targetFlightId, hasTelemetryPoints, loadFlightDetails]);
+  }, [targetFlightId, hasTelemetryPoints, flight?.distanceFlownNm, loadFlightDetails]);
 
   const points = flight?.telemetryPoints || [];
 
+  // Downsample chart data points if length is large for silky smooth Recharts Area SVG rendering
   const chartData = useMemo(() => {
-    return points.map((p, idx) => ({
-      index: idx,
-      time: new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      altitude: p.altitudeMsl,
-      groundSpeed: p.groundSpeed,
-      ias: p.indicatedAirspeed,
-      lat: p.latitude,
-      lon: p.longitude,
-      heading: p.heading,
-      vs: p.verticalSpeed ?? 0,
-    }));
+    if (points.length <= 1200) {
+      return points.map((p, idx) => ({
+        index: idx,
+        time: new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        altitude: p.altitudeMsl,
+        groundSpeed: p.groundSpeed,
+        ias: p.indicatedAirspeed,
+        lat: p.latitude,
+        lon: p.longitude,
+        heading: p.heading,
+        vs: p.verticalSpeed ?? 0,
+        pointIndex: idx,
+      }));
+    }
+    const stride = Math.ceil(points.length / 1000);
+    const sampled: Array<{
+      index: number;
+      time: string;
+      altitude: number;
+      groundSpeed: number;
+      ias: number;
+      lat: number;
+      lon: number;
+      heading: number;
+      vs: number;
+      pointIndex: number;
+    }> = [];
+
+    for (let i = 0; i < points.length; i += stride) {
+      const p = points[i];
+      sampled.push({
+        index: sampled.length,
+        time: new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        altitude: p.altitudeMsl,
+        groundSpeed: p.groundSpeed,
+        ias: p.indicatedAirspeed,
+        lat: p.latitude,
+        lon: p.longitude,
+        heading: p.heading,
+        vs: p.verticalSpeed ?? 0,
+        pointIndex: i,
+      });
+    }
+    const lastIdx = points.length - 1;
+    const lastPt = points[lastIdx];
+    if (sampled[sampled.length - 1]?.pointIndex !== lastIdx) {
+      sampled.push({
+        index: sampled.length,
+        time: new Date(lastPt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        altitude: lastPt.altitudeMsl,
+        groundSpeed: lastPt.groundSpeed,
+        ias: lastPt.indicatedAirspeed,
+        lat: lastPt.latitude,
+        lon: lastPt.longitude,
+        heading: lastPt.heading,
+        vs: lastPt.verticalSpeed ?? 0,
+        pointIndex: lastIdx,
+      });
+    }
+    return sampled;
+  }, [points]);
+
+  // Downsample points if trajectory has thousands of samples to keep Leaflet polyline node count smooth & responsive
+  const mapPoints = useMemo(() => {
+    if (points.length <= 800) return points;
+    const stride = Math.ceil(points.length / 800);
+    const sampled: typeof points = [];
+    for (let i = 0; i < points.length; i += stride) {
+      sampled.push(points[i]);
+    }
+    if (sampled[sampled.length - 1] !== points[points.length - 1]) {
+      sampled.push(points[points.length - 1]);
+    }
+    return sampled;
   }, [points]);
 
   const coordinates: [number, number][] = useMemo(() => {
-    return points.map((p) => [p.latitude, p.longitude]);
-  }, [points]);
+    return mapPoints.map((p) => [p.latitude, p.longitude]);
+  }, [mapPoints]);
 
   const bounds = useMemo(() => {
     if (coordinates.length === 0) return null;
@@ -255,19 +329,19 @@ export const FlightDetailView: React.FC = () => {
 
   // Compute Altitude Gradient Track Segments (0 ft: Green -> 45,000+ ft: Red)
   const altitudeSegments = useMemo(() => {
-    if (points.length < 2) return [];
+    if (mapPoints.length < 2) return [];
 
     const segments: { positions: [number, number][]; color: string; altitude: number }[] = [];
 
     // Quantize altitude to 250 ft steps for a smooth color transition and optimal rendering performance
     const getPointColor = (alt: number) => getAltitudeColor(Math.round(alt / 250) * 250);
 
-    let currentPositions: [number, number][] = [[points[0].latitude, points[0].longitude]];
-    let currentColor = getPointColor(points[0].altitudeMsl);
-    let currentAlt = points[0].altitudeMsl;
+    let currentPositions: [number, number][] = [[mapPoints[0].latitude, mapPoints[0].longitude]];
+    let currentColor = getPointColor(mapPoints[0].altitudeMsl);
+    let currentAlt = mapPoints[0].altitudeMsl;
 
-    for (let i = 1; i < points.length; i++) {
-      const pt = points[i];
+    for (let i = 1; i < mapPoints.length; i++) {
+      const pt = mapPoints[i];
       const ptColor = getPointColor(pt.altitudeMsl);
 
       if (ptColor !== currentColor) {
@@ -297,7 +371,7 @@ export const FlightDetailView: React.FC = () => {
     }
 
     return segments;
-  }, [points]);
+  }, [mapPoints]);
 
   // Calculate Top of Climb (TOC) and Top of Descent (TOD)
   const { tocPoint, todPoint } = useMemo(() => {
@@ -712,7 +786,22 @@ export const FlightDetailView: React.FC = () => {
         </div>
 
         <div className="h-[360px] w-full rounded-sm overflow-hidden border border-neutral-200 dark:border-geist-hairline relative z-0 flex items-center justify-center bg-neutral-50 dark:bg-black/20">
-          {coordinates.length > 0 ? (
+          {(!isHeavyReady || isLoadingFlightDetails || points.length === 0) ? (
+            <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden bg-neutral-100/60 dark:bg-[#111111]/80">
+              <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
+              <div className="relative flex flex-col items-center gap-2 px-4 py-3 rounded-md bg-white/90 dark:bg-black/70 border border-neutral-200/80 dark:border-neutral-800 backdrop-blur-sm shadow-sm">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-neutral-500 dark:text-neutral-400" />
+                  <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
+                    {isLoadingFlightDetails ? 'Fetching flight trajectory...' : 'Initializing 2D GPS track...'}
+                  </span>
+                </div>
+                <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  Rendering altitude gradient waypoint segments
+                </span>
+              </div>
+            </div>
+          ) : coordinates.length > 0 ? (
             <MapContainer
               center={coordinates[0]}
               zoom={8}
@@ -737,8 +826,8 @@ export const FlightDetailView: React.FC = () => {
               ))}
 
               {/* Origin Marker */}
-              {coordinates.length > 0 && (
-                <Marker position={coordinates[0]} icon={defaultIcon}>
+              {points.length > 0 && (
+                <Marker position={[points[0].latitude, points[0].longitude]} icon={defaultIcon}>
                   <Popup>
                     <div className="text-xs">
                       <strong>Origin: {flight.departureIcao}</strong>
@@ -748,8 +837,8 @@ export const FlightDetailView: React.FC = () => {
               )}
 
               {/* Destination Marker */}
-              {coordinates.length > 1 && (
-                <Marker position={coordinates[coordinates.length - 1]} icon={defaultIcon}>
+              {points.length > 1 && (
+                <Marker position={[points[points.length - 1].latitude, points[points.length - 1].longitude]} icon={defaultIcon}>
                   <Popup>
                     <div className="text-xs">
                       <strong>Destination: {flight.arrivalIcao}</strong>
@@ -846,14 +935,32 @@ export const FlightDetailView: React.FC = () => {
           <span className="text-neutral-500 dark:text-geist-muted text-xs">Hover over graph to scrub aircraft position on map</span>
         </div>
 
-        {chartData.length > 0 ? (
+        {(!isHeavyReady || isLoadingFlightDetails || chartData.length === 0) ? (
+          <div className="h-60 w-full flex flex-col items-center justify-center rounded-sm border border-neutral-200/60 dark:border-geist-hairline/60 bg-neutral-100/60 dark:bg-[#111111]/80 relative overflow-hidden">
+            <div className="absolute inset-x-0 top-1/4 border-b border-neutral-200/50 dark:border-neutral-800/50" />
+            <div className="absolute inset-x-0 top-2/4 border-b border-neutral-200/50 dark:border-neutral-800/50" />
+            <div className="absolute inset-x-0 top-3/4 border-b border-neutral-200/50 dark:border-neutral-800/50" />
+            <div className="relative flex flex-col items-center gap-2 px-4 py-3 rounded-md bg-white/90 dark:bg-black/70 border border-neutral-200/80 dark:border-neutral-800 backdrop-blur-sm shadow-sm">
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-neutral-500 dark:text-neutral-400" />
+                <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
+                  {isLoadingFlightDetails ? 'Loading flight telemetry points...' : 'Loading altitude & speed profile...'}
+                </span>
+              </div>
+              <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                Synchronizing flight telemetry graph
+              </span>
+            </div>
+          </div>
+        ) : chartData.length > 0 ? (
           <div className="h-60 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={chartData}
                 onMouseMove={(e) => {
                   if (e.activeTooltipIndex !== undefined) {
-                    setScrubbedTelemetryIndex(e.activeTooltipIndex);
+                    const ptIdx = chartData[e.activeTooltipIndex]?.pointIndex ?? e.activeTooltipIndex;
+                    setScrubbedTelemetryIndex(ptIdx);
                   }
                 }}
                 onMouseLeave={() => setScrubbedTelemetryIndex(null)}
@@ -920,7 +1027,7 @@ export const FlightDetailView: React.FC = () => {
         ) : (
           <div className="h-44 w-full flex flex-col items-center justify-center border border-dashed border-neutral-200 dark:border-geist-hairline rounded text-center text-neutral-400">
             <Gauge className="w-6 h-6 mb-1.5 text-neutral-400" />
-            <span className="text-xs">{isLoadingFlightDetails ? 'Loading telemetry chart...' : 'No telemetry profile data available'}</span>
+            <span className="text-xs">No telemetry profile data available</span>
           </div>
         )}
       </div>

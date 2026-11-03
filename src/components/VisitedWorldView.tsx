@@ -13,6 +13,37 @@ import {
 } from 'lucide-react';
 
 let cachedCountriesGeoJson: any = null;
+let preloadPromise: Promise<any> | null = null;
+
+export function preloadCountriesGeoJson(): Promise<any> {
+  if (cachedCountriesGeoJson) return Promise.resolve(cachedCountriesGeoJson);
+  if (preloadPromise) return preloadPromise;
+
+  preloadPromise = fetch('/ne_110m_countries.geojson')
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then((data) => {
+      cachedCountriesGeoJson = data;
+      return data;
+    })
+    .catch((err) => {
+      console.warn('Could not load ne_110m_countries.geojson, falling back to /countries.geojson:', err);
+      return fetch('/countries.geojson')
+        .then((res) => res.json())
+        .then((fallbackData) => {
+          cachedCountriesGeoJson = fallbackData;
+          return fallbackData;
+        })
+        .catch((fallbackErr) => {
+          console.error('Failed to preload country boundaries:', fallbackErr);
+          return null;
+        });
+    });
+
+  return preloadPromise;
+}
 
 const getFeatureIso = (props: Record<string, any>): string => {
   if (!props) return '';
@@ -39,6 +70,15 @@ export const VisitedWorldView: React.FC = () => {
   const [showAllBorders, setShowAllBorders] = useState(true);
   const [geoJsonData, setGeoJsonData] = useState<any>(cachedCountriesGeoJson);
   const [isLoadingBoundaries, setIsLoadingBoundaries] = useState(!cachedCountriesGeoJson);
+  const [isMapReady, setIsMapReady] = useState(false);
+
+  useEffect(() => {
+    // Immediate frame paint for layout & stats; defer heavy Leaflet initialization by 40ms
+    const timer = setTimeout(() => {
+      setIsMapReady(true);
+    }, 40);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (cachedCountriesGeoJson) {
@@ -50,34 +90,12 @@ export const VisitedWorldView: React.FC = () => {
     let isMounted = true;
     setIsLoadingBoundaries(true);
 
-    fetch('/countries.geojson')
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        cachedCountriesGeoJson = data;
-        if (isMounted) {
-          setGeoJsonData(data);
-          setIsLoadingBoundaries(false);
-        }
-      })
-      .catch((err) => {
-        console.warn('Could not load high-detail countries.geojson, falling back to 110m:', err);
-        fetch('/ne_110m_countries.geojson')
-          .then((res) => res.json())
-          .then((fallbackData) => {
-            cachedCountriesGeoJson = fallbackData;
-            if (isMounted) {
-              setGeoJsonData(fallbackData);
-              setIsLoadingBoundaries(false);
-            }
-          })
-          .catch((fallbackErr) => {
-            console.error('Failed to load country boundary polygons:', fallbackErr);
-            if (isMounted) setIsLoadingBoundaries(false);
-          });
-      });
+    preloadCountriesGeoJson().then((data) => {
+      if (isMounted) {
+        if (data) setGeoJsonData(data);
+        setIsLoadingBoundaries(false);
+      }
+    });
 
     return () => {
       isMounted = false;
@@ -175,15 +193,11 @@ export const VisitedWorldView: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-neutral-700 dark:text-neutral-300">
           <div className="flex items-center gap-2">
             <Plane className="w-3.5 h-3.5 text-neutral-500" />
-            <span className="font-medium text-neutral-900 dark:text-white tracking-tight">Verified Flight Routes & Sovereign Territories</span>
-            {isLoadingBoundaries ? (
+            <span className="font-medium text-neutral-900 dark:text-white tracking-tight">Completed Flight Routes & Visited Sovereign Territories</span>
+            {(isLoadingBoundaries || !isMapReady) && (
               <span className="flex items-center gap-1 text-[11px] text-neutral-500 dark:text-neutral-400">
                 <Loader2 className="w-3 h-3 animate-spin text-neutral-400" />
-                <span>Loading detailed boundaries...</span>
-              </span>
-            ) : (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-medium border border-emerald-200 dark:border-emerald-800/40">
-                High Detail (1:10m)
+                <span>Loading map boundaries...</span>
               </span>
             )}
           </div>
@@ -209,20 +223,35 @@ export const VisitedWorldView: React.FC = () => {
           </div>
         </div>
 
-        <div className="h-[460px] w-full rounded-sm overflow-hidden border border-neutral-200 dark:border-geist-hairline relative z-0">
-          <MapContainer
-            center={[40.0, 10.0]}
-            zoom={3}
-            style={{ height: '100%', width: '100%' }}
-            className={theme === 'dark' ? 'dark-tiles' : ''}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+        <div className="h-[460px] w-full rounded-sm overflow-hidden border border-neutral-200 dark:border-geist-hairline relative z-0 flex items-center justify-center bg-neutral-100/60 dark:bg-[#111111]/80">
+          {!isMapReady || !geoJsonData ? (
+            <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden">
+              <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
+              <div className="relative flex flex-col items-center gap-2 px-4 py-3 rounded-md bg-white/90 dark:bg-black/70 border border-neutral-200/80 dark:border-neutral-800 backdrop-blur-sm shadow-sm">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-neutral-500 dark:text-neutral-400" />
+                  <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
+                    Loading Global Destinations Map...
+                  </span>
+                </div>
+                <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  Rendering sovereign territories & airport pins
+                </span>
+              </div>
+            </div>
+          ) : (
+            <MapContainer
+              center={[40.0, 10.0]}
+              zoom={3}
+              style={{ height: '100%', width: '100%' }}
+              className={theme === 'dark' ? 'dark-tiles' : ''}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
 
-            {/* Country Boundaries & Visited Highlights */}
-            {geoJsonData && (
+              {/* Country Boundaries & Visited Highlights */}
               <GeoJSON
                 key={`${theme}-${visitedCountries.map(c => c.isoA2).sort().join(',')}-${showAllBorders}-${geoJsonData.features?.length || 0}`}
                 data={geoJsonData}
@@ -253,77 +282,77 @@ export const VisitedWorldView: React.FC = () => {
                   const visited = isFeatureVisited(props);
                   const record = visitedCountries.find((c) => c.isoA2 === iso || c.name.toLowerCase() === name.toLowerCase());
 
-                const tooltipHtml = visited && record
-                  ? `<div style="font-family: inherit; font-size: 11px; line-height: 1.4; padding: 2px;">
-                       <div style="font-weight: 600; font-size: 12px; color: ${theme === 'dark' ? '#fff' : '#111'};">${name} (${iso})</div>
-                       <div style="color: #0070f3; font-weight: 500; font-size: 10px; margin-top: 2px;">✓ Verified Visited · ${record.flightCount} operations</div>
-                       <div style="color: #888; font-size: 9px; margin-top: 1px;">Last flight: ${new Date(record.lastVisited).toLocaleDateString()}</div>
-                     </div>`
-                  : `<div style="font-family: inherit; font-size: 11px; line-height: 1.4; padding: 2px;">
-                       <div style="font-weight: 600; font-size: 12px; color: ${theme === 'dark' ? '#fff' : '#111'};">${name} (${iso})</div>
-                       <div style="color: #888; font-size: 10px; margin-top: 2px;">No flights logged to/from this country</div>
-                     </div>`;
+                  const tooltipHtml = visited && record
+                    ? `<div style="font-family: inherit; font-size: 11px; line-height: 1.4; padding: 2px;">
+                         <div style="font-weight: 600; font-size: 12px; color: ${theme === 'dark' ? '#fff' : '#111'};">${name} (${iso})</div>
+                         <div style="color: #0070f3; font-weight: 500; font-size: 10px; margin-top: 2px;">Visited · ${record.flightCount} operations</div>
+                         <div style="color: #888; font-size: 9px; margin-top: 1px;">Last flight: ${new Date(record.lastVisited).toLocaleDateString()}</div>
+                       </div>`
+                    : `<div style="font-family: inherit; font-size: 11px; line-height: 1.4; padding: 2px;">
+                         <div style="font-weight: 600; font-size: 12px; color: ${theme === 'dark' ? '#fff' : '#111'};">${name} (${iso})</div>
+                         <div style="color: #888; font-size: 10px; margin-top: 2px;">No flights logged to/from this country</div>
+                       </div>`;
 
-                layer.bindTooltip(tooltipHtml, { sticky: true });
+                  layer.bindTooltip(tooltipHtml, { sticky: true });
 
-                layer.on({
-                  click: (e: any) => {
-                    if (e?.originalEvent?.target?.blur) {
-                      e.originalEvent.target.blur();
-                    }
-                  },
-                  mouseover: (e: any) => {
-                    const target = e.target;
-                    target.setStyle({
-                      weight: 2.5,
-                      color: visited ? (theme === 'dark' ? '#60a5fa' : '#0051b3') : (theme === 'dark' ? '#555' : '#94a3b8'),
-                      fillOpacity: visited ? 0.40 : 0.05,
-                      fillColor: visited ? '#0070f3' : '#64748b',
-                    });
-                  },
-                  mouseout: (e: any) => {
-                    const target = e.target;
-                    target.setStyle({
-                      fillColor: visited ? '#0070f3' : 'transparent',
-                      fillOpacity: visited ? (theme === 'dark' ? 0.30 : 0.20) : 0,
-                      color: visited ? (theme === 'dark' ? '#38bdf8' : '#0070f3') : (showAllBorders ? (theme === 'dark' ? '#333333' : '#cbd5e1') : 'transparent'),
-                      weight: visited ? 2.2 : (showAllBorders ? 0.75 : 0),
-                      opacity: visited ? 1 : (showAllBorders ? 0.6 : 0),
-                    });
-                  },
-                });
-              }}
-            />
+                  layer.on({
+                    click: (e: any) => {
+                      if (e?.originalEvent?.target?.blur) {
+                        e.originalEvent.target.blur();
+                      }
+                    },
+                    mouseover: (e: any) => {
+                      const target = e.target;
+                      target.setStyle({
+                        weight: 2.5,
+                        color: visited ? (theme === 'dark' ? '#60a5fa' : '#0051b3') : (theme === 'dark' ? '#555' : '#94a3b8'),
+                        fillOpacity: visited ? 0.40 : 0.05,
+                        fillColor: visited ? '#0070f3' : '#64748b',
+                      });
+                    },
+                    mouseout: (e: any) => {
+                      const target = e.target;
+                      target.setStyle({
+                        fillColor: visited ? '#0070f3' : 'transparent',
+                        fillOpacity: visited ? (theme === 'dark' ? 0.30 : 0.20) : 0,
+                        color: visited ? (theme === 'dark' ? '#38bdf8' : '#0070f3') : (showAllBorders ? (theme === 'dark' ? '#333333' : '#cbd5e1') : 'transparent'),
+                        weight: visited ? 2.2 : (showAllBorders ? 0.75 : 0),
+                        opacity: visited ? 1 : (showAllBorders ? 0.6 : 0),
+                      });
+                    },
+                  });
+                }}
+              />
+
+              {/* Aerodrome Markers */}
+              {visitedAirports.map((apt) => (
+                <CircleMarker
+                  key={apt.icao}
+                  center={[apt.latitude, apt.longitude]}
+                  radius={Math.min(10, 4 + apt.visitCount * 1.2)}
+                  fillColor={theme === 'dark' ? '#ffffff' : '#0070f3'}
+                  color={theme === 'dark' ? '#ededed' : '#005bb5'}
+                  weight={1.5}
+                  opacity={0.9}
+                  fillOpacity={0.8}
+                >
+                  <Popup>
+                    <div className="text-xs">
+                      <strong className="text-sm">{apt.icao}</strong> · {apt.name}<br />
+                      <span>Nation: {apt.countryName} ({apt.countryCode})</span><br />
+                      <span>Total Visits: <strong>{apt.visitCount}</strong></span><br />
+                      <span>Last Visit: {new Date(apt.lastVisited).toLocaleDateString()}</span>
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              ))}
+            </MapContainer>
           )}
-
-            {/* Aerodrome Markers */}
-            {visitedAirports.map((apt) => (
-              <CircleMarker
-                key={apt.icao}
-                center={[apt.latitude, apt.longitude]}
-                radius={Math.min(10, 4 + apt.visitCount * 1.2)}
-                fillColor={theme === 'dark' ? '#ffffff' : '#0070f3'}
-                color={theme === 'dark' ? '#ededed' : '#005bb5'}
-                weight={1.5}
-                opacity={0.9}
-                fillOpacity={0.8}
-              >
-                <Popup>
-                  <div className="text-xs">
-                    <strong className="text-sm">{apt.icao}</strong> · {apt.name}<br />
-                    <span>Nation: {apt.countryName} ({apt.countryCode})</span><br />
-                    <span>Total Visits: <strong>{apt.visitCount}</strong></span><br />
-                    <span>Last Visit: {new Date(apt.lastVisited).toLocaleDateString()}</span>
-                  </div>
-                </Popup>
-              </CircleMarker>
-            ))}
-          </MapContainer>
         </div>
 
         <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center justify-between">
           <span>Countries are automatically outlined once a flight has been logged departing from or arriving within that sovereign nation.</span>
-          <span className="tabular-nums font-medium">{visitedCount} sovereign states verified</span>
+          <span className="tabular-nums font-medium">{visitedCount} sovereign states visited</span>
         </div>
       </div>
 
@@ -367,7 +396,7 @@ export const VisitedWorldView: React.FC = () => {
                   className="flex items-center justify-between p-2 rounded-sm bg-neutral-50 dark:bg-[#0e0e0e] border border-neutral-200 dark:border-geist-hairline text-xs"
                 >
                   <div className="flex items-center gap-2.5">
-                    <span className="w-7 text-center font-semibold text-neutral-900 dark:text-white bg-neutral-200/60 dark:bg-neutral-800 px-1 py-0.5 rounded-[3px]">
+                    <span className="w-7 text-center font-semibold text-neutral-900 dark:text-white bg-neutral-200/60 dark:bg-neutral-800 p-1 rounded-xs">
                       {c.isoA2}
                     </span>
                     <div>

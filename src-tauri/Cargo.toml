@@ -1,6 +1,6 @@
 [package]
 name = "apollo-flight"
-version = "0.0.1"
+version = "0.0.2"
 description = "Modern flight tracking, telemetry analysis, and IFR companion for Microsoft Flight Simulator."
 authors = ["Jürgen Jacobsen"]
 edition = "2021"

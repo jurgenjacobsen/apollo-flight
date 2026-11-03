@@ -178,6 +178,63 @@ mod commands {
         let _ = std::fs::create_dir_all(&work_dir);
         db::sync_ourairports_data(&mut conn, &work_dir)
     }
+
+    #[tauri::command]
+    pub fn save_route(
+        state: tauri::State<'_, DbState>,
+        route: db::SavedRouteRecord,
+    ) -> Result<db::SavedRouteRecord, String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::save_route(&conn, &route).map_err(|e| e.to_string())?;
+        Ok(route)
+    }
+
+    #[tauri::command]
+    pub fn get_saved_routes(
+        state: tauri::State<'_, DbState>,
+    ) -> Result<Vec<db::SavedRouteRecord>, String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::get_saved_routes(&conn).map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub fn toggle_route_favorite(
+        state: tauri::State<'_, DbState>,
+        id: String,
+    ) -> Result<bool, String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::toggle_route_favorite(&conn, &id).map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub fn update_route_status(
+        state: tauri::State<'_, DbState>,
+        id: String,
+        status: String,
+        linked_flight_id: Option<String>,
+    ) -> Result<(), String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::update_route_status(&conn, &id, &status, linked_flight_id.as_deref())
+            .map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub fn delete_saved_route(
+        state: tauri::State<'_, DbState>,
+        id: String,
+    ) -> Result<(), String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::delete_saved_route(&conn, &id).map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub fn recompute_visited_destinations(
+        state: tauri::State<'_, DbState>,
+    ) -> Result<db::VisitedStats, String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::recompute_visited_stats(&conn).map_err(|e| e.to_string())?;
+        db::get_visited_stats(&conn).map_err(|e| e.to_string())
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -301,7 +358,13 @@ pub fn run() {
             commands::get_airports_count,
             commands::get_airport,
             commands::search_route_airports,
-            commands::sync_ourairports
+            commands::sync_ourairports,
+            commands::save_route,
+            commands::get_saved_routes,
+            commands::toggle_route_favorite,
+            commands::update_route_status,
+            commands::delete_saved_route,
+            commands::recompute_visited_destinations
         ])
         .run(tauri::generate_context!())
         .expect("error while running apollo flight application");

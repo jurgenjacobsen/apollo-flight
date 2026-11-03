@@ -124,14 +124,14 @@ The repository includes a GitHub Actions workflow (`.github/workflows/release.ym
 To trigger an automated multi-platform release build, commit your changes and push a version tag:
 
 ```powershell
-git tag v0.0.1
-git push origin v0.0.1
+git tag v0.0.2
+git push origin v0.0.2
 ```
 
 The workflow will:
 1. Compile the app on Windows x64, macOS (Apple Silicon `aarch64` and Intel `x86_64`), and Ubuntu Linux.
 2. Sign the update bundles using the repository's `TAURI_SIGNING_PRIVATE_KEY`.
-3. Create a GitHub Release for `v0.0.1` and publish `.msi`, `.exe`, `.dmg`, `.deb`, `.AppImage`, and `latest.json`.
+3. Create a GitHub Release for `v0.0.2` and publish `.msi`, `.exe`, `.dmg`, `.deb`, `.AppImage`, and `latest.json`.
 
 ---
 

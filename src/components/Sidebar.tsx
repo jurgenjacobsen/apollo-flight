@@ -13,7 +13,8 @@ import {
   Radio,
   HardDrive,
   Settings,
-  Route
+  Route,
+  Bookmark
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -32,6 +33,7 @@ export const Sidebar: React.FC = () => {
       items: [
         { id: 'dashboard', label: 'Flight Overview', icon: Activity },
         { id: 'new-route', label: 'New Route', icon: Route },
+        { id: 'saved-routes', label: 'Saved Routes', icon: Bookmark },
         { id: 'logbook', label: 'Flight Logbook', icon: BookOpen },
         { id: 'flight-detail', label: 'Telemetry Analysis', icon: Layers },
         { id: 'visited', label: 'Visited Destinations', icon: Globe2 },
@@ -96,7 +98,7 @@ export const Sidebar: React.FC = () => {
       <div className="flex-1 py-3 px-2.5 overflow-y-auto space-y-4">
         {navSections.map((section) => (
           <div key={section.label} className="space-y-1">
-            <div className="px-2 pb-1 text-[11px] font-medium text-neutral-400 dark:text-geist-muted">
+            <div className="px-2 pb-0 text-[11px] font-medium text-neutral-400 dark:text-geist-muted">
               {section.label}
             </div>
             <div className="space-y-0.5">

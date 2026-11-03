@@ -122,6 +122,30 @@ pub struct OurAirportsSyncResult {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedRouteRecord {
+    pub id: String,
+    pub name: String,
+    pub aircraft_name: String,
+    pub aircraft_category: String,
+    pub departure_icao: String,
+    pub arrival_icao: String,
+    pub sector_count: i32,
+    pub total_distance_nm: f64,
+    pub total_airborne_minutes: i32,
+    pub total_duration_minutes: i32,
+    pub total_ground_minutes: i32,
+    pub include_ground_time: bool,
+    pub is_round_trip: bool,
+    pub status: String,
+    pub is_favorite: bool,
+    pub sectors_json: String,
+    pub created_at: String,
+    pub flown_at: Option<String>,
+    pub linked_flight_id: Option<String>,
+}
+
 pub fn init_database<P: AsRef<Path>>(path: P) -> Result<Connection> {
     init_database_with_resources(path.as_ref(), &[])
 }
@@ -223,6 +247,32 @@ pub fn init_database_with_resources(db_path: &Path, resource_dirs: &[std::path::
         CREATE INDEX IF NOT EXISTS idx_runways_ident ON runways(airport_ident);
         CREATE INDEX IF NOT EXISTS idx_runways_length ON runways(length_ft);
         CREATE INDEX IF NOT EXISTS idx_runways_closed ON runways(closed);
+
+        CREATE TABLE IF NOT EXISTS saved_routes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            aircraft_name TEXT NOT NULL,
+            aircraft_category TEXT NOT NULL,
+            departure_icao TEXT NOT NULL,
+            arrival_icao TEXT NOT NULL,
+            sector_count INTEGER NOT NULL,
+            total_distance_nm REAL NOT NULL,
+            total_airborne_minutes INTEGER NOT NULL,
+            total_duration_minutes INTEGER NOT NULL,
+            total_ground_minutes INTEGER DEFAULT 0,
+            include_ground_time BOOLEAN NOT NULL DEFAULT 1,
+            is_round_trip BOOLEAN NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'draft',
+            is_favorite BOOLEAN NOT NULL DEFAULT 0,
+            sectors_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            flown_at TEXT,
+            linked_flight_id TEXT,
+            FOREIGN KEY (linked_flight_id) REFERENCES flights(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_saved_routes_status ON saved_routes(status);
+        CREATE INDEX IF NOT EXISTS idx_saved_routes_favorite ON saved_routes(is_favorite);
+        CREATE INDEX IF NOT EXISTS idx_saved_routes_dep_arr ON saved_routes(departure_icao, arrival_icao);
         "#,
     )?;
 
@@ -300,6 +350,48 @@ pub fn init_database_with_resources(db_path: &Path, resource_dirs: &[std::path::
     // Auto-seed or import OurAirports data
     seed_or_import_airports(&mut conn, resource_dirs)?;
 
+    // One-time backfill: calculate and store distance for any historical flights with 0 distance
+    {
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT id, departure_icao, arrival_icao FROM flights WHERE distance_flown_nm IS NULL OR distance_flown_nm <= 0.0",
+        ) {
+            let uncalculated_flights: Vec<(String, Option<String>, Option<String>)> = stmt
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+                .map(|mapped| mapped.filter_map(|r| r.ok()).collect())
+                .unwrap_or_default();
+            drop(stmt);
+
+            for (fl_id, dep, arr) in uncalculated_flights {
+                if let Ok(dist) = calculate_flight_distance(&conn, &fl_id, dep.as_deref(), arr.as_deref()) {
+                    if dist > 0.0 {
+                        let _ = conn.execute(
+                            "UPDATE flights SET distance_flown_nm = ?1 WHERE id = ?2",
+                            params![dist, fl_id],
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // One-time backfill: recompute visited statistics with strict deduplication (Issue #4)
+    {
+        let already_recomputed: bool = conn
+            .query_row(
+                "SELECT 1 FROM schema_migrations WHERE version = 'recompute_visited_deduplication_v1'",
+                [],
+                |_| Ok(()),
+            )
+            .is_ok();
+        if !already_recomputed {
+            let _ = recompute_visited_stats(&conn);
+            let _ = conn.execute(
+                "INSERT INTO schema_migrations (version, applied_at) VALUES ('recompute_visited_deduplication_v1', datetime('now'))",
+                [],
+            );
+        }
+    }
+
     Ok(conn)
 }
 
@@ -323,7 +415,7 @@ fn seed_or_import_airports(conn: &mut Connection, resource_dirs: &[std::path::Pa
         let ctry_file = dir.join("countries.csv");
         let rwy_file = dir.join("runways.csv");
 
-        if apt_file.exists() && ctry_file.exists() {
+        if !cfg!(test) && apt_file.exists() && ctry_file.exists() {
             if apt_count < 500 {
                 log::info!("Found OurAirports CSV files at {:?}, importing into aerotrack.db...", dir);
                 if let Ok(imported) = import_ourairports_files(conn, &apt_file, &ctry_file) {
@@ -897,6 +989,27 @@ pub fn get_flights(conn: &Connection) -> Result<Vec<FlightRecord>> {
     for r in rows {
         result.push(r?);
     }
+    drop(stmt);
+
+    for flight in &mut result {
+        if flight.distance_flown_nm <= 0.0 {
+            if let Ok(dist) = calculate_flight_distance(
+                conn,
+                &flight.id,
+                flight.departure_icao.as_deref(),
+                flight.arrival_icao.as_deref(),
+            ) {
+                if dist > 0.0 {
+                    flight.distance_flown_nm = dist;
+                    let _ = conn.execute(
+                        "UPDATE flights SET distance_flown_nm = ?1 WHERE id = ?2",
+                        params![dist, flight.id],
+                    );
+                }
+            }
+        }
+    }
+
     Ok(result)
 }
 
@@ -925,10 +1038,29 @@ pub fn get_flight_details(conn: &Connection, id: &str) -> Result<Option<FlightDe
         })
     })?;
 
-    let flight = match flight_rows.next() {
+    let mut flight = match flight_rows.next() {
         Some(f) => f?,
         None => return Ok(None),
     };
+    drop(flight_rows);
+    drop(flight_stmt);
+
+    if flight.distance_flown_nm <= 0.0 {
+        if let Ok(dist) = calculate_flight_distance(
+            conn,
+            &flight.id,
+            flight.departure_icao.as_deref(),
+            flight.arrival_icao.as_deref(),
+        ) {
+            if dist > 0.0 {
+                flight.distance_flown_nm = dist;
+                let _ = conn.execute(
+                    "UPDATE flights SET distance_flown_nm = ?1 WHERE id = ?2",
+                    params![dist, flight.id],
+                );
+            }
+        }
+    }
 
     let mut telem_stmt = conn.prepare(
         "SELECT flight_id, timestamp, latitude, longitude, altitude_msl, altitude_agl,
@@ -967,7 +1099,94 @@ pub fn get_flight_details(conn: &Connection, id: &str) -> Result<Option<FlightDe
     }))
 }
 
+pub fn haversine_distance_nm(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    if !lat1.is_finite() || !lon1.is_finite() || !lat2.is_finite() || !lon2.is_finite() {
+        return 0.0;
+    }
+    if (lat1 - lat2).abs() < 1e-9 && (lon1 - lon2).abs() < 1e-9 {
+        return 0.0;
+    }
+    let rad = std::f64::consts::PI / 180.0;
+    let d_lat = (lat2 - lat1) * rad;
+    let d_lon = (lon2 - lon1) * rad;
+    let a = (d_lat / 2.0).sin().powi(2)
+        + (lat1 * rad).cos() * (lat2 * rad).cos() * (d_lon / 2.0).sin().powi(2);
+    let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
+    3440.065 * c
+}
+
+pub fn calculate_flight_distance(
+    conn: &Connection,
+    flight_id: &str,
+    dep_icao: Option<&str>,
+    arr_icao: Option<&str>,
+) -> Result<f64> {
+    let mut stmt = conn.prepare(
+        "SELECT latitude, longitude FROM flight_telemetry WHERE flight_id = ?1 ORDER BY id ASC",
+    )?;
+    let points: Vec<(f64, f64)> = stmt
+        .query_map(params![flight_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let dep_apt = match dep_icao {
+        Some(icao) => get_airport_by_icao(conn, icao).ok().flatten(),
+        None => None,
+    };
+    let arr_apt = match arr_icao {
+        Some(icao) => get_airport_by_icao(conn, icao).ok().flatten(),
+        None => None,
+    };
+
+    let mut total_nm = 0.0;
+
+    if !points.is_empty() {
+        let first_point = points[0];
+        let last_point = points[points.len() - 1];
+
+        // 1. Distance from departure airport reference point to first recorded point
+        if let Some(ref dep) = dep_apt {
+            total_nm += haversine_distance_nm(dep.latitude, dep.longitude, first_point.0, first_point.1);
+        }
+
+        // 2. Cumulative distance between all consecutive recorded telemetry points
+        for i in 0..(points.len() - 1) {
+            total_nm += haversine_distance_nm(
+                points[i].0,
+                points[i].1,
+                points[i + 1].0,
+                points[i + 1].1,
+            );
+        }
+
+        // 3. Distance from last recorded point to arrival airport reference point
+        if let Some(ref arr) = arr_apt {
+            total_nm += haversine_distance_nm(last_point.0, last_point.1, arr.latitude, arr.longitude);
+        }
+    } else if let (Some(ref dep), Some(ref arr)) = (&dep_apt, &arr_apt) {
+        // Fallback: direct great circle distance between dep and arr airports if no telemetry recorded
+        total_nm = haversine_distance_nm(dep.latitude, dep.longitude, arr.latitude, arr.longitude);
+    }
+
+    Ok((total_nm * 10.0).round() / 10.0)
+}
+
 pub fn save_flight(conn: &Connection, flight: &FlightRecord) -> Result<()> {
+    let mut distance = flight.distance_flown_nm;
+    // When saved, if distance is <= 0.0, solve it from recorded points and dep/arr airports
+    if distance <= 0.0 {
+        if let Ok(solved) = calculate_flight_distance(
+            conn,
+            &flight.id,
+            flight.departure_icao.as_deref(),
+            flight.arrival_icao.as_deref(),
+        ) {
+            if solved > 0.0 {
+                distance = solved;
+            }
+        }
+    }
+
     conn.execute(
         r#"
         INSERT INTO flights (
@@ -998,7 +1217,7 @@ pub fn save_flight(conn: &Connection, flight: &FlightRecord) -> Result<()> {
             flight.flight_time_seconds,
             flight.max_altitude,
             flight.max_ground_speed,
-            flight.distance_flown_nm,
+            distance,
             flight.landing_rate_fpm,
             flight.status,
         ],
@@ -1391,6 +1610,251 @@ pub fn get_visited_stats(conn: &Connection) -> Result<VisitedStats> {
         total_countries,
         total_airports,
     })
+}
+
+pub fn save_route(conn: &Connection, route: &SavedRouteRecord) -> Result<()> {
+    conn.execute(
+        r#"
+        INSERT INTO saved_routes (
+            id, name, aircraft_name, aircraft_category, departure_icao, arrival_icao,
+            sector_count, total_distance_nm, total_airborne_minutes, total_duration_minutes,
+            total_ground_minutes, include_ground_time, is_round_trip, status, is_favorite,
+            sectors_json, created_at, flown_at, linked_flight_id
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+        ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            aircraft_name = excluded.aircraft_name,
+            aircraft_category = excluded.aircraft_category,
+            departure_icao = excluded.departure_icao,
+            arrival_icao = excluded.arrival_icao,
+            sector_count = excluded.sector_count,
+            total_distance_nm = excluded.total_distance_nm,
+            total_airborne_minutes = excluded.total_airborne_minutes,
+            total_duration_minutes = excluded.total_duration_minutes,
+            total_ground_minutes = excluded.total_ground_minutes,
+            include_ground_time = excluded.include_ground_time,
+            is_round_trip = excluded.is_round_trip,
+            status = excluded.status,
+            is_favorite = excluded.is_favorite,
+            sectors_json = excluded.sectors_json,
+            flown_at = excluded.flown_at,
+            linked_flight_id = excluded.linked_flight_id
+        "#,
+        params![
+            route.id,
+            route.name,
+            route.aircraft_name,
+            route.aircraft_category,
+            route.departure_icao,
+            route.arrival_icao,
+            route.sector_count,
+            route.total_distance_nm,
+            route.total_airborne_minutes,
+            route.total_duration_minutes,
+            route.total_ground_minutes,
+            route.include_ground_time,
+            route.is_round_trip,
+            route.status,
+            route.is_favorite,
+            route.sectors_json,
+            route.created_at,
+            route.flown_at,
+            route.linked_flight_id,
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn get_saved_routes(conn: &Connection) -> Result<Vec<SavedRouteRecord>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT id, name, aircraft_name, aircraft_category, departure_icao, arrival_icao,
+               sector_count, total_distance_nm, total_airborne_minutes, total_duration_minutes,
+               total_ground_minutes, include_ground_time, is_round_trip, status, is_favorite,
+               sectors_json, created_at, flown_at, linked_flight_id
+        FROM saved_routes
+        ORDER BY is_favorite DESC, created_at DESC
+        "#,
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(SavedRouteRecord {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            aircraft_name: row.get(2)?,
+            aircraft_category: row.get(3)?,
+            departure_icao: row.get(4)?,
+            arrival_icao: row.get(5)?,
+            sector_count: row.get(6)?,
+            total_distance_nm: row.get(7)?,
+            total_airborne_minutes: row.get(8)?,
+            total_duration_minutes: row.get(9)?,
+            total_ground_minutes: row.get(10)?,
+            include_ground_time: row.get(11)?,
+            is_round_trip: row.get(12)?,
+            status: row.get(13)?,
+            is_favorite: row.get(14)?,
+            sectors_json: row.get(15)?,
+            created_at: row.get(16)?,
+            flown_at: row.get(17)?,
+            linked_flight_id: row.get(18)?,
+        })
+    })?;
+
+    let mut routes = Vec::new();
+    for r in rows {
+        routes.push(r?);
+    }
+    Ok(routes)
+}
+
+pub fn toggle_route_favorite(conn: &Connection, id: &str) -> Result<bool> {
+    let current_fav: bool = conn.query_row(
+        "SELECT is_favorite FROM saved_routes WHERE id = ?1",
+        params![id],
+        |row| row.get(0),
+    )?;
+    let new_fav = !current_fav;
+    conn.execute(
+        "UPDATE saved_routes SET is_favorite = ?1 WHERE id = ?2",
+        params![new_fav, id],
+    )?;
+    Ok(new_fav)
+}
+
+pub fn update_route_status(conn: &Connection, id: &str, status: &str, linked_flight_id: Option<&str>) -> Result<()> {
+    let flown_at = if status == "flown" {
+        Some(chrono::Utc::now().to_rfc3339())
+    } else {
+        None
+    };
+    conn.execute(
+        "UPDATE saved_routes SET status = ?1, flown_at = ?2, linked_flight_id = ?3 WHERE id = ?4",
+        params![status, flown_at, linked_flight_id, id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_saved_route(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM saved_routes WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn recompute_visited_stats(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM visited_airports", [])?;
+    conn.execute("DELETE FROM visited_countries", [])?;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, departure_icao, arrival_icao, start_time, end_time FROM flights WHERE status != 'DISCARDED'",
+    )?;
+
+    struct RawFlight {
+        id: String,
+        dep_icao: Option<String>,
+        arr_icao: Option<String>,
+        time_str: String,
+    }
+
+    let flights = stmt
+        .query_map([], |row| {
+            let id: String = row.get(0)?;
+            let dep: Option<String> = row.get(1)?;
+            let arr: Option<String> = row.get(2)?;
+            let start_t: String = row.get(3)?;
+            let end_t: Option<String> = row.get(4)?;
+            let time_str = end_t.unwrap_or(start_t);
+            Ok(RawFlight {
+                id,
+                dep_icao: dep,
+                arr_icao: arr,
+                time_str,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect::<Vec<_>>();
+    drop(stmt);
+
+    for fl in flights {
+        let mut unique_apts: std::collections::HashSet<String> = std::collections::HashSet::new();
+        if let Some(ref d) = fl.dep_icao {
+            let trimmed = d.trim().to_uppercase();
+            if trimmed.len() == 4 && trimmed != "ZZZZ" {
+                unique_apts.insert(trimmed);
+            }
+        }
+        if let Some(ref a) = fl.arr_icao {
+            let trimmed = a.trim().to_uppercase();
+            if trimmed.len() == 4 && trimmed != "ZZZZ" {
+                unique_apts.insert(trimmed);
+            }
+        }
+
+        // Also check if telemetry points have intermediate touchdowns/landings
+        if let Ok(mut tel_stmt) = conn.prepare(
+            "SELECT latitude, longitude FROM flight_telemetry WHERE flight_id = ?1 AND is_on_ground = 1",
+        ) {
+            let ground_points = tel_stmt
+                .query_map([&fl.id], |row| Ok((row.get(0)?, row.get(1)?)))
+                .map(|mapped| mapped.filter_map(|r| r.ok()).collect::<Vec<(f64, f64)>>())
+                .unwrap_or_default();
+            drop(tel_stmt);
+
+            for (lat, lon) in ground_points {
+                if let Ok(Some(apt)) = search_airports_near(conn, lat, lon, 3.0) {
+                    if apt.icao.len() == 4 && apt.icao != "ZZZZ" {
+                        unique_apts.insert(apt.icao);
+                    }
+                }
+            }
+        }
+
+        let mut unique_countries: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+
+        for icao in unique_apts {
+            if let Ok(Some(apt)) = get_airport_by_icao(conn, &icao) {
+                conn.execute(
+                    r#"
+                    INSERT INTO visited_airports (
+                        icao, name, country_code, country_name, latitude, longitude,
+                        first_visited, last_visited, visit_count
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, 1)
+                    ON CONFLICT(icao) DO UPDATE SET
+                        last_visited = MAX(last_visited, excluded.last_visited),
+                        first_visited = MIN(first_visited, excluded.first_visited),
+                        visit_count = visit_count + 1
+                    "#,
+                    params![
+                        apt.icao,
+                        apt.name,
+                        apt.country_code,
+                        apt.country_name,
+                        apt.latitude,
+                        apt.longitude,
+                        fl.time_str,
+                    ],
+                )?;
+
+                unique_countries.insert((apt.country_code, apt.country_name));
+            }
+        }
+
+        for (code, name) in unique_countries {
+            conn.execute(
+                r#"
+                INSERT INTO visited_countries (
+                    iso_a2, name, first_visited, last_visited, flight_count
+                ) VALUES (?1, ?2, ?3, ?3, 1)
+                ON CONFLICT(iso_a2) DO UPDATE SET
+                    last_visited = MAX(last_visited, excluded.last_visited),
+                    first_visited = MIN(first_visited, excluded.first_visited),
+                    flight_count = flight_count + 1
+                "#,
+                params![code, name, fl.time_str],
+            )?;
+        }
+    }
+
+    Ok(())
 }
 
 fn xml_escape(input: &str) -> String {
@@ -1832,6 +2296,217 @@ mod tests {
         assert!(json.contains("\"arrivalIcao\": \"LOWI\""));
         assert!(json.contains("\"flightTimeFormatted\": \"1h 15m\""));
         assert!(!json.contains("telemetryPoints"));
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn test_calculate_flight_distance() {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join(format!("test_apollo_dist_{}.db", uuid::Uuid::new_v4()));
+        let conn = init_database(&db_path).expect("init_database should succeed");
+
+        // Insert test airports with known coordinates
+        conn.execute(
+            "INSERT OR REPLACE INTO airports (icao, name, latitude, longitude, country_code, country_name, airport_type, continent)
+             VALUES ('TESTDEP', 'Test Dep', 48.0, 16.0, 'AT', 'Austria', 'medium_airport', 'EU'),
+                    ('TESTARR', 'Test Arr', 48.0, 18.0, 'AT', 'Austria', 'medium_airport', 'EU')",
+            [],
+        ).expect("insert test airports");
+
+        // Insert initial legacy flight record with 0.0 distance directly into SQL
+        conn.execute(
+            "INSERT INTO flights (
+                id, aircraft_type, departure_icao, arrival_icao, start_time, end_time,
+                flight_time_seconds, max_altitude, max_ground_speed, distance_flown_nm,
+                landing_rate_fpm, status
+            ) VALUES ('fl-dist-1', 'Diamond DA40', 'TESTDEP', 'TESTARR', '2026-11-03T10:00:00Z', '2026-11-03T10:45:00Z', 2700, 5000, 130, 0.0, -120.0, 'COMPLETED')",
+            [],
+        ).expect("insert legacy flight");
+
+        // Save a telemetry batch
+        let pts = vec![
+            TelemetryPointRecord {
+                flight_id: "fl-dist-1".to_string(),
+                timestamp: "2026-11-03T10:00:00Z".to_string(),
+                latitude: 48.0,
+                longitude: 16.5,
+                altitude_msl: 5000.0,
+                altitude_agl: None,
+                indicated_airspeed: 120.0,
+                ground_speed: 120.0,
+                heading: 90.0,
+                pitch: None,
+                bank: None,
+                vertical_speed: None,
+                is_on_ground: false,
+            },
+            TelemetryPointRecord {
+                flight_id: "fl-dist-1".to_string(),
+                timestamp: "2026-11-03T10:30:00Z".to_string(),
+                latitude: 48.0,
+                longitude: 17.5,
+                altitude_msl: 5000.0,
+                altitude_agl: None,
+                indicated_airspeed: 120.0,
+                ground_speed: 120.0,
+                heading: 90.0,
+                pitch: None,
+                bank: None,
+                vertical_speed: None,
+                is_on_ground: false,
+            },
+        ];
+        save_telemetry_batch(&conn, &pts).expect("save telemetry");
+
+        // Calculate distance: TESTDEP (16.0) -> Point 1 (16.5) -> Point 2 (17.5) -> TESTARR (18.0)
+        let dist = calculate_flight_distance(&conn, "fl-dist-1", Some("TESTDEP"), Some("TESTARR"))
+            .expect("calc distance");
+
+        // Total distance along latitude 48 from lon 16.0 to 18.0 is 2 degrees of longitude
+        let direct = haversine_distance_nm(48.0, 16.0, 48.0, 18.0);
+        assert!((dist - direct).abs() < 0.5);
+        assert!(dist > 50.0);
+
+        // get_flight_details auto-heals legacy flight with 0.0 distance
+        let details = get_flight_details(&conn, "fl-dist-1").expect("get details").expect("flight exists");
+        assert_eq!(details.flight.distance_flown_nm, dist);
+
+        // get_flights also auto-heals and reads persisted distance
+        let flights = get_flights(&conn).expect("get flights");
+        assert_eq!(flights[0].distance_flown_nm, dist);
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn test_saved_routes_crud() {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join(format!("test_apollo_saved_route_{}.db", uuid::Uuid::new_v4()));
+        let conn = init_database(&db_path).expect("init_database should succeed");
+
+        let route = SavedRouteRecord {
+            id: "route-test-1".to_string(),
+            name: "LOWI to EDDM".to_string(),
+            aircraft_name: "Cessna 172 Skyhawk".to_string(),
+            aircraft_category: "A".to_string(),
+            departure_icao: "LOWI".to_string(),
+            arrival_icao: "EDDM".to_string(),
+            sector_count: 1,
+            total_distance_nm: 65.4,
+            total_airborne_minutes: 35,
+            total_duration_minutes: 50,
+            total_ground_minutes: 15,
+            include_ground_time: true,
+            is_round_trip: false,
+            status: "draft".to_string(),
+            is_favorite: false,
+            sectors_json: "[]".to_string(),
+            created_at: "2026-11-03T16:00:00Z".to_string(),
+            flown_at: None,
+            linked_flight_id: None,
+        };
+
+        save_route(&conn, &route).expect("save route");
+        let all = get_saved_routes(&conn).expect("get routes");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, "route-test-1");
+        assert_eq!(all[0].status, "draft");
+        assert!(!all[0].is_favorite);
+
+        let new_fav = toggle_route_favorite(&conn, "route-test-1").expect("toggle favorite");
+        assert!(new_fav);
+
+        // Insert mock flight to satisfy foreign key constraint on linked_flight_id
+        let mock_flight = FlightRecord {
+            id: "fl-123".to_string(),
+            aircraft_type: "C172".to_string(),
+            departure_icao: Some("LOWI".to_string()),
+            arrival_icao: Some("EDDM".to_string()),
+            start_time: "2026-11-03T16:00:00Z".to_string(),
+            end_time: Some("2026-11-03T17:00:00Z".to_string()),
+            flight_time_seconds: 3600,
+            max_altitude: 10000,
+            max_ground_speed: 130,
+            distance_flown_nm: 60.0,
+            landing_rate_fpm: Some(-150.0),
+            status: "COMPLETED".to_string(),
+        };
+        save_flight(&conn, &mock_flight).expect("save flight");
+
+        update_route_status(&conn, "route-test-1", "flown", Some("fl-123")).expect("update status");
+        let all_after = get_saved_routes(&conn).expect("get routes after update");
+        assert_eq!(all_after[0].status, "flown");
+        assert!(all_after[0].flown_at.is_some());
+        assert_eq!(all_after[0].linked_flight_id.as_deref(), Some("fl-123"));
+
+        delete_saved_route(&conn, "route-test-1").expect("delete route");
+        let all_empty = get_saved_routes(&conn).expect("get routes after delete");
+        assert_eq!(all_empty.len(), 0);
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn test_recompute_visited_stats_deduplication() {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join(format!("test_apollo_visited_dedup_{}.db", uuid::Uuid::new_v4()));
+        let conn = init_database(&db_path).expect("init_database should succeed");
+
+        // Seed test airports: LOWI (AT), LOWS (AT), EDDM (DE)
+        conn.execute(
+            "INSERT OR REPLACE INTO airports (icao, name, latitude, longitude, country_code, country_name, airport_type, continent)
+             VALUES ('LOWI', 'Innsbruck Airport', 47.26, 11.34, 'AT', 'Austria', 'medium_airport', 'EU'),
+                    ('LOWS', 'Salzburg Airport', 47.79, 13.00, 'AT', 'Austria', 'medium_airport', 'EU'),
+                    ('EDDM', 'Munich Airport', 48.35, 11.78, 'DE', 'Germany', 'large_airport', 'EU')",
+            [],
+        ).expect("insert test airports");
+
+        // Flight 1: Local pattern flight LOWI -> LOWI (Should be 1 visit to LOWI, 1 operation to AT)
+        conn.execute(
+            "INSERT INTO flights (id, aircraft_type, departure_icao, arrival_icao, start_time, end_time, status)
+             VALUES ('fl-pattern', 'C172', 'LOWI', 'LOWI', '2026-11-03T10:00:00Z', '2026-11-03T10:45:00Z', 'COMPLETED')",
+            [],
+        ).expect("insert flight 1");
+
+        // Flight 2: Domestic flight LOWI -> LOWS (Should be 1 visit to LOWI, 1 visit to LOWS, 1 operation to AT)
+        conn.execute(
+            "INSERT INTO flights (id, aircraft_type, departure_icao, arrival_icao, start_time, end_time, status)
+             VALUES ('fl-domestic', 'C172', 'LOWI', 'LOWS', '2026-11-03T11:00:00Z', '2026-11-03T11:50:00Z', 'COMPLETED')",
+            [],
+        ).expect("insert flight 2");
+
+        // Flight 3: International flight LOWS -> EDDM (Should be 1 visit to LOWS, 1 visit to EDDM, 1 op to AT, 1 op to DE)
+        conn.execute(
+            "INSERT INTO flights (id, aircraft_type, departure_icao, arrival_icao, start_time, end_time, status)
+             VALUES ('fl-intl', 'C172', 'LOWS', 'EDDM', '2026-11-03T12:00:00Z', '2026-11-03T12:45:00Z', 'COMPLETED')",
+            [],
+        ).expect("insert flight 3");
+
+        recompute_visited_stats(&conn).expect("recompute visited stats");
+        let stats = get_visited_stats(&conn).expect("get visited stats");
+
+        // Airports:
+        // LOWI: Flown in Flight 1 (LOWI -> LOWI = 1 visit), Flight 2 (LOWI -> LOWS = 1 visit) => Total 2 visits
+        // LOWS: Flown in Flight 2 (LOWI -> LOWS = 1 visit), Flight 3 (LOWS -> EDDM = 1 visit) => Total 2 visits
+        // EDDM: Flown in Flight 3 (LOWS -> EDDM = 1 visit) => Total 1 visit
+        let lowi = stats.visited_airports.iter().find(|a| a.icao == "LOWI").expect("LOWI found");
+        assert_eq!(lowi.visit_count, 2);
+
+        let lows = stats.visited_airports.iter().find(|a| a.icao == "LOWS").expect("LOWS found");
+        assert_eq!(lows.visit_count, 2);
+
+        let eddm = stats.visited_airports.iter().find(|a| a.icao == "EDDM").expect("EDDM found");
+        assert_eq!(eddm.visit_count, 1);
+
+        // Countries:
+        // Austria (AT): Flight 1 = 1 op, Flight 2 = 1 op, Flight 3 = 1 op => Total 3 operations
+        // Germany (DE): Flight 3 = 1 op => Total 1 operation
+        let at = stats.visited_countries.iter().find(|c| c.iso_a2 == "AT").expect("AT found");
+        assert_eq!(at.flight_count, 3);
+
+        let de = stats.visited_countries.iter().find(|c| c.iso_a2 == "DE").expect("DE found");
+        assert_eq!(de.flight_count, 1);
 
         let _ = std::fs::remove_file(db_path);
     }

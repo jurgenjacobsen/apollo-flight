@@ -8,6 +8,15 @@ export type RunwaySurfacePreference = 'any' | 'paved' | 'unpaved';
 
 export type RouteLimitType = 'none' | 'time' | 'distance';
 
+export type GeographicAreaType = 'preset' | 'circle' | 'polygon';
+
+export interface GeographicAreaFilter {
+  type: GeographicAreaType;
+  circleCenter?: [number, number]; // [lat, lon]
+  circleRadiusNm?: number;
+  polygonCoords?: [number, number][]; // [[lat, lon], ...]
+}
+
 export interface AircraftCategoryProfile {
   category: AircraftCategory;
   name: string;
@@ -43,6 +52,7 @@ export interface RouteSearchParams {
   departureIcao?: string;
   arrivalIcao?: string;
   includeGroundTime: boolean;
+  areaFilter?: GeographicAreaFilter;
 }
 
 export interface RouteSector {
@@ -59,6 +69,15 @@ export interface RouteSector {
   descentMinutes: number;
   cruiseAltitudeFt: number;
   cruiseSpeedKt: number;
+  // Terrain & Corridor MSA parameters
+  corridorMsaFt?: number;
+  peakTerrainFt?: number;
+  limitingCoord?: [number, number];
+  isAltitudeTerrainClamped?: boolean;
+  terrainWarning?: string;
+  isMountainous?: boolean;
+  maxTerrainVariation10Nm?: number;
+  requiredMarginFt?: number;
 }
 
 export interface GeneratedRoute {
@@ -73,4 +92,28 @@ export interface GeneratedRoute {
   totalDurationMinutes: number;
   includeGroundTime: boolean;
   isRoundTrip: boolean;
+  areaFilter?: GeographicAreaFilter;
+}
+
+export type SavedRouteStatus = 'draft' | 'flown';
+
+export interface SavedRoute {
+  id: string;
+  name: string;
+  departureIcao: string;
+  arrivalIcao: string;
+  intermediateIcaos: string; // JSON string e.g. "[\"EDDM\"]"
+  aircraftCategory: AircraftCategory;
+  sectorsJson: string; // JSON string of RouteSector[]
+  sectors?: RouteSector[]; // Parsed convenience field
+  totalDistanceNm: number;
+  totalAirborneMinutes: number;
+  totalGroundMinutes: number;
+  totalDurationMinutes: number;
+  recommendedAltitudeFt?: number | null;
+  status: SavedRouteStatus;
+  isFavorite: boolean;
+  linkedFlightId?: string | null;
+  createdAt: string;
+  flownAt?: string | null;
 }

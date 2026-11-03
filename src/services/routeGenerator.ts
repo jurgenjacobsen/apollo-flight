@@ -1,8 +1,9 @@
 import { Airport } from '../types/flight';
-import { RouteSearchParams, GeneratedRoute, RouteSector } from '../types/route';
-import { AIRCRAFT_CATEGORIES, calculateSectorFlightProfile } from '../data/aircraftCategories';
+import { RouteSearchParams, GeneratedRoute, RouteSector, GeographicAreaFilter } from '../types/route';
+import { AIRCRAFT_CATEGORIES, calculateSectorFlightProfile, formatFlightLevelOrAltitude } from '../data/aircraftCategories';
 import { calculateDistanceNm, calculateInitialBearing, isHelipadOrHeliport } from '../data/mockData';
 import { FALLBACK_AIRPORTS } from '../data/fallbackAirports';
+import { getCorridorMsa, interpolateGreatCircle } from './terrainMora';
 
 // Dynamic safe invoke helper for Tauri v2
 async function safeInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T | null> {
@@ -56,6 +57,26 @@ export async function resolveAirport(icao: string): Promise<Airport | null> {
 }
 
 /**
+ * Ray-casting algorithm to test if a geographical point (lat, lon) is inside a polygon
+ */
+export function isPointInPolygon(pointLat: number, pointLon: number, polygon: [number, number][]): boolean {
+  if (!polygon || polygon.length < 3) return true;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const latI = polygon[i][0];
+    const lonI = polygon[i][1];
+    const latJ = polygon[j][0];
+    const lonJ = polygon[j][1];
+
+    const intersect =
+      lonI > pointLon !== lonJ > pointLon &&
+      pointLat < ((latJ - latI) * (pointLon - lonI)) / (lonJ - lonI) + latI;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/**
  * Returns candidate airports matching category compatibility, region, runway length, surface, and airport type
  */
 export async function getCandidateAirports(params: {
@@ -70,6 +91,7 @@ export async function getCandidateAirports(params: {
   minDistNm?: number;
   maxDistNm?: number;
   limit?: number;
+  areaFilter?: GeographicAreaFilter;
 }): Promise<Airport[]> {
   const profile = AIRCRAFT_CATEGORIES[params.category];
   const minRequiredRunway = params.minRunwayFt ?? profile.minRunwayFt;
@@ -106,25 +128,80 @@ export async function getCandidateAirports(params: {
     if (surfacePref === 'unpaved' && a.hasUnpaved === false) {
       return false;
     }
+    // Custom Geographic Area (Circle / Polygon)
+    if (params.areaFilter && params.areaFilter.type !== 'preset') {
+      if (params.areaFilter.type === 'circle' && params.areaFilter.circleCenter) {
+        const [cLat, cLon] = params.areaFilter.circleCenter;
+        const rad = params.areaFilter.circleRadiusNm || 150;
+        const d = calculateDistanceNm(cLat, cLon, a.latitude, a.longitude);
+        if (d > rad) return false;
+      } else if (
+        params.areaFilter.type === 'polygon' &&
+        params.areaFilter.polygonCoords &&
+        params.areaFilter.polygonCoords.length >= 3
+      ) {
+        if (!isPointInPolygon(a.latitude, a.longitude, params.areaFilter.polygonCoords)) {
+          return false;
+        }
+      }
+    }
     return true;
   };
 
+  let queryFromLat = params.fromLat;
+  let queryFromLon = params.fromLon;
+  let queryMaxDistNm = params.maxDistNm;
+
+  if (typeof queryFromLat !== 'number' && params.areaFilter && params.areaFilter.type !== 'preset') {
+    if (params.areaFilter.type === 'circle' && params.areaFilter.circleCenter) {
+      queryFromLat = params.areaFilter.circleCenter[0];
+      queryFromLon = params.areaFilter.circleCenter[1];
+      queryMaxDistNm = params.areaFilter.circleRadiusNm || 150;
+    } else if (
+      params.areaFilter.type === 'polygon' &&
+      params.areaFilter.polygonCoords &&
+      params.areaFilter.polygonCoords.length >= 3
+    ) {
+      const poly = params.areaFilter.polygonCoords;
+      const minLat = Math.min(...poly.map((p) => p[0]));
+      const maxLat = Math.max(...poly.map((p) => p[0]));
+      const minLon = Math.min(...poly.map((p) => p[1]));
+      const maxLon = Math.max(...poly.map((p) => p[1]));
+      const centerLat = (minLat + maxLat) / 2;
+      const centerLon = (minLon + maxLon) / 2;
+      const maxRad = Math.max(...poly.map((p) => calculateDistanceNm(centerLat, centerLon, p[0], p[1])));
+      queryFromLat = centerLat;
+      queryFromLon = centerLon;
+      queryMaxDistNm = Math.ceil(maxRad * 1.15);
+    }
+  }
+
   // 1. Try querying SQLite
   const filter = {
-    continent: params.region !== 'random' && params.region.length === 2 && ['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(params.region.toUpperCase())
-      ? params.region.toUpperCase()
-      : undefined,
-    countryCode: params.region !== 'random' && params.region.length === 2 && !['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(params.region.toUpperCase())
-      ? params.region.toUpperCase()
-      : undefined,
+    continent:
+      params.areaFilter && params.areaFilter.type !== 'preset'
+        ? undefined
+        : params.region !== 'random' &&
+            params.region.length === 2 &&
+            ['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(params.region.toUpperCase())
+          ? params.region.toUpperCase()
+          : undefined,
+    countryCode:
+      params.areaFilter && params.areaFilter.type !== 'preset'
+        ? undefined
+        : params.region !== 'random' &&
+            params.region.length === 2 &&
+            !['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(params.region.toUpperCase())
+          ? params.region.toUpperCase()
+          : undefined,
     airportType: allowedTypes.length === 1 ? allowedTypes[0] : undefined,
     surface: surfacePref,
     minRunwayFt: minRequiredRunway,
     maxRunwayFt: maxAllowedRunway,
-    fromLat: params.fromLat,
-    fromLon: params.fromLon,
+    fromLat: queryFromLat,
+    fromLon: queryFromLon,
     minDistNm: params.minDistNm,
-    maxDistNm: params.maxDistNm,
+    maxDistNm: queryMaxDistNm,
     limit: params.limit || 120,
   };
 
@@ -136,13 +213,20 @@ export async function getCandidateAirports(params: {
         return false;
       }
       // Strict client-side region and continent enforcement
-      if (params.region && params.region !== 'random') {
-        const regUpper = params.region.toUpperCase();
-        if (['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(regUpper)) {
-          if ((a.continent || '').toUpperCase() !== regUpper) return false;
-        } else {
-          if ((a.countryCode || '').toUpperCase() !== regUpper) return false;
+      if (!params.areaFilter || params.areaFilter.type === 'preset') {
+        if (params.region && params.region !== 'random') {
+          const regUpper = params.region.toUpperCase();
+          if (['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(regUpper)) {
+            if ((a.continent || '').toUpperCase() !== regUpper) return false;
+          } else {
+            if ((a.countryCode || '').toUpperCase() !== regUpper) return false;
+          }
         }
+      }
+      if (typeof params.fromLat === 'number' && typeof params.fromLon === 'number') {
+        const dist = calculateDistanceNm(params.fromLat, params.fromLon, a.latitude, a.longitude);
+        if (typeof params.minDistNm === 'number' && dist < params.minDistNm) return false;
+        if (typeof params.maxDistNm === 'number' && dist > params.maxDistNm) return false;
       }
       return true;
     });
@@ -157,12 +241,14 @@ export async function getCandidateAirports(params: {
     if (a.airportType && !allowedTypes.includes(a.airportType as any)) {
       return false;
     }
-    if (params.region && params.region !== 'random') {
-      const regUpper = params.region.toUpperCase();
-      if (['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(regUpper)) {
-        if ((a.continent || '').toUpperCase() !== regUpper) return false;
-      } else {
-        if ((a.countryCode || '').toUpperCase() !== regUpper) return false;
+    if (!params.areaFilter || params.areaFilter.type === 'preset') {
+      if (params.region && params.region !== 'random') {
+        const regUpper = params.region.toUpperCase();
+        if (['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(regUpper)) {
+          if ((a.continent || '').toUpperCase() !== regUpper) return false;
+        } else {
+          if ((a.countryCode || '').toUpperCase() !== regUpper) return false;
+        }
       }
     }
     if (typeof params.fromLat === 'number' && typeof params.fromLon === 'number') {
@@ -188,58 +274,105 @@ async function getFallbackAirportsForRegion(
   category: RouteSearchParams['category'] = 'C',
   surfacePref: RouteSearchParams['runwaySurface'] = 'any',
   customMinRunway?: number,
-  customMaxRunway?: number
+  customMaxRunway?: number,
+  areaFilter?: GeographicAreaFilter
 ): Promise<Airport[]> {
   const profile = AIRCRAFT_CATEGORIES[category] || AIRCRAFT_CATEGORIES['C'];
   const minRequiredRunway = customMinRunway ?? profile.minRunwayFt;
   const maxAllowedRunway = customMaxRunway && customMaxRunway > 0 ? customMaxRunway : undefined;
 
+  let queryFromLat: number | undefined = undefined;
+  let queryFromLon: number | undefined = undefined;
+  let queryMaxDistNm: number | undefined = undefined;
+
+  if (areaFilter && areaFilter.type !== 'preset') {
+    if (areaFilter.type === 'circle' && areaFilter.circleCenter) {
+      queryFromLat = areaFilter.circleCenter[0];
+      queryFromLon = areaFilter.circleCenter[1];
+      queryMaxDistNm = areaFilter.circleRadiusNm || 150;
+    } else if (areaFilter.type === 'polygon' && areaFilter.polygonCoords && areaFilter.polygonCoords.length >= 3) {
+      const poly = areaFilter.polygonCoords;
+      const minLat = Math.min(...poly.map((p) => p[0]));
+      const maxLat = Math.max(...poly.map((p) => p[0]));
+      const minLon = Math.min(...poly.map((p) => p[1]));
+      const maxLon = Math.max(...poly.map((p) => p[1]));
+      const centerLat = (minLat + maxLat) / 2;
+      const centerLon = (minLon + maxLon) / 2;
+      const maxRad = Math.max(...poly.map((p) => calculateDistanceNm(centerLat, centerLon, p[0], p[1])));
+      queryFromLat = centerLat;
+      queryFromLon = centerLon;
+      queryMaxDistNm = Math.ceil(maxRad * 1.15);
+    }
+  }
+
   const filter: any = {
     minRunwayFt: minRequiredRunway,
     maxRunwayFt: maxAllowedRunway,
     surface: surfacePref !== 'any' ? surfacePref : undefined,
+    fromLat: queryFromLat,
+    fromLon: queryFromLon,
+    maxDistNm: queryMaxDistNm,
     limit: 100,
   };
 
-  if (region && region !== 'random') {
-    const regUpper = region.toUpperCase();
-    if (['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(regUpper)) {
-      filter.continent = regUpper;
-    } else {
-      filter.countryCode = regUpper;
+  if (!areaFilter || areaFilter.type === 'preset') {
+    if (region && region !== 'random') {
+      const regUpper = region.toUpperCase();
+      if (['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(regUpper)) {
+        filter.continent = regUpper;
+      } else {
+        filter.countryCode = regUpper;
+      }
     }
   }
+
+  const matchesArea = (a: Airport): boolean => {
+    if (areaFilter && areaFilter.type !== 'preset') {
+      if (areaFilter.type === 'circle' && areaFilter.circleCenter) {
+        const d = calculateDistanceNm(areaFilter.circleCenter[0], areaFilter.circleCenter[1], a.latitude, a.longitude);
+        if (d > (areaFilter.circleRadiusNm || 150)) return false;
+      } else if (areaFilter.type === 'polygon' && areaFilter.polygonCoords && areaFilter.polygonCoords.length >= 3) {
+        if (!isPointInPolygon(a.latitude, a.longitude, areaFilter.polygonCoords)) return false;
+      }
+    }
+    return true;
+  };
 
   const dbAirports = await safeInvoke<Airport[]>('search_route_airports', { filter });
   if (dbAirports && Array.isArray(dbAirports) && dbAirports.length > 0) {
     const unvisited = dbAirports.filter((a) => {
       if (excludedIcaos.has(a.icao) || isHelipadOrHeliport(a)) return false;
       if (maxAllowedRunway && a.maxRunwayLengthFt && a.maxRunwayLengthFt > maxAllowedRunway) return false;
+      if (!matchesArea(a)) return false;
       return true;
     });
     if (unvisited.length > 0) return shuffleArray(unvisited);
-    return shuffleArray(dbAirports);
+    return shuffleArray(dbAirports.filter(matchesArea));
   }
 
   // Fallback to relaxed airfield query from SQLite
-  const relaxed = await safeInvoke<Airport[]>('search_route_airports', { filter: { limit: 50 } });
+  const relaxed = await safeInvoke<Airport[]>('search_route_airports', {
+    filter: { fromLat: queryFromLat, fromLon: queryFromLon, maxDistNm: queryMaxDistNm, limit: 50 },
+  });
   if (relaxed && Array.isArray(relaxed) && relaxed.length > 0) {
-    const unvisited = relaxed.filter((a) => !excludedIcaos.has(a.icao) && !isHelipadOrHeliport(a));
+    const unvisited = relaxed.filter((a) => !excludedIcaos.has(a.icao) && !isHelipadOrHeliport(a) && matchesArea(a));
     if (unvisited.length > 0) return shuffleArray(unvisited);
-    return shuffleArray(relaxed);
+    return shuffleArray(relaxed.filter(matchesArea));
   }
 
   // In-memory fallback dataset filtering
-  let pool = FALLBACK_AIRPORTS.filter((a) => !excludedIcaos.has(a.icao) && !isHelipadOrHeliport(a));
-  if (region && region !== 'random') {
-    const regUpper = region.toUpperCase();
-    const regionMatches = pool.filter((a) =>
-      ['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(regUpper)
-        ? (a.continent || '').toUpperCase() === regUpper
-        : (a.countryCode || '').toUpperCase() === regUpper
-    );
-    if (regionMatches.length > 0) {
-      pool = regionMatches;
+  let pool = FALLBACK_AIRPORTS.filter((a) => !excludedIcaos.has(a.icao) && !isHelipadOrHeliport(a) && matchesArea(a));
+  if (!areaFilter || areaFilter.type === 'preset') {
+    if (region && region !== 'random') {
+      const regUpper = region.toUpperCase();
+      const regionMatches = pool.filter((a) =>
+        ['EU', 'NA', 'SA', 'AS', 'AF', 'OC'].includes(regUpper)
+          ? (a.continent || '').toUpperCase() === regUpper
+          : (a.countryCode || '').toUpperCase() === regUpper
+      );
+      if (regionMatches.length > 0) {
+        pool = regionMatches;
+      }
     }
   }
 
@@ -247,13 +380,7 @@ async function getFallbackAirportsForRegion(
     return shuffleArray(pool);
   }
 
-  // Ultimate fallback guarantee: non-excluded or full fallback list
-  const nonExcluded = FALLBACK_AIRPORTS.filter((a) => !excludedIcaos.has(a.icao));
-  if (nonExcluded.length > 0) {
-    return shuffleArray(nonExcluded);
-  }
-
-  return shuffleArray(FALLBACK_AIRPORTS);
+  return FALLBACK_AIRPORTS.filter(matchesArea);
 }
 
 /**
@@ -311,13 +438,17 @@ export async function generateRouteSuggestion(params: RouteSearchParams): Promis
       maxSectorDist = Math.min(profile.maxSectorRangeNm, params.maxLimitValue / divisor);
     }
   } else if (params.limitBy === 'time') {
-    // Convert duration (minutes) to distance (NM) estimate
+    // If ground time is included, subtract taxi time per sector to enforce realistic airborne time
+    const taxiTimePerSector = params.includeGroundTime ? (profile.taxiOutMinutes + profile.taxiInMinutes) : 0;
     const avgSpeed = profile.cruiseSpeedTasKt * 0.9;
+
     if (params.minLimitValue && params.minLimitValue > 0) {
-      minSectorDist = Math.max(15, ((params.minLimitValue / 60) * avgSpeed) / divisor);
+      const budgetMin = Math.max(5, (params.minLimitValue / divisor) - taxiTimePerSector);
+      minSectorDist = Math.max(10, (budgetMin / 60) * avgSpeed);
     }
     if (params.maxLimitValue && params.maxLimitValue > 0) {
-      maxSectorDist = Math.min(profile.maxSectorRangeNm, ((params.maxLimitValue / 60) * avgSpeed) / divisor);
+      const budgetMax = Math.max(12, (params.maxLimitValue / divisor) - taxiTimePerSector);
+      maxSectorDist = Math.min(profile.maxSectorRangeNm, (budgetMax / 60) * avgSpeed);
     }
   }
 
@@ -343,41 +474,41 @@ export async function generateRouteSuggestion(params: RouteSearchParams): Promis
     }
   }
 
-  // If no departure specified, pick a random candidate in region
-  if (!departureAirport) {
-    const startCandidates = await getCandidateAirports({
-      category: params.category,
-      airportTypePreference: params.airportType,
-      runwaySurface: params.runwaySurface,
-      minRunwayFt: minRequiredRunway,
-      maxRunwayFt: maxAllowedRunway,
-      region: params.region,
-      limit: 100,
-    });
-
-    const excluded = lastGeneratedDepartureIcao ? new Set([lastGeneratedDepartureIcao]) : new Set<string>();
-    const fallbackList = await getFallbackAirportsForRegion(
-      params.region,
-      excluded,
-      params.category,
-      params.runwaySurface,
-      params.customMinRunwayFt,
-      maxAllowedRunway
-    );
-
-    departureAirport = pickSafeAirport(startCandidates, fallbackList, excluded);
-    lastGeneratedDepartureIcao = departureAirport.icao;
-  }
-
   // Step 3: Build the waypoints array [Departure, ...Intermediates, Arrival]
-  const waypoints: Airport[] = [departureAirport];
+  let waypoints: Airport[] = [];
 
   if (isRoundTrip) {
     // Round trip: A -> B -> A
-    // Find destination B
-    let turnaroundAirport: Airport | null = arrivalAirport;
-    if (!turnaroundAirport || turnaroundAirport.icao === departureAirport.icao) {
-      const candidates = await getCandidateAirports({
+    if (!departureAirport) {
+      const startCandidates = await getCandidateAirports({
+        category: params.category,
+        airportTypePreference: params.airportType,
+        runwaySurface: params.runwaySurface,
+        minRunwayFt: minRequiredRunway,
+        maxRunwayFt: maxAllowedRunway,
+        region: params.region,
+        limit: 100,
+        areaFilter: params.areaFilter,
+      });
+
+      const excluded = lastGeneratedDepartureIcao ? new Set([lastGeneratedDepartureIcao]) : new Set<string>();
+      const fallbackList = await getFallbackAirportsForRegion(
+        params.region,
+        excluded,
+        params.category,
+        params.runwaySurface,
+        params.customMinRunwayFt,
+        maxAllowedRunway,
+        params.areaFilter
+      );
+
+      departureAirport = pickSafeAirport(startCandidates, fallbackList, excluded);
+      lastGeneratedDepartureIcao = departureAirport.icao;
+    }
+
+    let turnaroundAirport: Airport | null = arrivalAirport && arrivalAirport.icao !== departureAirport.icao ? arrivalAirport : null;
+    if (!turnaroundAirport) {
+      let candidates = await getCandidateAirports({
         category: params.category,
         airportTypePreference: params.airportType,
         runwaySurface: params.runwaySurface,
@@ -386,62 +517,263 @@ export async function generateRouteSuggestion(params: RouteSearchParams): Promis
         region: params.region,
         fromLat: departureAirport.latitude,
         fromLon: departureAirport.longitude,
-        minDistNm: Math.max(15, minSectorDist),
+        minDistNm: minSectorDist,
         maxDistNm: maxSectorDist,
         limit: 50,
+        areaFilter: params.areaFilter,
       });
 
       const excluded = new Set([departureAirport.icao]);
+      candidates = candidates.filter((a) => !excluded.has(a.icao));
+
+      if (candidates.length === 0) {
+        candidates = await getCandidateAirports({
+          category: params.category,
+          airportTypePreference: params.airportType,
+          runwaySurface: params.runwaySurface,
+          minRunwayFt: minRequiredRunway,
+          maxRunwayFt: maxAllowedRunway,
+          region: params.region,
+          fromLat: departureAirport.latitude,
+          fromLon: departureAirport.longitude,
+          minDistNm: Math.max(10, minSectorDist * 0.7),
+          maxDistNm: maxSectorDist * 1.3,
+          limit: 50,
+          areaFilter: params.areaFilter,
+        });
+        candidates = candidates.filter((a) => !excluded.has(a.icao));
+      }
+
       const fallbacks = await getFallbackAirportsForRegion(
         params.region,
         excluded,
         params.category,
         params.runwaySurface,
         params.customMinRunwayFt,
-        maxAllowedRunway
+        maxAllowedRunway,
+        params.areaFilter
       );
 
       turnaroundAirport = pickSafeAirport(candidates, fallbacks, excluded);
     }
-    waypoints.push(turnaroundAirport);
-    waypoints.push(departureAirport);
-  } else if (numSectors === 1) {
-    // Single Sector: A -> B
-    if (!arrivalAirport || arrivalAirport.icao === departureAirport.icao) {
-      const candidates = await getCandidateAirports({
+
+    waypoints = [departureAirport, turnaroundAirport, departureAirport];
+  } else if (departureAirport && arrivalAirport) {
+    // Case 1: Both Departure and Arrival are specified by user
+    const directDist = calculateDistanceNm(
+      departureAirport.latitude,
+      departureAirport.longitude,
+      arrivalAirport.latitude,
+      arrivalAirport.longitude
+    );
+
+    if (numSectors === 1) {
+      if (directDist > maxSectorDist * 1.25) {
+        throw new Error(
+          `Direct distance between ${departureAirport.icao} and ${arrivalAirport.icao} (${Math.round(directDist)} NM) exceeds your maximum sector limit (${Math.round(maxSectorDist)} NM). Try adding more sectors or increasing the leg limit.`
+        );
+      }
+      waypoints = [departureAirport, arrivalAirport];
+    } else {
+      if (directDist > numSectors * maxSectorDist * 1.15) {
+        throw new Error(
+          `The distance between ${departureAirport.icao} and ${arrivalAirport.icao} (${Math.round(directDist)} NM) exceeds the maximum reachable distance for ${numSectors} sectors (${Math.round(numSectors * maxSectorDist)} NM). Try increasing the number of sectors or increasing the limit.`
+        );
+      }
+
+      waypoints = [departureAirport];
+      let currentOrigin = departureAirport;
+      const visited = new Set<string>([departureAirport.icao, arrivalAirport.icao]);
+
+      for (let leg = 1; leg < numSectors; leg++) {
+        const remSectors = numSectors - leg;
+        const fraction = leg / numSectors;
+        const [idealLat, idealLon] = interpolateGreatCircle(
+          departureAirport.latitude,
+          departureAirport.longitude,
+          arrivalAirport.latitude,
+          arrivalAirport.longitude,
+          fraction
+        );
+
+        let candidates = await getCandidateAirports({
+          category: params.category,
+          airportTypePreference: params.airportType,
+          runwaySurface: params.runwaySurface,
+          minRunwayFt: minRequiredRunway,
+          maxRunwayFt: maxAllowedRunway,
+          region: params.region,
+          fromLat: currentOrigin.latitude,
+          fromLon: currentOrigin.longitude,
+          minDistNm: Math.max(10, minSectorDist * 0.7),
+          maxDistNm: maxSectorDist * 1.15,
+          limit: 80,
+          areaFilter: params.areaFilter,
+        });
+
+        candidates = candidates.filter((a) => {
+          if (visited.has(a.icao)) return false;
+          const distToArr = calculateDistanceNm(a.latitude, a.longitude, arrivalAirport.latitude, arrivalAirport.longitude);
+          return distToArr <= remSectors * maxSectorDist * 1.25;
+        });
+
+        if (candidates.length === 0) {
+          candidates = await getCandidateAirports({
+            category: params.category,
+            airportTypePreference: params.airportType,
+            runwaySurface: params.runwaySurface,
+            minRunwayFt: minRequiredRunway,
+            maxRunwayFt: maxAllowedRunway,
+            region: params.region,
+            fromLat: idealLat,
+            fromLon: idealLon,
+            maxDistNm: maxSectorDist * 0.8,
+            limit: 50,
+            areaFilter: params.areaFilter,
+          });
+          candidates = candidates.filter((a) => !visited.has(a.icao));
+        }
+
+        if (candidates.length === 0) {
+          throw new Error(
+            `Unable to find intermediate connecting aerodromes between ${departureAirport.icao} and ${arrivalAirport.icao} within the sector limits. Try adjusting runway or sector constraints.`
+          );
+        }
+
+        candidates.sort((a, b) => {
+          const distA = calculateDistanceNm(a.latitude, a.longitude, idealLat, idealLon);
+          const distB = calculateDistanceNm(b.latitude, b.longitude, idealLat, idealLon);
+          return distA - distB;
+        });
+
+        const nextHop = candidates[0];
+        visited.add(nextHop.icao);
+        waypoints.push(nextHop);
+        currentOrigin = nextHop;
+      }
+
+      const finalDist = calculateDistanceNm(
+        currentOrigin.latitude,
+        currentOrigin.longitude,
+        arrivalAirport.latitude,
+        arrivalAirport.longitude
+      );
+      if (finalDist > maxSectorDist * 1.25) {
+        throw new Error(
+          `Unable to construct a valid corridor between ${departureAirport.icao} and ${arrivalAirport.icao} where each leg is under ${Math.round(maxSectorDist)} NM. Try adding more sectors.`
+        );
+      }
+      waypoints.push(arrivalAirport);
+    }
+  } else if (!departureAirport && arrivalAirport) {
+    // Case 2: Only Arrival is specified -> Generate BACKWARDS from arrivalAirport!
+    const reversedWaypoints: Airport[] = [arrivalAirport];
+    let currentHead = arrivalAirport;
+    const visited = new Set<string>([arrivalAirport.icao]);
+
+    for (let step = 0; step < numSectors; step++) {
+      let candidates = await getCandidateAirports({
         category: params.category,
         airportTypePreference: params.airportType,
         runwaySurface: params.runwaySurface,
         minRunwayFt: minRequiredRunway,
         maxRunwayFt: maxAllowedRunway,
         region: params.region,
-        fromLat: departureAirport.latitude,
-        fromLon: departureAirport.longitude,
-        minDistNm: Math.max(15, minSectorDist),
+        fromLat: currentHead.latitude,
+        fromLon: currentHead.longitude,
+        minDistNm: minSectorDist,
         maxDistNm: maxSectorDist,
-        limit: 50,
+        limit: 80,
+        areaFilter: params.areaFilter,
       });
 
-      const excluded = new Set([departureAirport.icao]);
-      const fallbacks = await getFallbackAirportsForRegion(
+      candidates = candidates.filter((a) => !visited.has(a.icao));
+
+      if (candidates.length === 0) {
+        candidates = await getCandidateAirports({
+          category: params.category,
+          airportTypePreference: params.airportType,
+          runwaySurface: params.runwaySurface,
+          minRunwayFt: minRequiredRunway,
+          maxRunwayFt: maxAllowedRunway,
+          region: params.region,
+          fromLat: currentHead.latitude,
+          fromLon: currentHead.longitude,
+          minDistNm: Math.max(10, minSectorDist * 0.7),
+          maxDistNm: maxSectorDist * 1.3,
+          limit: 80,
+          areaFilter: params.areaFilter,
+        });
+        candidates = candidates.filter((a) => !visited.has(a.icao));
+      }
+
+      if (candidates.length === 0) {
+        const fallbacks = await getFallbackAirportsForRegion(
+          params.region,
+          visited,
+          params.category,
+          params.runwaySurface,
+          params.customMinRunwayFt,
+          maxAllowedRunway,
+          params.areaFilter
+        );
+        const nearbyFallbacks = fallbacks.filter((a) => {
+          const d = calculateDistanceNm(currentHead.latitude, currentHead.longitude, a.latitude, a.longitude);
+          return d >= Math.max(10, minSectorDist * 0.6) && d <= maxSectorDist * 1.4;
+        });
+        if (nearbyFallbacks.length > 0) {
+          candidates = nearbyFallbacks;
+        }
+      }
+
+      if (candidates.length === 0) {
+        throw new Error(
+          `Unable to find suitable connecting aerodromes within the sector limit (${Math.round(maxSectorDist)} NM) leading to ${arrivalAirport.icao}. Try relaxing the runway or sector limits.`
+        );
+      }
+
+      const prevHop = candidates[0];
+      visited.add(prevHop.icao);
+      reversedWaypoints.push(prevHop);
+      currentHead = prevHop;
+    }
+
+    waypoints = reversedWaypoints.reverse();
+  } else {
+    // Case 3: Departure is specified (or random), Arrival is procedural -> Forward Generation
+    if (!departureAirport) {
+      const startCandidates = await getCandidateAirports({
+        category: params.category,
+        airportTypePreference: params.airportType,
+        runwaySurface: params.runwaySurface,
+        minRunwayFt: minRequiredRunway,
+        maxRunwayFt: maxAllowedRunway,
+        region: params.region,
+        limit: 100,
+        areaFilter: params.areaFilter,
+      });
+
+      const excluded = lastGeneratedDepartureIcao ? new Set([lastGeneratedDepartureIcao]) : new Set<string>();
+      const fallbackList = await getFallbackAirportsForRegion(
         params.region,
         excluded,
         params.category,
         params.runwaySurface,
         params.customMinRunwayFt,
-        maxAllowedRunway
+        maxAllowedRunway,
+        params.areaFilter
       );
 
-      arrivalAirport = pickSafeAirport(candidates, fallbacks, excluded);
+      departureAirport = pickSafeAirport(startCandidates, fallbackList, excluded);
+      lastGeneratedDepartureIcao = departureAirport.icao;
     }
-    waypoints.push(arrivalAirport);
-  } else {
-    // Multi-Sector: 2 or 3 Sectors
-    let currentOrigin = departureAirport;
 
-    for (let i = 1; i < numSectors; i++) {
-      // Find intermediate stop
-      const candidates = await getCandidateAirports({
+    waypoints = [departureAirport];
+    let currentOrigin = departureAirport;
+    const visited = new Set<string>([departureAirport.icao]);
+
+    for (let step = 1; step <= numSectors; step++) {
+      let candidates = await getCandidateAirports({
         category: params.category,
         airportTypePreference: params.airportType,
         runwaySurface: params.runwaySurface,
@@ -450,57 +782,62 @@ export async function generateRouteSuggestion(params: RouteSearchParams): Promis
         region: params.region,
         fromLat: currentOrigin.latitude,
         fromLon: currentOrigin.longitude,
-        minDistNm: Math.max(15, minSectorDist),
+        minDistNm: minSectorDist,
         maxDistNm: maxSectorDist,
-        limit: 50,
+        limit: 80,
+        areaFilter: params.areaFilter,
       });
 
-      const prevIcaos = new Set(waypoints.map((w) => w.icao));
-      if (arrivalAirport) prevIcaos.add(arrivalAirport.icao);
+      candidates = candidates.filter((a) => !visited.has(a.icao));
 
-      const fallbacks = await getFallbackAirportsForRegion(
-        params.region,
-        prevIcaos,
-        params.category,
-        params.runwaySurface,
-        params.customMinRunwayFt,
-        maxAllowedRunway
-      );
+      if (candidates.length === 0) {
+        candidates = await getCandidateAirports({
+          category: params.category,
+          airportTypePreference: params.airportType,
+          runwaySurface: params.runwaySurface,
+          minRunwayFt: minRequiredRunway,
+          maxRunwayFt: maxAllowedRunway,
+          region: params.region,
+          fromLat: currentOrigin.latitude,
+          fromLon: currentOrigin.longitude,
+          minDistNm: Math.max(10, minSectorDist * 0.7),
+          maxDistNm: maxSectorDist * 1.3,
+          limit: 80,
+          areaFilter: params.areaFilter,
+        });
+        candidates = candidates.filter((a) => !visited.has(a.icao));
+      }
 
-      const nextHop = pickSafeAirport(candidates, fallbacks, prevIcaos);
+      if (candidates.length === 0) {
+        const fallbacks = await getFallbackAirportsForRegion(
+          params.region,
+          visited,
+          params.category,
+          params.runwaySurface,
+          params.customMinRunwayFt,
+          maxAllowedRunway,
+          params.areaFilter
+        );
+        const nearbyFallbacks = fallbacks.filter((a) => {
+          const d = calculateDistanceNm(currentOrigin.latitude, currentOrigin.longitude, a.latitude, a.longitude);
+          return d >= Math.max(10, minSectorDist * 0.6) && d <= maxSectorDist * 1.4;
+        });
+        if (nearbyFallbacks.length > 0) {
+          candidates = nearbyFallbacks;
+        }
+      }
+
+      if (candidates.length === 0) {
+        throw new Error(
+          `Unable to find connecting aerodromes within the sector limit (${Math.round(maxSectorDist)} NM) after ${currentOrigin.icao}. Try adjusting constraints.`
+        );
+      }
+
+      const nextHop = candidates[0];
+      visited.add(nextHop.icao);
       waypoints.push(nextHop);
       currentOrigin = nextHop;
     }
-
-    // Final Arrival
-    if (!arrivalAirport || waypoints.some((w) => w.icao === arrivalAirport?.icao)) {
-      const finalCandidates = await getCandidateAirports({
-        category: params.category,
-        airportTypePreference: params.airportType,
-        runwaySurface: params.runwaySurface,
-        minRunwayFt: minRequiredRunway,
-        maxRunwayFt: maxAllowedRunway,
-        region: params.region,
-        fromLat: currentOrigin.latitude,
-        fromLon: currentOrigin.longitude,
-        minDistNm: Math.max(15, minSectorDist),
-        maxDistNm: maxSectorDist,
-        limit: 50,
-      });
-
-      const prevIcaos = new Set(waypoints.map((w) => w.icao));
-      const fallbacks = await getFallbackAirportsForRegion(
-        params.region,
-        prevIcaos,
-        params.category,
-        params.runwaySurface,
-        params.customMinRunwayFt,
-        maxAllowedRunway
-      );
-
-      arrivalAirport = pickSafeAirport(finalCandidates, fallbacks, prevIcaos);
-    }
-    waypoints.push(arrivalAirport);
   }
 
   // Verify all waypoints are valid Airport objects with icao, latitude, and longitude
@@ -522,13 +859,25 @@ export async function generateRouteSuggestion(params: RouteSearchParams): Promis
     const dist = calculateDistanceNm(dep.latitude, dep.longitude, arr.latitude, arr.longitude);
     const bearing = calculateInitialBearing(dep.latitude, dep.longitude, arr.latitude, arr.longitude);
 
+    // Query terrain-aware corridor minimum safe altitude (MSA / Grid MORA)
+    const corridorMsaResult = getCorridorMsa(dep.latitude, dep.longitude, arr.latitude, arr.longitude, 10);
+
     const profileMetrics = calculateSectorFlightProfile(
       dist,
       params.category,
       params.includeGroundTime,
       dep.elevationFt || 0,
-      arr.elevationFt || 0
+      arr.elevationFt || 0,
+      corridorMsaResult.msaFt,
+      bearing,
+      corridorMsaResult.peakTerrainFt,
+      corridorMsaResult.requiredMarginFt
     );
+
+    let terrainWarning: string | undefined = undefined;
+    if (corridorMsaResult.isMountainous) {
+      terrainWarning = `Mountainous Terrain Advisory: This sector traverses mountainous terrain (elevation variation ≥ 3,000 ft within 10 NM). Recommended altitude is cleared with a 2,000 ft margin above peak terrain (~${corridorMsaResult.peakTerrainFt.toLocaleString()} ft MSL).`;
+    }
 
     sectors.push({
       sectorIndex: i + 1,
@@ -544,6 +893,14 @@ export async function generateRouteSuggestion(params: RouteSearchParams): Promis
       descentMinutes: profileMetrics.descentMinutes,
       cruiseAltitudeFt: profileMetrics.cruiseAltitudeFt,
       cruiseSpeedKt: profileMetrics.cruiseSpeedKt,
+      corridorMsaFt: corridorMsaResult.msaFt,
+      peakTerrainFt: corridorMsaResult.peakTerrainFt,
+      limitingCoord: corridorMsaResult.limitingCoord,
+      isAltitudeTerrainClamped: profileMetrics.isAltitudeTerrainClamped,
+      terrainWarning,
+      isMountainous: corridorMsaResult.isMountainous,
+      maxTerrainVariation10Nm: corridorMsaResult.maxTerrainVariation10Nm,
+      requiredMarginFt: corridorMsaResult.requiredMarginFt,
     });
 
     totalDistanceNm += profileMetrics.distanceNm;
@@ -565,5 +922,6 @@ export async function generateRouteSuggestion(params: RouteSearchParams): Promis
     totalDurationMinutes: totalAirborneMinutes + totalGroundMinutes,
     includeGroundTime: params.includeGroundTime,
     isRoundTrip,
+    areaFilter: params.areaFilter,
   };
 }

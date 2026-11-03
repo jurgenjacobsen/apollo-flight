@@ -73,6 +73,8 @@ export interface TouchdownEvent {
   longitude: number;
   altitudeMsl?: number;
   gForce?: number;
+  airportIcao?: string;
+  airportName?: string;
 }
 
 export interface FlightRecord {

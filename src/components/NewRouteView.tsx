@@ -7,11 +7,13 @@ import {
   RunwaySurfacePreference,
   RouteLimitType, 
   GeneratedRoute, 
-  RouteSearchParams 
+  RouteSearchParams,
+  GeographicAreaType,
+  GeographicAreaFilter
 } from '../types/route';
-import { AIRCRAFT_CATEGORIES, formatDurationHoursMinutes } from '../data/aircraftCategories';
+import { AIRCRAFT_CATEGORIES, formatDurationHoursMinutes, formatFlightLevelOrAltitude } from '../data/aircraftCategories';
 import { generateRouteSuggestion } from '../services/routeGenerator';
-import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, Circle, Polygon, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { 
   Route, 
@@ -33,17 +35,88 @@ import {
   Navigation,
   Milestone,
   Gauge,
-  ChevronDown
+  ChevronDown,
+  Mountain,
+  CircleDot,
+  Scan,
+  Crosshair,
+  Trash2,
+  Undo2,
+  Bookmark,
+  Heart
 } from 'lucide-react';
 
-// Leaflet map bounds auto-fit helper
-function ChangeView({ bounds }: { bounds: L.LatLngBoundsExpression | null }) {
+interface MapFocusTarget {
+  bounds?: L.LatLngBoundsExpression;
+  center?: [number, number];
+  zoom?: number;
+  id: number;
+}
+
+// Leaflet map controller: Only pans/fits when explicitly triggered by focusTarget.id change
+function MapController({ focusTarget }: { focusTarget: MapFocusTarget | null }) {
   const map = useMap();
+  const lastHandledIdRef = React.useRef<number | null>(null);
+
   useEffect(() => {
-    if (bounds) {
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 });
+    if (!focusTarget || focusTarget.id === lastHandledIdRef.current) return;
+    lastHandledIdRef.current = focusTarget.id;
+
+    if (focusTarget.bounds) {
+      map.fitBounds(focusTarget.bounds, { padding: [50, 50], maxZoom: 10 });
+    } else if (focusTarget.center) {
+      map.setView(focusTarget.center, focusTarget.zoom ?? map.getZoom());
     }
-  }, [bounds, map]);
+  }, [focusTarget, map]);
+
+  return null;
+}
+
+// Map click event listener for custom area definition
+function MapAreaClickHandler({
+  areaType,
+  onMapClick,
+}: {
+  areaType: GeographicAreaType;
+  onMapClick: (lat: number, lon: number) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      if (areaType !== 'preset') {
+        onMapClick(e.latlng.lat, e.latlng.lng);
+      }
+    },
+  });
+  return null;
+}
+
+// Tracks current map viewport center and bounds without causing global re-renders
+function MapViewportTracker({
+  onViewportChange,
+}: {
+  onViewportChange: (center: [number, number], bounds: L.LatLngBounds, zoom: number) => void;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    const c = map.getCenter();
+    const b = map.getBounds();
+    onViewportChange([c.lat, c.lng], b, map.getZoom());
+  }, [map, onViewportChange]);
+
+  useMapEvents({
+    moveend(e) {
+      const c = e.target.getCenter();
+      const b = e.target.getBounds();
+      onViewportChange([c.lat, c.lng], b, e.target.getZoom());
+    },
+    zoomend(e) {
+      const c = e.target.getCenter();
+      const b = e.target.getBounds();
+      onViewportChange([c.lat, c.lng], b, e.target.getZoom());
+    },
+  });
+
   return null;
 }
 
@@ -64,6 +137,62 @@ const createAirportMarkerIcon = (icao: string, type: 'dep' | 'arr' | 'waypoint')
     iconSize: [40, 30],
     iconAnchor: [20, 30],
     popupAnchor: [0, -30],
+  });
+};
+
+const createMountainPeakMarkerIcon = (peakFt: number) => {
+  return L.divIcon({
+    className: 'custom-peak-marker',
+    html: `
+      <div style="display: flex; flex-direction: column; align-items: center; pointer-events: auto;">
+        <div style="background: #171717; color: #f59e0b; font-family: monospace; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; border: 1px solid #f59e0b; box-shadow: 0 2px 4px rgba(0,0,0,0.4); white-space: nowrap;">
+          ▲ ${(peakFt / 1000).toFixed(1)}k ft
+        </div>
+      </div>
+    `,
+    iconSize: [44, 18],
+    iconAnchor: [22, 9],
+  });
+};
+
+const createAreaCenterMarkerIcon = (radiusNm: number) => {
+  return L.divIcon({
+    className: 'custom-area-marker',
+    html: `
+      <div style="display: flex; flex-direction: column; align-items: center; pointer-events: auto; cursor: grab; user-select: none;">
+        <div style="background: #0284c7; color: #ffffff; font-family: monospace; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1.5px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); white-space: nowrap;">
+          ● Center (${radiusNm} NM)
+        </div>
+      </div>
+    `,
+    iconSize: [84, 20],
+    iconAnchor: [42, 10],
+  });
+};
+
+const createVertexMarkerIcon = (index: number) => {
+  return L.divIcon({
+    className: 'custom-vertex-marker',
+    html: `
+      <div oncontextmenu="event.preventDefault();" title="Drag to move · Right-click to delete" style="display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; background: #7c3aed; color: #ffffff; font-family: monospace; font-size: 9px; font-weight: 700; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); cursor: grab; user-select: none;">
+        ${index}
+      </div>
+    `,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  });
+};
+
+const createMidpointMarkerIcon = () => {
+  return L.divIcon({
+    className: 'custom-midpoint-marker',
+    html: `
+      <div oncontextmenu="event.preventDefault();" style="display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: #9333ea; color: #ffffff; font-family: monospace; font-size: 11px; font-weight: 700; border-radius: 50%; border: 1.5px solid #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); cursor: grab; user-select: none; opacity: 0.9;" title="Drag or click to insert a vertex on this border">
+        +
+      </div>
+    `,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
   });
 };
 
@@ -93,7 +222,7 @@ const POPULAR_COUNTRIES = [
 ];
 
 export const NewRouteView: React.FC = () => {
-  const { currentTelemetry, startManualFlight, setActiveView, theme, nearestAirport, fetchNearestAirport } = useFlightStore();
+  const { currentTelemetry, startManualFlight, setActiveView, theme, nearestAirport, fetchNearestAirport, saveRoute } = useFlightStore();
 
   // Form State
   const [category, setCategory] = useState<AircraftCategory>('C');
@@ -103,6 +232,193 @@ export const NewRouteView: React.FC = () => {
   const [customMinRunway, setCustomMinRunway] = useState<number | ''>('');
   const [customMaxRunway, setCustomMaxRunway] = useState<number | ''>('');
   const [region, setRegion] = useState<string>('random');
+  const [areaType, setAreaType] = useState<GeographicAreaType>('preset');
+  const [circleCenter, setCircleCenter] = useState<[number, number]>([47.2602, 11.344]); // Default to Innsbruck / Alps
+  const [circleRadiusNm, setCircleRadiusNm] = useState<number>(150);
+  const [polygonCoords, setPolygonCoords] = useState<[number, number][]>([]);
+  const [mapZoom, setMapZoom] = useState<number>(6);
+
+  // Track map viewport center, bounds, and zoom level without causing global re-renders
+  const mapViewportRef = React.useRef<{
+    center: [number, number];
+    bounds: L.LatLngBounds | null;
+    zoom: number;
+  }>({
+    center: [47.2602, 11.344],
+    bounds: null,
+    zoom: 6,
+  });
+
+  const handleViewportChange = React.useCallback((center: [number, number], bounds: L.LatLngBounds, zoom: number) => {
+    mapViewportRef.current = { center, bounds, zoom };
+    setMapZoom((prev) => (prev !== zoom ? zoom : prev));
+  }, []);
+
+  // Hide the center text badge when zooming out past regional scale (zoom < 5) to keep map view clean
+  const showCircleCenterBadge = mapZoom >= 5;
+
+  const handleSelectAreaType = (newType: GeographicAreaType) => {
+    setAreaType(newType);
+
+    const currentCenter = mapViewportRef.current.center;
+    const currentBounds = mapViewportRef.current.bounds;
+
+    if (newType === 'circle') {
+      // Position circle directly where the user is currently looking on the map
+      setCircleCenter(currentCenter);
+
+      // Adjust circle radius to fit comfortably in view if needed
+      if (currentBounds) {
+        const dLatDeg = Math.abs(currentBounds.getNorth() - currentBounds.getSouth()) / 2;
+        const viewMaxNm = Math.round(dLatDeg * 60 * 0.7);
+        if (circleRadiusNm > viewMaxNm * 1.5 && viewMaxNm >= 30) {
+          const clamped = Math.max(20, Math.min(600, Math.round(viewMaxNm / 10) * 10));
+          setCircleRadiusNm(clamped);
+        }
+      }
+    } else if (newType === 'polygon') {
+      // If polygon has no vertices, create an initial 4-point bounding box in current view
+      if (polygonCoords.length === 0) {
+        if (currentBounds) {
+          const dLat = (currentBounds.getNorth() - currentBounds.getSouth()) * 0.22;
+          const dLon = (currentBounds.getEast() - currentBounds.getWest()) * 0.22;
+          setPolygonCoords([
+            [currentCenter[0] + dLat, currentCenter[1] - dLon],
+            [currentCenter[0] + dLat, currentCenter[1] + dLon],
+            [currentCenter[0] - dLat, currentCenter[1] + dLon],
+            [currentCenter[0] - dLat, currentCenter[1] - dLon],
+          ]);
+        } else {
+          const dLat = 0.8;
+          const dLon = 1.2;
+          setPolygonCoords([
+            [currentCenter[0] + dLat, currentCenter[1] - dLon],
+            [currentCenter[0] + dLat, currentCenter[1] + dLon],
+            [currentCenter[0] - dLat, currentCenter[1] + dLon],
+            [currentCenter[0] - dLat, currentCenter[1] - dLon],
+          ]);
+        }
+      }
+    }
+  };
+
+  const handleMapClick = (lat: number, lon: number) => {
+    if (areaType === 'circle') {
+      setCircleCenter([lat, lon]);
+    } else if (areaType === 'polygon') {
+      setPolygonCoords((prev) => [...prev, [lat, lon]]);
+    }
+  };
+
+  const handleQuickBoxPolygon = () => {
+    const currentCenter = mapViewportRef.current.center;
+    const currentBounds = mapViewportRef.current.bounds;
+
+    if (currentBounds) {
+      const dLat = (currentBounds.getNorth() - currentBounds.getSouth()) * 0.25;
+      const dLon = (currentBounds.getEast() - currentBounds.getWest()) * 0.25;
+      setPolygonCoords([
+        [currentCenter[0] + dLat, currentCenter[1] - dLon],
+        [currentCenter[0] + dLat, currentCenter[1] + dLon],
+        [currentCenter[0] - dLat, currentCenter[1] + dLon],
+        [currentCenter[0] - dLat, currentCenter[1] - dLon],
+      ]);
+    } else {
+      const center = currentCenter;
+      const dLat = 0.8;
+      const dLon = 1.2;
+      setPolygonCoords([
+        [center[0] + dLat, center[1] - dLon],
+        [center[0] + dLat, center[1] + dLon],
+        [center[0] - dLat, center[1] + dLon],
+        [center[0] - dLat, center[1] - dLon],
+      ]);
+    }
+  };
+
+  const handleCenterCircleOnTelemetry = () => {
+    const target: [number, number] | null = nearestAirport
+      ? [nearestAirport.latitude, nearestAirport.longitude]
+      : currentTelemetry.latitude !== 0 || currentTelemetry.longitude !== 0
+      ? [currentTelemetry.latitude, currentTelemetry.longitude]
+      : null;
+
+    if (target) {
+      setCircleCenter(target);
+      setMapFocusTarget({
+        center: target,
+        zoom: 8,
+        id: Date.now(),
+      });
+    }
+  };
+
+  const handleUpdatePolygonVertex = (index: number, lat: number, lon: number) => {
+    setPolygonCoords((prev) => {
+      const updated = [...prev];
+      if (index >= 0 && index < updated.length) {
+        updated[index] = [lat, lon];
+      }
+      return updated;
+    });
+  };
+
+  const handleDeletePolygonVertex = (index: number) => {
+    setPolygonCoords((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleInsertVertexAtIndex = (insertIndex: number, lat: number, lon: number) => {
+    setPolygonCoords((prev) => {
+      const updated = [...prev];
+      updated.splice(insertIndex, 0, [lat, lon]);
+      return updated;
+    });
+  };
+
+  const handleInsertPolygonVertexOnBorder = (lat: number, lon: number) => {
+    if (polygonCoords.length < 2) {
+      setPolygonCoords((prev) => [...prev, [lat, lon]]);
+      return;
+    }
+
+    const N = polygonCoords.length;
+    const isClosed = N >= 3;
+    const segmentsCount = isClosed ? N : N - 1;
+
+    let bestSegmentIdx = 0;
+    let minDistance = Infinity;
+
+    for (let i = 0; i < segmentsCount; i++) {
+      const A = polygonCoords[i];
+      const B = polygonCoords[(i + 1) % N];
+
+      const midLatRad = ((A[0] + B[0]) / 2) * (Math.PI / 180);
+      const cosLat = Math.cos(midLatRad);
+
+      const dx = (B[1] - A[1]) * cosLat;
+      const dy = B[0] - A[0];
+      const lenSq = dx * dx + dy * dy;
+
+      let t = 0;
+      if (lenSq > 1e-12) {
+        const px = (lon - A[1]) * cosLat;
+        const py = lat - A[0];
+        t = Math.max(0, Math.min(1, (px * dx + py * dy) / lenSq));
+      }
+
+      const projLat = A[0] + t * (B[0] - A[0]);
+      const projLon = A[1] + t * (B[1] - A[1]);
+
+      const dist = Math.hypot((lon - projLon) * cosLat, lat - projLat);
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestSegmentIdx = i;
+      }
+    }
+
+    handleInsertVertexAtIndex(bestSegmentIdx + 1, lat, lon);
+  };
+
   const [limitBy, setLimitBy] = useState<RouteLimitType>('none');
   const [limitScope, setLimitScope] = useState<'total' | 'sector'>('total');
   const [minLimitValue, setMinLimitValue] = useState<number>(30);
@@ -141,7 +457,10 @@ export const NewRouteView: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [route, setRoute] = useState<GeneratedRoute | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+  const [draftSaved, setDraftSaved] = useState<boolean>(false);
+  const [favoriteSaved, setFavoriteSaved] = useState<boolean>(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null);
 
   useEffect(() => {
     if (currentTelemetry.latitude !== 0 || currentTelemetry.longitude !== 0) {
@@ -161,6 +480,10 @@ export const NewRouteView: React.FC = () => {
     setGenerationError(null);
 
     try {
+      if (areaType === 'polygon' && polygonCoords.length < 3) {
+        throw new Error('Please click on the map to define at least 3 boundary vertices for your polygon, or click "Box Current View".');
+      }
+
       const minRunwayFt = customMinRunway !== ''
         ? (runwayUnit === 'm' ? Math.round(Number(customMinRunway) * 3.28084) : Number(customMinRunway))
         : undefined;
@@ -183,15 +506,66 @@ export const NewRouteView: React.FC = () => {
         departureIcao: departureIcao.trim() || undefined,
         arrivalIcao: arrivalIcao.trim() || undefined,
         includeGroundTime,
+        areaFilter: {
+          type: areaType,
+          circleCenter: areaType === 'circle' ? circleCenter : undefined,
+          circleRadiusNm: areaType === 'circle' ? circleRadiusNm : undefined,
+          polygonCoords: areaType === 'polygon' && polygonCoords.length >= 3 ? polygonCoords : undefined,
+        },
       };
 
       const result = await generateRouteSuggestion(searchParams);
       setRoute(result);
+      setDraftSaved(false);
+      setFavoriteSaved(false);
+
+      // Only trigger a map auto-fit when a route is actually generated
+      if (result && result.sectors.length > 0) {
+        const coords: [number, number][] = [
+          [result.sectors[0].departure.latitude, result.sectors[0].departure.longitude],
+          ...result.sectors.map((s): [number, number] => [s.arrival.latitude, s.arrival.longitude]),
+        ];
+        if (coords.length > 1) {
+          setMapFocusTarget({
+            bounds: L.latLngBounds(coords.map((c) => L.latLng(c[0], c[1]))),
+            id: Date.now(),
+          });
+        }
+      }
     } catch (err: any) {
       console.error('[NewRouteView] Route generation error:', err);
       setGenerationError(err?.message || 'Failed to generate route matching constraints. Try adjusting filters.');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleFocusRoute = () => {
+    if (!route || route.sectors.length === 0) return;
+    const coords: [number, number][] = [
+      [route.sectors[0].departure.latitude, route.sectors[0].departure.longitude],
+      ...route.sectors.map((s): [number, number] => [s.arrival.latitude, s.arrival.longitude]),
+    ];
+    if (coords.length > 1) {
+      setMapFocusTarget({
+        bounds: L.latLngBounds(coords.map((c) => L.latLng(c[0], c[1]))),
+        id: Date.now(),
+      });
+    }
+  };
+
+  const handleFocusArea = () => {
+    if (areaType === 'circle') {
+      setMapFocusTarget({
+        center: circleCenter,
+        zoom: 7,
+        id: Date.now(),
+      });
+    } else if (areaType === 'polygon' && polygonCoords.length >= 2) {
+      setMapFocusTarget({
+        bounds: L.latLngBounds(polygonCoords.map((c) => L.latLng(c[0], c[1]))),
+        id: Date.now(),
+      });
     }
   };
 
@@ -217,11 +591,69 @@ Sectors: ${route.sectors.length} (${route.isRoundTrip ? 'Round-Trip' : 'Direct/M
 Total Distance: ${route.totalDistanceNm} NM
 Airborne Duration: ${formatDurationHoursMinutes(route.totalAirborneMinutes)}
 Total Duration: ${formatDurationHoursMinutes(route.totalDurationMinutes)} ${route.includeGroundTime ? '(Includes Taxi)' : '(Airborne Only)'}
-Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.cruiseAltitudeFt / 100)} (${s.distanceNm} NM)`).join(' · ')}`;
+Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLevelOrAltitude(s.cruiseAltitudeFt)} (${s.distanceNm} NM, MORA ${formatFlightLevelOrAltitude(s.corridorMsaFt || 0)}${s.isMountainous ? ' - Mountainous' : ''})`).join(' · ')}`;
 
     navigator.clipboard.writeText(briefing);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveDraft = async () => {
+    if (!route || route.sectors.length === 0) return;
+    const firstLeg = route.sectors[0];
+    const finalLeg = route.sectors[route.sectors.length - 1];
+    const intermediateIcaos = route.sectors.slice(0, -1).map((s) => s.arrival.icao);
+
+    await saveRoute({
+      id: route.id,
+      name: `${firstLeg.departure.icao} ➔ ${finalLeg.arrival.icao}`,
+      departureIcao: firstLeg.departure.icao,
+      arrivalIcao: finalLeg.arrival.icao,
+      intermediateIcaos: JSON.stringify(intermediateIcaos),
+      aircraftCategory: route.aircraftCategory,
+      sectorsJson: JSON.stringify(route.sectors),
+      sectors: route.sectors,
+      totalDistanceNm: route.totalDistanceNm,
+      totalAirborneMinutes: route.totalAirborneMinutes,
+      totalGroundMinutes: route.totalGroundMinutes,
+      totalDurationMinutes: route.totalDurationMinutes,
+      recommendedAltitudeFt: route.sectors[0]?.cruiseAltitudeFt || null,
+      status: 'draft',
+      isFavorite: favoriteSaved,
+    });
+
+    setDraftSaved(true);
+    setTimeout(() => setDraftSaved(false), 2000);
+  };
+
+  const handleSaveFavorite = async () => {
+    if (!route || route.sectors.length === 0) return;
+    const firstLeg = route.sectors[0];
+    const finalLeg = route.sectors[route.sectors.length - 1];
+    const intermediateIcaos = route.sectors.slice(0, -1).map((s) => s.arrival.icao);
+
+    const nextFav = !favoriteSaved;
+    await saveRoute({
+      id: route.id,
+      name: `${firstLeg.departure.icao} ➔ ${finalLeg.arrival.icao}`,
+      departureIcao: firstLeg.departure.icao,
+      arrivalIcao: finalLeg.arrival.icao,
+      intermediateIcaos: JSON.stringify(intermediateIcaos),
+      aircraftCategory: route.aircraftCategory,
+      sectorsJson: JSON.stringify(route.sectors),
+      sectors: route.sectors,
+      totalDistanceNm: route.totalDistanceNm,
+      totalAirborneMinutes: route.totalAirborneMinutes,
+      totalGroundMinutes: route.totalGroundMinutes,
+      totalDurationMinutes: route.totalDurationMinutes,
+      recommendedAltitudeFt: route.sectors[0]?.cruiseAltitudeFt || null,
+      status: 'draft',
+      isFavorite: nextFav,
+    });
+
+    setFavoriteSaved(nextFav);
+    setDraftSaved(true);
+    setTimeout(() => setFavoriteSaved(false), 2000);
   };
 
   const handleFlyRoute = () => {
@@ -238,10 +670,10 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
         [route.sectors[0].departure.latitude, route.sectors[0].departure.longitude],
         ...route.sectors.map((s): [number, number] => [s.arrival.latitude, s.arrival.longitude]),
       ]
-    : [];
+    : areaType === 'polygon' && polygonCoords.length > 0
+    ? polygonCoords
+    : [circleCenter];
 
-  const mapBounds: L.LatLngBoundsExpression | null =
-    mapCoordinates.length > 0 ? L.latLngBounds(mapCoordinates.map((c) => L.latLng(c[0], c[1]))) : null;
 
   // Category suitability safeguard checks
   const isLocalAirportRestricted = ['C', 'D', 'E', 'F'].includes(category);
@@ -324,7 +756,7 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
               <div className="p-2 rounded bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline text-[11px] text-neutral-600 dark:text-neutral-400 space-y-0.5">
                 <div className="flex justify-between font-mono">
                   <span>Cruise TAS: {selectedProfile.cruiseSpeedTasKt} kt</span>
-                  <span>Typical Level: FL{Math.round(selectedProfile.typicalCruiseAltFt / 100)}</span>
+                  <span>Typical Level: {formatFlightLevelOrAltitude(selectedProfile.typicalCruiseAltFt)}</span>
                 </div>
                 <div className="text-[10px] text-neutral-500 truncate" title={selectedProfile.examples.join(', ')}>
                   Examples: {selectedProfile.examples.join(', ')}
@@ -537,7 +969,7 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
               </div>
             </div>
 
-            {/* 4. Region Filter (Continent or Country) */}
+            {/* 4. Region or Country (Area Filter) */}
             <div className="space-y-1.5 pt-2 border-t border-neutral-200 dark:border-geist-hairline">
               <button
                 type="button"
@@ -545,12 +977,16 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
                 className="w-full flex items-center justify-between text-left group cursor-pointer select-none py-0.5"
               >
                 <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                  4. Region or Country (Optional)
+                  4. Region or Country (Area Filter)
                 </span>
                 <div className="flex items-center gap-1.5">
                   {collapsedSections.region && (
                     <span className="text-[10px] font-mono text-neutral-500 capitalize">
-                      {region === 'random' ? 'Any Region' : region}
+                      {areaType === 'preset'
+                        ? (region === 'random' ? 'Any Region' : region)
+                        : areaType === 'circle'
+                        ? `Circle (${circleRadiusNm} NM)`
+                        : `Polygon (${polygonCoords.length} pts)`}
                     </span>
                   )}
                   <ChevronDown
@@ -567,29 +1003,207 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
                 }`}
               >
                 <div className="collapse-accordion-inner">
-                  <div className="pt-1">
-                    <Select
-                      value={region}
-                      onChange={(val) => setRegion(String(val))}
-                      groups={[
-                        {
-                          label: 'Continents & Global',
-                          options: CONTINENT_OPTIONS.map((c) => ({
-                            value: c.value,
-                            label: c.label,
-                          })),
-                        },
-                        {
-                          label: 'Prominent Countries',
-                          options: POPULAR_COUNTRIES.map((ctry) => ({
-                            value: ctry.value,
-                            label: `${ctry.label} (${ctry.value})`,
-                          })),
-                        },
-                      ]}
-                      className="w-full"
-                      triggerClassName="bg-neutral-50 dark:bg-black"
-                    />
+                  <div className="space-y-2.5 pt-1">
+                    {/* Area Type Segmented Switcher */}
+                    <div className="grid grid-cols-3 gap-1 bg-neutral-100 dark:bg-[#141414] p-0.5 rounded-sm border border-neutral-200 dark:border-geist-hairline">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAreaType('preset')}
+                        className={`flex items-center justify-center gap-1.5 py-1 text-[11px] font-medium rounded-sm transition-colors ${
+                          areaType === 'preset'
+                            ? 'bg-white dark:bg-geist-surface text-neutral-900 dark:text-white shadow-sm font-semibold'
+                            : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300'
+                        }`}
+                      >
+                        <Globe2 className="w-3 h-3" />
+                        <span>Preset</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAreaType('circle')}
+                        className={`flex items-center justify-center gap-1.5 py-1 text-[11px] font-medium rounded-sm transition-colors ${
+                          areaType === 'circle'
+                            ? 'bg-sky-600 text-white shadow-sm font-semibold'
+                            : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300'
+                        }`}
+                      >
+                        <CircleDot className="w-3 h-3" />
+                        <span>Circle</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAreaType('polygon')}
+                        className={`flex items-center justify-center gap-1.5 py-1 text-[11px] font-medium rounded-sm transition-colors ${
+                          areaType === 'polygon'
+                            ? 'bg-purple-600 text-white shadow-sm font-semibold'
+                            : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300'
+                        }`}
+                      >
+                        <Scan className="w-3 h-3" />
+                        <span>Polygon</span>
+                      </button>
+                    </div>
+
+                    {/* Preset Region Dropdown */}
+                    {areaType === 'preset' && (
+                      <div className="space-y-1">
+                        <Select
+                          value={region}
+                          onChange={(val) => setRegion(String(val))}
+                          groups={[
+                            {
+                              label: 'Continents & Global',
+                              options: CONTINENT_OPTIONS.map((c) => ({
+                                value: c.value,
+                                label: c.label,
+                              })),
+                            },
+                            {
+                              label: 'Prominent Countries',
+                              options: POPULAR_COUNTRIES.map((ctry) => ({
+                                value: ctry.value,
+                                label: `${ctry.label} (${ctry.value})`,
+                              })),
+                            },
+                          ]}
+                          className="w-full"
+                          triggerClassName="bg-neutral-50 dark:bg-black"
+                        />
+                        <p className="text-[10px] text-neutral-400 dark:text-geist-muted">
+                          Searches airfields across standard continental airspace or national boundaries.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Circle Area Controls */}
+                    {areaType === 'circle' && (
+                      <div className="space-y-2 p-2 rounded bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/50">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-sky-900 dark:text-sky-200">
+                            Circle Radius:
+                          </span>
+                          <span className="font-mono font-bold text-sky-700 dark:text-sky-300">
+                            {circleRadiusNm} NM ({Math.round(circleRadiusNm * 1.852)} km)
+                          </span>
+                        </div>
+
+                        {/* Radius Slider */}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min={20}
+                            max={600}
+                            step={10}
+                            value={circleRadiusNm}
+                            onChange={(e) => setCircleRadiusNm(Number(e.target.value))}
+                            className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-sky-600"
+                          />
+                        </div>
+
+                        {/* Quick Radius Presets */}
+                        <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                          <span className="text-neutral-500">Presets:</span>
+                          {[50, 100, 150, 250, 400].map((nm) => (
+                            <button
+                              key={nm}
+                              type="button"
+                              onClick={() => setCircleRadiusNm(nm)}
+                              className={`px-1.5 py-0.5 rounded border transition-colors ${
+                                circleRadiusNm === nm
+                                  ? 'bg-sky-600 text-white border-sky-600 font-semibold'
+                                  : 'bg-white dark:bg-black text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 hover:border-sky-400'
+                              }`}
+                            >
+                              {nm} NM
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Center Point Info & Actions */}
+                        <div className="pt-1.5 border-t border-sky-200/60 dark:border-sky-900/40 flex items-center justify-between text-[10px]">
+                          <div className="font-mono text-neutral-600 dark:text-neutral-300 truncate">
+                            Center: {circleCenter[0].toFixed(2)}°, {circleCenter[1].toFixed(2)}°
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setCircleCenter(mapViewportRef.current.center)}
+                              className="text-sky-700 dark:text-sky-400 font-medium hover:underline flex items-center gap-1"
+                              title="Center circle on your current map view"
+                            >
+                              <Scan className="w-3 h-3" />
+                              <span>Center on View</span>
+                            </button>
+                            {(nearestAirport || currentTelemetry.latitude !== 0) && (
+                              <button
+                                type="button"
+                                onClick={handleCenterCircleOnTelemetry}
+                                className="text-sky-700 dark:text-sky-400 font-medium hover:underline flex items-center gap-1"
+                              >
+                                <Crosshair className="w-3 h-3" />
+                                <span>GPS</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-sky-800 dark:text-sky-300 leading-tight">
+                          💡 <strong>Click map or drag center marker</strong> to reposition circle area.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Polygon Area Controls */}
+                    {areaType === 'polygon' && (
+                      <div className="space-y-2 p-2 rounded bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/50">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-purple-900 dark:text-purple-200">
+                            Custom Polygon Boundary:
+                          </span>
+                          <span className={`font-mono text-[10px] font-semibold ${
+                            polygonCoords.length >= 3 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                          }`}>
+                            {polygonCoords.length} {polygonCoords.length === 1 ? 'vertex' : 'vertices'} {polygonCoords.length < 3 ? '(min 3)' : '✓ Ready'}
+                          </span>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={handleQuickBoxPolygon}
+                            className="flex-1 flex items-center justify-center gap-1 py-1 px-2 rounded bg-white dark:bg-black text-[11px] font-medium border border-neutral-200 dark:border-neutral-800 hover:border-purple-400 text-neutral-700 dark:text-neutral-300 transition-colors"
+                          >
+                            <Scan className="w-3 h-3 text-purple-600" />
+                            <span>Box Region</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={polygonCoords.length === 0}
+                            onClick={() => setPolygonCoords((prev) => prev.slice(0, -1))}
+                            className="flex items-center justify-center gap-1 py-1 px-2 rounded bg-white dark:bg-black text-[11px] font-medium border border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 text-neutral-600 dark:text-neutral-400 transition-colors disabled:opacity-40"
+                            title="Undo last added vertex"
+                          >
+                            <Undo2 className="w-3 h-3" />
+                            <span>Undo</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={polygonCoords.length === 0}
+                            onClick={() => setPolygonCoords([])}
+                            className="flex items-center justify-center gap-1 py-1 px-2 rounded bg-white dark:bg-black text-[11px] font-medium border border-neutral-200 dark:border-neutral-800 hover:border-red-400 text-red-600 dark:text-red-400 transition-colors disabled:opacity-40"
+                            title="Clear all vertices"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Clear</span>
+                          </button>
+                        </div>
+
+                        <p className="text-[10px] text-purple-800 dark:text-purple-300 leading-tight">
+                          💡 <strong>Click or drag border</strong> to add a vertex · <strong>Drag</strong> to move · <strong>Right-click</strong> vertex to delete.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -907,6 +1521,15 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
         {/* Right Column: Route Map & Sector Breakdown Deck (lg:col-span-8) */}
         <div className="lg:col-span-8 space-y-4">
           
+          {generationError && (
+            <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-sm text-xs text-red-700 dark:text-red-300 flex items-start gap-2 shadow-sm">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <strong className="font-semibold">Route Generation Notice:</strong> {generationError}
+              </div>
+            </div>
+          )}
+
           {route ? (
             <>
               {/* Route Summary Ribbon */}
@@ -932,18 +1555,42 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
                 <div className="flex items-center gap-2 self-stretch sm:self-center">
                   <button
                     onClick={handleCopyBriefing}
-                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium border border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1a1a1a] transition-colors"
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium border transition-colors ${
+                      copied
+                        ? 'bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-600 dark:border-emerald-600'
+                        : 'border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1a1a1a] text-neutral-700 dark:text-neutral-200'
+                    }`}
                   >
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copied ? 'Copied Briefing' : 'Copy'}</span>
+                    <span>{copied ? 'Copied' : 'Copy'}</span>
                   </button>
 
                   <button
-                    onClick={handleFlyRoute}
-                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-sm text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm"
+                    onClick={handleSaveDraft}
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium border transition-colors ${
+                      draftSaved
+                        ? 'bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-600 dark:border-emerald-600'
+                        : 'border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1a1a1a] text-neutral-700 dark:text-neutral-200'
+                    }`}
                   >
-                    <Play className="w-3.5 h-3.5 fill-white" />
-                    <span>Fly This Route</span>
+                    {draftSaved ? <Check className="w-3.5 h-3.5 text-white" /> : <Bookmark className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />}
+                    <span>{draftSaved ? 'Draft Saved' : 'Draft'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleSaveFavorite}
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-sm text-xs font-medium border transition-colors ${
+                      favoriteSaved
+                        ? 'bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-600 dark:border-emerald-600'
+                        : 'border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1a1a1a] text-neutral-700 dark:text-neutral-200'
+                    }`}
+                  >
+                    {favoriteSaved ? (
+                      <Check className="w-3.5 h-3.5 text-white" />
+                    ) : (
+                      <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500/20" />
+                    )}
+                    <span>{favoriteSaved ? 'Favorited' : 'Favorite'}</span>
                   </button>
                 </div>
               </div>
@@ -995,7 +1642,7 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
                     <Plane className="w-3 h-3 text-neutral-400" />
                   </div>
                   <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white tabular-nums">
-                    FL{Math.max(...route.sectors.map((s) => Math.round(s.cruiseAltitudeFt / 100)))}
+                    {formatFlightLevelOrAltitude(Math.max(...route.sectors.map((s) => s.cruiseAltitudeFt)))}
                   </div>
                   <div className="text-[10px] text-neutral-400 mt-0.5">
                     Speed: {route.sectors[0].cruiseSpeedKt} kt TAS
@@ -1004,7 +1651,47 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
               </div>
 
               {/* Interactive Route Map */}
-              <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-sm overflow-hidden">
+              <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-sm overflow-hidden space-y-1">
+                {areaType !== 'preset' && (
+                  <div className="px-2 py-1 text-[11px] flex items-center justify-between text-neutral-600 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-geist-hairline rounded-t-sm">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      {areaType === 'circle' ? (
+                        <>
+                          <CircleDot className="w-3.5 h-3.5 text-sky-600" />
+                          <span>Circle Area Active: {circleRadiusNm} NM radius</span>
+                        </>
+                      ) : (
+                        <>
+                          <Scan className="w-3.5 h-3.5 text-purple-600" />
+                          <span>Polygon Area Active: {polygonCoords.length} vertices</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-neutral-400">
+                        {areaType === 'circle' ? 'Click map to reposition center' : 'Click map to add boundary points'}
+                      </span>
+                      {route && (
+                        <button
+                          type="button"
+                          onClick={handleFocusRoute}
+                          className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition-colors"
+                          title="Recenter map on current route"
+                        >
+                          Focus Route
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleFocusArea}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition-colors"
+                        title="Recenter map on search area"
+                      >
+                        Focus Area
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="h-[360px] w-full rounded-sm overflow-hidden relative z-0">
                   <MapContainer
                     center={mapCoordinates[0] || [47.26, 11.34]}
@@ -1012,11 +1699,181 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
                     style={{ height: '100%', width: '100%' }}
                     className={theme === 'dark' ? 'dark-tiles' : ''}
                   >
-                    <ChangeView bounds={mapBounds} />
+                    <MapController focusTarget={mapFocusTarget} />
+                    <MapViewportTracker onViewportChange={handleViewportChange} />
                     <TileLayer
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
+
+                    {/* Area Click Handler */}
+                    <MapAreaClickHandler areaType={areaType} onMapClick={handleMapClick} />
+
+                    {/* Area Filter Overlay: Circle */}
+                    {areaType === 'circle' && circleCenter && (
+                      <>
+                        <Circle
+                          center={circleCenter}
+                          radius={circleRadiusNm * 1852}
+                          pathOptions={{
+                            color: '#0284c7',
+                            fillColor: '#38bdf8',
+                            fillOpacity: 0.12,
+                            weight: 2,
+                            dashArray: '5, 5',
+                          }}
+                        />
+                        {showCircleCenterBadge && (
+                          <Marker
+                            position={circleCenter}
+                            draggable={true}
+                            eventHandlers={{
+                              dragend: (e) => {
+                                const marker = e.target;
+                                const pos = marker.getLatLng();
+                                setCircleCenter([pos.lat, pos.lng]);
+                              },
+                            }}
+                            icon={createAreaCenterMarkerIcon(circleRadiusNm)}
+                          >
+                            <Popup>
+                              <div className="text-xs space-y-1">
+                                <strong className="text-sky-600 block">Search Area Center</strong>
+                                <div>Lat: {circleCenter[0].toFixed(4)}°, Lon: {circleCenter[1].toFixed(4)}°</div>
+                                <div>Radius: {circleRadiusNm} NM ({Math.round(circleRadiusNm * 1.852)} km)</div>
+                                <div className="text-[10px] text-neutral-400">Drag marker to move circle center</div>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        )}
+                      </>
+                    )}
+
+                    {areaType === 'polygon' && (
+                      <>
+                        {polygonCoords.length >= 3 ? (
+                          <Polygon
+                            positions={polygonCoords}
+                            pathOptions={{
+                              color: '#7c3aed',
+                              fillColor: '#a855f7',
+                              fillOpacity: 0.12,
+                              weight: 2,
+                              dashArray: '5, 5',
+                            }}
+                          />
+                        ) : polygonCoords.length === 2 ? (
+                          <Polyline
+                            positions={polygonCoords}
+                            color="#7c3aed"
+                            weight={2}
+                            dashArray="5, 5"
+                          />
+                        ) : null}
+
+                        {/* Interactive border hit-area to insert new vertex on click */}
+                        {polygonCoords.length >= 2 && (
+                          <Polyline
+                            positions={polygonCoords.length >= 3 ? [...polygonCoords, polygonCoords[0]] : polygonCoords}
+                            pathOptions={{
+                              color: '#7c3aed',
+                              weight: 16,
+                              opacity: 0.001,
+                              lineCap: 'round',
+                              lineJoin: 'round',
+                            }}
+                            eventHandlers={{
+                              click: (e) => {
+                                if (e.originalEvent) {
+                                  e.originalEvent.stopPropagation();
+                                }
+                                handleInsertPolygonVertexOnBorder(e.latlng.lat, e.latlng.lng);
+                              },
+                            }}
+                          />
+                        )}
+
+                        {/* Midpoint '+' handles to drag or click to split segment */}
+                        {polygonCoords.length >= 2 &&
+                          polygonCoords.map((coord, idx) => {
+                            const isClosed = polygonCoords.length >= 3;
+                            if (!isClosed && idx === polygonCoords.length - 1) return null;
+                            const nextCoord = polygonCoords[(idx + 1) % polygonCoords.length];
+                            const midLat = (coord[0] + nextCoord[0]) / 2;
+                            const midLon = (coord[1] + nextCoord[1]) / 2;
+
+                            return (
+                              <Marker
+                                key={`route-midpoint-${idx}`}
+                                position={[midLat, midLon]}
+                                draggable={true}
+                                eventHandlers={{
+                                  dragend: (e) => {
+                                    const marker = e.target;
+                                    const pos = marker.getLatLng();
+                                    handleInsertVertexAtIndex(idx + 1, pos.lat, pos.lng);
+                                  },
+                                  click: (e) => {
+                                    if (e.originalEvent) {
+                                      e.originalEvent.stopPropagation();
+                                    }
+                                    handleInsertVertexAtIndex(idx + 1, midLat, midLon);
+                                  },
+                                }}
+                                icon={createMidpointMarkerIcon()}
+                              >
+                                <Popup>
+                                  <div className="text-xs space-y-0.5">
+                                    <strong className="text-purple-600 block">Border Segment Handle</strong>
+                                    <div className="text-[10px] text-neutral-400">Drag or click to insert a vertex here</div>
+                                  </div>
+                                </Popup>
+                              </Marker>
+                            );
+                          })}
+
+                        {polygonCoords.map((coord, idx) => (
+                          <Marker
+                            key={`route-poly-vertex-${idx}`}
+                            position={coord}
+                            draggable={true}
+                            eventHandlers={{
+                              dragend: (e) => {
+                                const marker = e.target;
+                                const pos = marker.getLatLng();
+                                handleUpdatePolygonVertex(idx, pos.lat, pos.lng);
+                              },
+                              contextmenu: (e) => {
+                                if (e.originalEvent) {
+                                  e.originalEvent.preventDefault();
+                                  e.originalEvent.stopPropagation();
+                                }
+                                handleDeletePolygonVertex(idx);
+                              },
+                            }}
+                            icon={createVertexMarkerIcon(idx + 1)}
+                          >
+                            <Popup>
+                              <div className="text-xs space-y-1">
+                                <strong className="text-purple-600 block">Polygon Vertex #{idx + 1}</strong>
+                                <div>Lat: {coord[0].toFixed(4)}°, Lon: {coord[1].toFixed(4)}°</div>
+                                <div className="text-[10px] text-neutral-400">Drag to move · Right-click to delete</div>
+                                <button
+                                  type="button"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    handleDeletePolygonVertex(idx);
+                                  }}
+                                  className="mt-1 text-[10px] text-red-600 hover:text-red-700 hover:underline flex items-center gap-1 font-medium"
+                                >
+                                  <span>Delete vertex #{idx + 1}</span>
+                                </button>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        ))}
+                      </>
+                    )}
 
                     {/* Sector Polylines */}
                     {route.sectors.map((sector, idx) => {
@@ -1123,6 +1980,29 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
                         </Popup>
                       </Marker>
                     )}
+
+                    {/* Limiting Terrain Peak Markers */}
+                    {route.sectors.map((sector, idx) => {
+                      if (!sector.limitingCoord || (sector.peakTerrainFt || 0) < 4000) return null;
+                      return (
+                        <Marker
+                          key={`peak-${idx}`}
+                          position={sector.limitingCoord}
+                          icon={createMountainPeakMarkerIcon(sector.peakTerrainFt || 0)}
+                        >
+                          <Popup>
+                            <div className="text-xs space-y-1">
+                              <strong className="text-amber-600 block">Corridor Terrain Peak (Leg {idx + 1})</strong>
+                              <div>Highest Relief: ~{sector.peakTerrainFt?.toLocaleString()} ft MSL</div>
+                              <div>Sector MORA: {formatFlightLevelOrAltitude(sector.corridorMsaFt || 0)} ({sector.corridorMsaFt?.toLocaleString()} ft)</div>
+                              {sector.isMountainous && (
+                                <div className="text-amber-600 dark:text-amber-400 font-medium">Mountainous terrain corridor</div>
+                              )}
+                            </div>
+                          </Popup>
+                        </Marker>
+                      );
+                    })}
                   </MapContainer>
                 </div>
               </div>
@@ -1208,10 +2088,12 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
                       {/* Physics Breakdown Badges */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         <div className="p-2 rounded bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
-                          <span className="text-[10px] text-neutral-500 block mb-0.5">Cruise Altitude</span>
-                          <span className="font-mono font-semibold text-neutral-900 dark:text-white">
-                            FL{Math.round(sector.cruiseAltitudeFt / 100)} ({sector.cruiseAltitudeFt.toLocaleString()} ft)
-                          </span>
+                          <span className="text-[10px] text-neutral-500 block mb-0.5">Recommended Altitude</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-semibold text-neutral-900 dark:text-white">
+                              {formatFlightLevelOrAltitude(sector.cruiseAltitudeFt)} ({sector.cruiseAltitudeFt.toLocaleString()} ft)
+                            </span>
+                          </div>
                         </div>
 
                         <div className="p-2 rounded bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
@@ -1237,20 +2119,272 @@ Cruising Levels: ${route.sectors.map((s, i) => `Leg ${i + 1}: FL${Math.round(s.c
                           </span>
                         </div>
                       </div>
+
+                      {/* Terrain & Corridor Minimum Safe Altitude (MSA / Grid MORA) Card */}
+                      {sector.corridorMsaFt !== undefined && (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded bg-neutral-50 dark:bg-geist-card/60 border border-neutral-200 dark:border-geist-hairline text-xs">
+                          <div className="flex items-center gap-2">
+                            <div className="p-1 rounded bg-neutral-200/60 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+                              <Mountain className="w-3.5 h-3.5" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                                  Corridor Minimum Safe Altitude:
+                                </span>
+                                <span className="font-mono font-bold text-neutral-900 dark:text-white">
+                                  {formatFlightLevelOrAltitude(sector.corridorMsaFt)} ({sector.corridorMsaFt.toLocaleString()} ft MORA)
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                10 NM corridor · {sector.isMountainous ? 'Mountainous terrain (variation ≥ 3,000 ft within 10 NM) · 2,000 ft clearance margin' : 'Non-mountainous terrain (variation < 3,000 ft within 10 NM) · 1,000 ft clearance margin'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 text-[11px] text-neutral-600 dark:text-neutral-400 font-mono">
+                            {sector.peakTerrainFt !== undefined && (
+                              <span className="tabular-nums">Peak: ~{sector.peakTerrainFt.toLocaleString()} ft MSL</span>
+                            )}
+                            {sector.maxTerrainVariation10Nm !== undefined && (
+                              <span className="tabular-nums">Δh: {sector.maxTerrainVariation10Nm.toLocaleString()} ft / 10 NM</span>
+                            )}
+                            <span className="tabular-nums font-medium text-emerald-600 dark:text-emerald-400">
+                              Margin: +{(sector.cruiseAltitudeFt - (sector.peakTerrainFt || 0)).toLocaleString()} ft (Req: {sector.requiredMarginFt || 1000} ft)
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Mountainous Terrain Warning Banner */}
+                      {sector.isMountainous && (
+                        <div className="flex items-start gap-2 p-2.5 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-300">
+                          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                          <div>
+                            <strong className="font-semibold">Mountainous Terrain Advisory:</strong>{' '}
+                            This sector traverses mountainous terrain (elevation variation ≥ 3,000 ft within 10 NM). A 2,000 ft clearance margin is applied over peak terrain (~{(sector.peakTerrainFt || 0).toLocaleString()} ft MSL), recommending {formatFlightLevelOrAltitude(sector.cruiseAltitudeFt)}.
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
             </>
           ) : (
-            <div className="h-64 flex flex-col items-center justify-center p-8 bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm text-center">
-              <Route className="w-8 h-8 text-neutral-400 mb-2 animate-bounce" />
-              <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                Configure your search options and click "Find New Route"
-              </p>
-              <p className="text-xs text-neutral-500 dark:text-geist-muted mt-1">
-                The generator will suggest optimal flight routes matching your selected aircraft category and sector limits.
-              </p>
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
+                    {areaType === 'circle'
+                      ? 'Circle Search Area Planning'
+                      : areaType === 'polygon'
+                      ? 'Polygon Search Boundary Planning'
+                      : 'Interactive Route Planning Map'}
+                  </h3>
+                  <p className="text-xs text-neutral-500 dark:text-geist-muted mt-0.5">
+                    {areaType === 'circle'
+                      ? 'Click anywhere on the map to set circle center or adjust radius in the sidebar, then click "Find New Route".'
+                      : areaType === 'polygon'
+                      ? 'Click points on the map to draw your search border (min 3) or click "Box Region", then click "Find New Route".'
+                      : 'Configure your search options and click "Find New Route" to generate an optimal flight path.'}
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleGenerateRoute}
+                  disabled={isGenerating}
+                  className="px-4 py-2 rounded-sm text-xs font-semibold bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors shadow-sm disabled:opacity-50 shrink-0 flex items-center gap-1.5"
+                >
+                  <Sparkles className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
+                  <span>{isGenerating ? 'Computing Optimal Route...' : 'Find New Route'}</span>
+                </button>
+              </div>
+
+              <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-sm overflow-hidden">
+                <div className="h-[420px] w-full rounded-sm overflow-hidden relative z-0">
+                  <MapContainer
+                    center={circleCenter}
+                    zoom={6}
+                    style={{ height: '100%', width: '100%' }}
+                    className={theme === 'dark' ? 'dark-tiles' : ''}
+                  >
+                    <MapController focusTarget={mapFocusTarget} />
+                    <MapViewportTracker onViewportChange={handleViewportChange} />
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+
+                    <MapAreaClickHandler areaType={areaType} onMapClick={handleMapClick} />
+
+                    {areaType === 'circle' && circleCenter && (
+                      <>
+                        <Circle
+                          center={circleCenter}
+                          radius={circleRadiusNm * 1852}
+                          pathOptions={{
+                            color: '#0284c7',
+                            fillColor: '#38bdf8',
+                            fillOpacity: 0.15,
+                            weight: 2,
+                            dashArray: '5, 5',
+                          }}
+                        />
+                        {showCircleCenterBadge && (
+                          <Marker
+                            position={circleCenter}
+                            draggable={true}
+                            eventHandlers={{
+                              dragend: (e) => {
+                                const marker = e.target;
+                                const pos = marker.getLatLng();
+                                setCircleCenter([pos.lat, pos.lng]);
+                              },
+                            }}
+                            icon={createAreaCenterMarkerIcon(circleRadiusNm)}
+                          >
+                            <Popup>
+                              <div className="text-xs space-y-1">
+                                <strong className="text-sky-600 block">Search Area Center</strong>
+                                <div>Lat: {circleCenter[0].toFixed(4)}°, Lon: {circleCenter[1].toFixed(4)}°</div>
+                                <div>Radius: {circleRadiusNm} NM ({Math.round(circleRadiusNm * 1.852)} km)</div>
+                                <div className="text-[10px] text-neutral-400">Drag marker to move circle center</div>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        )}
+                      </>
+                    )}
+
+                    {areaType === 'polygon' && (
+                      <>
+                        {polygonCoords.length >= 3 ? (
+                          <Polygon
+                            positions={polygonCoords}
+                            pathOptions={{
+                              color: '#7c3aed',
+                              fillColor: '#a855f7',
+                              fillOpacity: 0.15,
+                              weight: 2,
+                              dashArray: '5, 5',
+                            }}
+                          />
+                        ) : polygonCoords.length === 2 ? (
+                          <Polyline
+                            positions={polygonCoords}
+                            color="#7c3aed"
+                            weight={2}
+                            dashArray="5, 5"
+                          />
+                        ) : null}
+
+                        {/* Interactive border hit-area to insert new vertex on click */}
+                        {polygonCoords.length >= 2 && (
+                          <Polyline
+                            positions={polygonCoords.length >= 3 ? [...polygonCoords, polygonCoords[0]] : polygonCoords}
+                            pathOptions={{
+                              color: '#7c3aed',
+                              weight: 16,
+                              opacity: 0.001,
+                              lineCap: 'round',
+                              lineJoin: 'round',
+                            }}
+                            eventHandlers={{
+                              click: (e) => {
+                                if (e.originalEvent) {
+                                  e.originalEvent.stopPropagation();
+                                }
+                                handleInsertPolygonVertexOnBorder(e.latlng.lat, e.latlng.lng);
+                              },
+                            }}
+                          />
+                        )}
+
+                        {/* Midpoint '+' handles to drag or click to split segment */}
+                        {polygonCoords.length >= 2 &&
+                          polygonCoords.map((coord, idx) => {
+                            const isClosed = polygonCoords.length >= 3;
+                            if (!isClosed && idx === polygonCoords.length - 1) return null;
+                            const nextCoord = polygonCoords[(idx + 1) % polygonCoords.length];
+                            const midLat = (coord[0] + nextCoord[0]) / 2;
+                            const midLon = (coord[1] + nextCoord[1]) / 2;
+
+                            return (
+                              <Marker
+                                key={`planning-midpoint-${idx}`}
+                                position={[midLat, midLon]}
+                                draggable={true}
+                                eventHandlers={{
+                                  dragend: (e) => {
+                                    const marker = e.target;
+                                    const pos = marker.getLatLng();
+                                    handleInsertVertexAtIndex(idx + 1, pos.lat, pos.lng);
+                                  },
+                                  click: (e) => {
+                                    if (e.originalEvent) {
+                                      e.originalEvent.stopPropagation();
+                                    }
+                                    handleInsertVertexAtIndex(idx + 1, midLat, midLon);
+                                  },
+                                }}
+                                icon={createMidpointMarkerIcon()}
+                              >
+                                <Popup>
+                                  <div className="text-xs space-y-0.5">
+                                    <strong className="text-purple-600 block">Border Segment Handle</strong>
+                                    <div className="text-[10px] text-neutral-400">Drag or click to insert a vertex here</div>
+                                  </div>
+                                </Popup>
+                              </Marker>
+                            );
+                          })}
+
+                        {polygonCoords.map((coord, idx) => (
+                          <Marker
+                            key={`planning-vertex-${idx}`}
+                            position={coord}
+                            draggable={true}
+                            eventHandlers={{
+                              dragend: (e) => {
+                                const marker = e.target;
+                                const pos = marker.getLatLng();
+                                handleUpdatePolygonVertex(idx, pos.lat, pos.lng);
+                              },
+                              contextmenu: (e) => {
+                                if (e.originalEvent) {
+                                  e.originalEvent.preventDefault();
+                                  e.originalEvent.stopPropagation();
+                                }
+                                handleDeletePolygonVertex(idx);
+                              },
+                            }}
+                            icon={createVertexMarkerIcon(idx + 1)}
+                          >
+                            <Popup>
+                              <div className="text-xs space-y-1">
+                                <strong className="text-purple-600 block">Polygon Vertex #{idx + 1}</strong>
+                                <div>Lat: {coord[0].toFixed(4)}°, Lon: {coord[1].toFixed(4)}°</div>
+                                <div className="text-[10px] text-neutral-400">Drag to move · Right-click to delete</div>
+                                <button
+                                  type="button"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    handleDeletePolygonVertex(idx);
+                                  }}
+                                  className="mt-1 text-[10px] text-red-600 hover:text-red-700 hover:underline flex items-center gap-1 font-medium"
+                                >
+                                  <span>Delete vertex #{idx + 1}</span>
+                                </button>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        ))}
+                      </>
+                    )}
+                  </MapContainer>
+                </div>
+              </div>
             </div>
           )}
         </div>

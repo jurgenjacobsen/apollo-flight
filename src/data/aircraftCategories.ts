@@ -1,4 +1,5 @@
 import { AircraftCategory, AircraftCategoryProfile } from '../types/route';
+import { clampToSemiCircularRule } from '../services/terrainMora';
 
 export const AIRCRAFT_CATEGORIES: Record<AircraftCategory, AircraftCategoryProfile> = {
   A: {
@@ -118,7 +119,11 @@ export function calculateSectorFlightProfile(
   category: AircraftCategory,
   includeGroundTime: boolean,
   originElevationFt: number = 0,
-  destElevationFt: number = 0
+  destElevationFt: number = 0,
+  corridorMsaFt: number = 1500,
+  initialBearingDeg: number = 0,
+  peakTerrainFt: number = 0,
+  requiredMarginFt: number = 1000
 ) {
   const profile = AIRCRAFT_CATEGORIES[category];
 
@@ -136,24 +141,47 @@ export function calculateSectorFlightProfile(
 
   const minTripDistance = climbDistanceNm + descentDistanceNm;
 
-  let actualCruiseAlt = baseCruiseAlt;
-  let finalClimbMinutes = climbMinutes;
-  let finalDescentMinutes = descentMinutes;
+  let computedCruiseAlt = baseCruiseAlt;
+
+  if (distanceNm < minTripDistance) {
+    // Short hop: Scale altitude parabolically
+    const scale = Math.max(0.25, Math.min(0.95, distanceNm / minTripDistance));
+    computedCruiseAlt = Math.round((baseCruiseAlt * scale) / 1000) * 1000;
+  }
+
+  // Terrain-Aware Clamping & Semi-Circular Rule Alignment:
+  // Must ensure altitude margin between cruise altitude and terrain is at least requiredMarginFt
+  // (1,000 ft in non-mountainous, 2,000 ft in mountainous where variation within 10 NM >= 3,000 ft)
+  const minSafeAlt = Math.max(corridorMsaFt, peakTerrainFt + requiredMarginFt);
+  const targetAlt = Math.max(computedCruiseAlt, minSafeAlt);
+  const clampedCruiseAlt = clampToSemiCircularRule(targetAlt, initialBearingDeg);
+  const isAltitudeTerrainClamped = clampedCruiseAlt > computedCruiseAlt;
+
+  // Recalculate climb and descent phases for actual assigned cruising altitude
+  const actualClimbFt = Math.max(1000, clampedCruiseAlt - originElevationFt);
+  const actualDescentFt = Math.max(1000, clampedCruiseAlt - destElevationFt);
+
+  let finalClimbMinutes = actualClimbFt / profile.climbRateFpm;
+  let finalDescentMinutes = actualDescentFt / profile.descentRateFpm;
+
+  const actualClimbDistNm = (finalClimbMinutes / 60) * profile.climbSpeedTasKt;
+  const actualDescentDistNm = (finalDescentMinutes / 60) * profile.descentSpeedTasKt;
+  const totalClimbDescentDist = actualClimbDistNm + actualDescentDistNm;
+
   let cruiseDistanceNm = 0;
   let cruiseMinutes = 0;
 
-  if (distanceNm < minTripDistance) {
-    // Short hop: Cannot reach full cruising level. Scale altitude parabolically
-    const scale = Math.max(0.25, Math.min(0.95, distanceNm / minTripDistance));
-    actualCruiseAlt = Math.round((baseCruiseAlt * scale) / 1000) * 1000;
-    finalClimbMinutes = climbMinutes * scale;
-    finalDescentMinutes = descentMinutes * scale;
-    cruiseDistanceNm = Math.max(0, distanceNm - (climbDistanceNm * scale + descentDistanceNm * scale));
-    cruiseMinutes = (cruiseDistanceNm / (profile.cruiseSpeedTasKt * 0.85)) * 60;
-  } else {
-    // Standard cruise segment
-    cruiseDistanceNm = distanceNm - (climbDistanceNm + descentDistanceNm);
+  if (distanceNm >= totalClimbDescentDist) {
+    cruiseDistanceNm = distanceNm - totalClimbDescentDist;
     cruiseMinutes = (cruiseDistanceNm / profile.cruiseSpeedTasKt) * 60;
+  } else {
+    // High mountain crossing on a short sector:
+    // Scale climb and descent phases to fit the distance
+    const distScale = Math.max(0.5, distanceNm / totalClimbDescentDist);
+    finalClimbMinutes *= distScale;
+    finalDescentMinutes *= distScale;
+    cruiseDistanceNm = 0;
+    cruiseMinutes = 0;
   }
 
   const airborneMinutes = Math.round(finalClimbMinutes + cruiseMinutes + finalDescentMinutes);
@@ -168,8 +196,9 @@ export function calculateSectorFlightProfile(
     climbMinutes: Math.round(finalClimbMinutes),
     cruiseMinutes: Math.round(cruiseMinutes),
     descentMinutes: Math.round(finalDescentMinutes),
-    cruiseAltitudeFt: Math.max(2000, actualCruiseAlt),
+    cruiseAltitudeFt: clampedCruiseAlt,
     cruiseSpeedKt: profile.cruiseSpeedTasKt,
+    isAltitudeTerrainClamped,
   };
 }
 
@@ -178,4 +207,17 @@ export function formatDurationHoursMinutes(minutes: number): string {
   const m = Math.round(minutes % 60);
   if (h === 0) return `${m}m`;
   return `${h}h ${m.toString().padStart(2, '0')}m`;
+}
+
+/**
+ * Formats an altitude according to aviation standard:
+ * - 3,000 ft or lower: shown in feet (e.g. "3,000 ft", "2,500 ft")
+ * - Above 3,000 ft: shown as 3-digit zero-padded Flight Level (e.g. "FL060" for 6,000 ft, "FL600" for 60,000 ft)
+ */
+export function formatFlightLevelOrAltitude(altitudeFt: number): string {
+  if (altitudeFt <= 3000) {
+    return `${Math.round(altitudeFt).toLocaleString()} ft`;
+  }
+  const fl = Math.round(altitudeFt / 100);
+  return `FL${String(fl).padStart(3, '0')}`;
 }

@@ -12,7 +12,10 @@ import {
   Airport,
   TouchdownEvent,
 } from '../types/flight';
+import { SavedRoute } from '../types/route';
 import { calculateTouchdownGForce } from '../utils/touchdownPhysics';
+import { calculateDistanceNm } from '../data/mockData';
+import { resolveAirport } from '../services/routeGenerator';
 
 // Dynamic safe invoke helper for Tauri v2 / browser compatibility
 async function safeInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T | null> {
@@ -34,6 +37,93 @@ function computeAverageTouchdownRate(touchdowns: TouchdownEvent[] | undefined, f
     return Math.round(sum / touchdowns.length);
   }
   return fallbackVs < 0 ? Math.round(fallbackVs) : -140;
+}
+
+export function calculateRecordedFlightDistance(
+  points: Array<{ latitude: number; longitude: number }>,
+  depAirport?: { latitude: number; longitude: number } | null,
+  arrAirport?: { latitude: number; longitude: number } | null
+): number {
+  const validPoints = points.filter(
+    (p) =>
+      p &&
+      typeof p.latitude === 'number' &&
+      typeof p.longitude === 'number' &&
+      isFinite(p.latitude) &&
+      isFinite(p.longitude) &&
+      Math.abs(p.latitude) <= 90 &&
+      Math.abs(p.longitude) <= 180
+  );
+
+  let totalNm = 0;
+
+  if (validPoints.length > 0) {
+    const firstPoint = validPoints[0];
+    const lastPoint = validPoints[validPoints.length - 1];
+
+    // 1. Distance from departure airport reference point to first recorded point
+    if (
+      depAirport &&
+      typeof depAirport.latitude === 'number' &&
+      typeof depAirport.longitude === 'number' &&
+      isFinite(depAirport.latitude) &&
+      isFinite(depAirport.longitude)
+    ) {
+      totalNm += calculateDistanceNm(
+        depAirport.latitude,
+        depAirport.longitude,
+        firstPoint.latitude,
+        firstPoint.longitude
+      );
+    }
+
+    // 2. Cumulative distance between all consecutive recorded telemetry points
+    for (let i = 0; i < validPoints.length - 1; i++) {
+      totalNm += calculateDistanceNm(
+        validPoints[i].latitude,
+        validPoints[i].longitude,
+        validPoints[i + 1].latitude,
+        validPoints[i + 1].longitude
+      );
+    }
+
+    // 3. Distance from last recorded point to arrival airport reference point
+    if (
+      arrAirport &&
+      typeof arrAirport.latitude === 'number' &&
+      typeof arrAirport.longitude === 'number' &&
+      isFinite(arrAirport.latitude) &&
+      isFinite(arrAirport.longitude)
+    ) {
+      totalNm += calculateDistanceNm(
+        lastPoint.latitude,
+        lastPoint.longitude,
+        arrAirport.latitude,
+        arrAirport.longitude
+      );
+    }
+  } else if (
+    depAirport &&
+    arrAirport &&
+    typeof depAirport.latitude === 'number' &&
+    typeof depAirport.longitude === 'number' &&
+    typeof arrAirport.latitude === 'number' &&
+    typeof arrAirport.longitude === 'number' &&
+    isFinite(depAirport.latitude) &&
+    isFinite(depAirport.longitude) &&
+    isFinite(arrAirport.latitude) &&
+    isFinite(arrAirport.longitude)
+  ) {
+    // If no telemetry points were recorded, calculate straight line between dep and arr airports
+    totalNm = calculateDistanceNm(
+      depAirport.latitude,
+      depAirport.longitude,
+      arrAirport.latitude,
+      arrAirport.longitude
+    );
+  }
+
+  return Number(totalNm.toFixed(1));
 }
 
 export function triggerFileDownload(content: string, filename: string, mimeType: string) {
@@ -312,12 +402,27 @@ export const computeVisitedCountries = (
   };
 
   flights.forEach((fl) => {
-    const depCountry = getAirportCountry(fl.departureIcao);
-    const arrCountry = getAirportCountry(fl.arrivalIcao);
+    // Collect unique countries visited across departure, touchdowns, and arrival for THIS flight
+    const flightCountries = new Map<string, { isoA2: string; name: string }>();
+    if (fl.departureIcao) {
+      const depCountry = getAirportCountry(fl.departureIcao);
+      if (depCountry) flightCountries.set(depCountry.isoA2, depCountry);
+    }
+    if (fl.arrivalIcao) {
+      const arrCountry = getAirportCountry(fl.arrivalIcao);
+      if (arrCountry) flightCountries.set(arrCountry.isoA2, arrCountry);
+    }
+    if (fl.touchdowns) {
+      for (const td of fl.touchdowns) {
+        if (td.airportIcao) {
+          const tdCountry = getAirportCountry(td.airportIcao);
+          if (tdCountry) flightCountries.set(tdCountry.isoA2, tdCountry);
+        }
+      }
+    }
     const flightTime = fl.endTime || fl.startTime;
 
-    [depCountry, arrCountry].forEach((country) => {
-      if (!country) return;
+    for (const country of flightCountries.values()) {
       const existing = countryMap.get(country.isoA2);
       if (existing) {
         existing.flightCount += 1;
@@ -336,7 +441,7 @@ export const computeVisitedCountries = (
           flightCount: 1,
         });
       }
-    });
+    }
   });
 
   return Array.from(countryMap.values()).sort((a, b) => b.flightCount - a.flightCount);
@@ -349,9 +454,10 @@ export interface FlightState {
   flights: FlightRecord[];
   visitedAirports: VisitedAirport[];
   visitedCountries: VisitedCountry[];
+  savedRoutes: SavedRoute[];
   selectedFlightId: string | null;
   scrubbedTelemetryIndex: number | null;
-  activeView: 'dashboard' | 'new-route' | 'logbook' | 'flight-detail' | 'visited' | 'ifr-trainer' | 'hold-trainer' | 'settings';
+  activeView: 'dashboard' | 'new-route' | 'saved-routes' | 'logbook' | 'flight-detail' | 'visited' | 'ifr-trainer' | 'hold-trainer' | 'settings';
   theme: 'light' | 'dark';
   dbInitialized: boolean;
   airportsCount: number;
@@ -365,6 +471,11 @@ export interface FlightState {
 
   // Actions
   initFromDatabase: () => Promise<void>;
+  fetchSavedRoutes: () => Promise<SavedRoute[]>;
+  saveRoute: (route: Partial<SavedRoute> & { departureIcao: string; arrivalIcao: string }) => Promise<SavedRoute | null>;
+  toggleRouteFavorite: (id: string) => Promise<boolean>;
+  updateRouteStatus: (id: string, status: 'draft' | 'flown', linkedFlightId?: string) => Promise<void>;
+  deleteSavedRoute: (id: string) => Promise<void>;
   loadFlightDetails: (id: string) => Promise<FlightRecord | null>;
   fetchAirportsCount: () => Promise<void>;
   fetchNearestAirport: (lat: number, lon: number, radiusNm?: number) => Promise<Airport | null>;
@@ -427,6 +538,71 @@ async function flushTelemetryBuffer() {
   await safeInvoke('save_telemetry_batch', { points: toSend });
 }
 
+function hydrateSavedRoute(r: any): SavedRoute {
+  let sectors: any[] = [];
+  try {
+    sectors = JSON.parse(r.sectorsJson || '[]');
+  } catch {}
+  return {
+    ...r,
+    sectors: Array.isArray(sectors) ? sectors : [],
+  };
+}
+
+async function checkAndMarkFlownSavedRoutes(
+  completedFlight: FlightRecord,
+  savedRoutes: SavedRoute[],
+  updateRouteStatus: (id: string, status: 'draft' | 'flown', linkedFlightId?: string) => Promise<void>
+) {
+  const dep = (completedFlight.departureIcao || '').toUpperCase().trim();
+  const arr = (completedFlight.arrivalIcao || '').toUpperCase().trim();
+  if (!dep || !arr || dep === 'ZZZZ' || arr === 'ZZZZ') return;
+
+  // Collect distinct touchdown ICAOs in sequence
+  const tdIcaos: string[] = [];
+  if (completedFlight.touchdowns) {
+    for (const td of completedFlight.touchdowns) {
+      if (td.airportIcao) {
+        const icao = td.airportIcao.toUpperCase().trim();
+        if (tdIcaos.length === 0 || tdIcaos[tdIcaos.length - 1] !== icao) {
+          tdIcaos.push(icao);
+        }
+      }
+    }
+  }
+
+  for (const sr of savedRoutes) {
+    if (sr.status === 'flown') continue;
+    const srDep = (sr.departureIcao || '').toUpperCase().trim();
+    const srArr = (sr.arrivalIcao || '').toUpperCase().trim();
+
+    if (srDep !== dep || srArr !== arr) continue;
+
+    let intermediates: string[] = [];
+    try {
+      intermediates = JSON.parse(sr.intermediateIcaos || '[]');
+    } catch {
+      intermediates = [];
+    }
+
+    if (intermediates.length === 0) {
+      // Single sector route: dep & arr match
+      await updateRouteStatus(sr.id, 'flown', completedFlight.id);
+    } else {
+      // Multi sector route: all intermediate airports must have landed in sequence
+      let intermediateIdx = 0;
+      for (const td of tdIcaos) {
+        if (intermediateIdx < intermediates.length && td === intermediates[intermediateIdx].toUpperCase().trim()) {
+          intermediateIdx++;
+        }
+      }
+      if (intermediateIdx === intermediates.length) {
+        await updateRouteStatus(sr.id, 'flown', completedFlight.id);
+      }
+    }
+  }
+}
+
 export const useFlightStore = create<FlightState>()(
   persist(
     (set, get) => ({
@@ -436,6 +612,7 @@ export const useFlightStore = create<FlightState>()(
       flights: [],
       visitedAirports: [],
       visitedCountries: [],
+      savedRoutes: [],
       selectedFlightId: null,
       scrubbedTelemetryIndex: null,
       activeView: 'dashboard',
@@ -539,6 +716,13 @@ export const useFlightStore = create<FlightState>()(
             if (initialId) {
               get().loadFlightDetails(initialId);
             }
+            // Auto-heal any legacy flights with 0 distance in the background
+            const needsHealing = dbFlights.filter((f) => !f.distanceFlownNm || f.distanceFlownNm <= 0);
+            for (const f of needsHealing) {
+              if (f.id !== initialId) {
+                get().loadFlightDetails(f.id);
+              }
+            }
           }
 
           if (dbStats?.visitedAirports) {
@@ -547,10 +731,122 @@ export const useFlightStore = create<FlightState>()(
               visitedCountries: dbStats.visitedCountries || computeVisitedCountries(get().flights, dbStats.visitedAirports),
             });
           }
+          await get().fetchSavedRoutes();
           set({ dbInitialized: true });
         } catch (err) {
           console.warn('[flightStore] Could not load from SQLite backend, using local store:', err);
         }
+      },
+
+      fetchSavedRoutes: async () => {
+        try {
+          const list = await safeInvoke<SavedRoute[]>('get_saved_routes');
+          if (list && Array.isArray(list)) {
+            const hydrated = list.map(hydrateSavedRoute);
+            set({ savedRoutes: hydrated });
+            return hydrated;
+          }
+        } catch (err) {
+          console.warn('[flightStore] Failed to fetch saved routes:', err);
+        }
+        return get().savedRoutes;
+      },
+
+      saveRoute: async (routeInput) => {
+        // If an id was provided, check if it exists; otherwise check if an identical route is already saved
+        const existing = get().savedRoutes.find((r) => {
+          if (routeInput.id && r.id === routeInput.id) return true;
+          return (
+            r.departureIcao === routeInput.departureIcao &&
+            r.arrivalIcao === routeInput.arrivalIcao &&
+            r.aircraftCategory === routeInput.aircraftCategory &&
+            r.totalDistanceNm === routeInput.totalDistanceNm &&
+            (routeInput.intermediateIcaos ? r.intermediateIcaos === routeInput.intermediateIcaos : true)
+          );
+        });
+
+        const id = routeInput.id || existing?.id || `route-${Date.now()}`;
+        const now = new Date().toISOString();
+        const fullRoute: SavedRoute = {
+          id,
+          name: routeInput.name || existing?.name || `${routeInput.departureIcao} ➔ ${routeInput.arrivalIcao}`,
+          departureIcao: routeInput.departureIcao,
+          arrivalIcao: routeInput.arrivalIcao,
+          intermediateIcaos: routeInput.intermediateIcaos || existing?.intermediateIcaos || '[]',
+          aircraftCategory: routeInput.aircraftCategory || existing?.aircraftCategory || 'A',
+          sectorsJson: routeInput.sectorsJson || existing?.sectorsJson || JSON.stringify(routeInput.sectors || []),
+          sectors: routeInput.sectors || existing?.sectors,
+          totalDistanceNm: routeInput.totalDistanceNm ?? existing?.totalDistanceNm ?? 0,
+          totalAirborneMinutes: routeInput.totalAirborneMinutes ?? existing?.totalAirborneMinutes ?? 0,
+          totalGroundMinutes: routeInput.totalGroundMinutes ?? existing?.totalGroundMinutes ?? 0,
+          totalDurationMinutes: routeInput.totalDurationMinutes ?? existing?.totalDurationMinutes ?? 0,
+          recommendedAltitudeFt: routeInput.recommendedAltitudeFt ?? existing?.recommendedAltitudeFt ?? null,
+          status: routeInput.status || existing?.status || 'draft',
+          isFavorite: routeInput.isFavorite !== undefined ? routeInput.isFavorite : (existing?.isFavorite ?? false),
+          linkedFlightId: routeInput.linkedFlightId ?? existing?.linkedFlightId ?? null,
+          createdAt: existing?.createdAt || routeInput.createdAt || now,
+          flownAt: routeInput.flownAt ?? existing?.flownAt ?? null,
+        };
+
+        try {
+          await safeInvoke('save_route', { route: fullRoute });
+        } catch (err) {
+          console.warn('[flightStore] Failed to save route to SQLite:', err);
+        }
+
+        const hydrated = hydrateSavedRoute(fullRoute);
+        set((state) => ({
+          savedRoutes: [hydrated, ...state.savedRoutes.filter((r) => r.id !== id)],
+        }));
+        return hydrated;
+      },
+
+      toggleRouteFavorite: async (id: string) => {
+        let newFav = false;
+        try {
+          const res = await safeInvoke<boolean>('toggle_route_favorite', { id });
+          if (typeof res === 'boolean') {
+            newFav = res;
+          } else {
+            const existing = get().savedRoutes.find((r) => r.id === id);
+            newFav = !existing?.isFavorite;
+          }
+        } catch {
+          const existing = get().savedRoutes.find((r) => r.id === id);
+          newFav = !existing?.isFavorite;
+        }
+
+        set((state) => ({
+          savedRoutes: state.savedRoutes.map((r) => (r.id === id ? { ...r, isFavorite: newFav } : r)),
+        }));
+        return newFav;
+      },
+
+      updateRouteStatus: async (id: string, status: 'draft' | 'flown', linkedFlightId?: string) => {
+        try {
+          await safeInvoke('update_route_status', { id, status, linkedFlightId });
+        } catch (err) {
+          console.warn('[flightStore] Failed to update route status in SQLite:', err);
+        }
+
+        const flownAt = status === 'flown' ? new Date().toISOString() : null;
+        set((state) => ({
+          savedRoutes: state.savedRoutes.map((r) =>
+            r.id === id ? { ...r, status, flownAt: flownAt ?? r.flownAt, linkedFlightId: linkedFlightId ?? r.linkedFlightId } : r
+          ),
+        }));
+      },
+
+      deleteSavedRoute: async (id: string) => {
+        try {
+          await safeInvoke('delete_saved_route', { id });
+        } catch (err) {
+          console.warn('[flightStore] Failed to delete route from SQLite:', err);
+        }
+
+        set((state) => ({
+          savedRoutes: state.savedRoutes.filter((r) => r.id !== id),
+        }));
       },
 
       loadFlightDetails: async (id: string) => {
@@ -558,8 +854,22 @@ export const useFlightStore = create<FlightState>()(
         const currentFlights = get().flights;
         const existing = currentFlights.find((f) => f.id === id);
 
-        // If telemetry points are already cached in memory, return immediately
+        // If telemetry points are already cached in memory, check if distance needs solving
         if (existing && existing.telemetryPoints && existing.telemetryPoints.length > 0) {
+          if (!existing.distanceFlownNm || existing.distanceFlownNm <= 0) {
+            const depApt = await resolveAirport(existing.departureIcao);
+            const arrApt = await resolveAirport(existing.arrivalIcao);
+            const solved = calculateRecordedFlightDistance(existing.telemetryPoints, depApt, arrApt);
+            if (solved > 0) {
+              const healed = { ...existing, distanceFlownNm: solved };
+              set((state) => ({
+                flights: state.flights.map((f) => (f.id === id ? healed : f)),
+                activeFlight: state.activeFlight?.id === id ? { ...state.activeFlight, distanceFlownNm: solved } : state.activeFlight,
+              }));
+              safeInvoke('save_flight', { flight: healed }).catch(() => {});
+              return healed;
+            }
+          }
           return existing;
         }
 
@@ -572,17 +882,30 @@ export const useFlightStore = create<FlightState>()(
 
           if (details && details.flight) {
             const pts = details.telemetryPoints || [];
+            let distance = details.flight.distanceFlownNm || 0;
+            if (distance <= 0) {
+              const depApt = await resolveAirport(details.flight.departureIcao);
+              const arrApt = await resolveAirport(details.flight.arrivalIcao);
+              distance = calculateRecordedFlightDistance(pts, depApt, arrApt);
+            }
+
             const updatedFlight: FlightRecord = {
               ...details.flight,
+              distanceFlownNm: distance,
               telemetryPoints: pts,
               touchdowns: details.flight.touchdowns || existing?.touchdowns,
             };
 
             set((state) => ({
               flights: state.flights.map((f) => (f.id === id ? { ...f, ...updatedFlight } : f)),
-              activeFlight: state.activeFlight?.id === id ? { ...state.activeFlight, telemetryPoints: pts } : state.activeFlight,
+              activeFlight: state.activeFlight?.id === id ? { ...state.activeFlight, distanceFlownNm: distance, telemetryPoints: pts } : state.activeFlight,
               isLoadingFlightDetails: false,
             }));
+
+            if (distance > 0 && (!details.flight.distanceFlownNm || details.flight.distanceFlownNm <= 0)) {
+              safeInvoke('save_flight', { flight: updatedFlight }).catch(() => {});
+            }
+
             return updatedFlight;
           }
         } catch (err) {
@@ -785,6 +1108,20 @@ export const useFlightStore = create<FlightState>()(
                 ? current.verticalSpeed
                 : (prev && prev.verticalSpeed !== undefined && prev.verticalSpeed < 0 ? prev.verticalSpeed : -140);
 
+              let tdIcao: string | undefined = undefined;
+              let tdName: string | undefined = undefined;
+              try {
+                const nearApt = await safeInvoke<Airport>('search_airports_near', {
+                  lat: current.latitude,
+                  lon: current.longitude,
+                  radiusNm: 3.0,
+                });
+                if (nearApt) {
+                  tdIcao = nearApt.icao;
+                  tdName = nearApt.name;
+                }
+              } catch {}
+
               currentTouchdowns.push({
                 timestamp: current.timestamp || new Date().toISOString(),
                 verticalSpeedFpm: Math.round(vsAtTouchdown),
@@ -795,6 +1132,8 @@ export const useFlightStore = create<FlightState>()(
                 longitude: current.longitude,
                 altitudeMsl: Math.round(current.altitudeMsl),
                 gForce: calculateTouchdownGForce(vsAtTouchdown),
+                airportIcao: tdIcao,
+                airportName: tdName,
               });
             }
           }
@@ -834,6 +1173,14 @@ export const useFlightStore = create<FlightState>()(
                 arrIcao = arrApt.icao;
               }
 
+              const [depApt, resolvedArrApt] = await Promise.all([
+                resolveAirport(active.departureIcao),
+                arrApt ? Promise.resolve(arrApt) : resolveAirport(arrIcao),
+              ]);
+
+              const allPoints = [...active.telemetryPoints, newPoint];
+              const totalDistanceNm = calculateRecordedFlightDistance(allPoints, depApt, resolvedArrApt);
+
               const avgLandingRate = computeAverageTouchdownRate(currentTouchdowns, current.verticalSpeed);
 
               const completedFlight: FlightRecord = {
@@ -846,25 +1193,36 @@ export const useFlightStore = create<FlightState>()(
                 flightTimeSeconds: active.flightTimeSeconds + 1,
                 maxAltitude: Math.max(active.maxAltitude, Math.round(current.altitudeMsl)),
                 maxGroundSpeed: Math.max(active.maxGroundSpeed, Math.round(current.groundSpeed)),
-                distanceFlownNm: Number((active.distanceFlownNm + (isNaN(distInc) ? 0 : distInc)).toFixed(1)),
-                telemetryPoints: [...active.telemetryPoints, newPoint],
+                distanceFlownNm: totalDistanceNm,
+                telemetryPoints: allPoints,
               };
 
-              safeInvoke('save_flight', { flight: completedFlight });
               flushTelemetryBuffer();
+              safeInvoke('save_flight', { flight: completedFlight });
 
-              if (arrApt) {
-                get().addVisitedAirport({
-                  icao: arrApt.icao,
-                  name: arrApt.name,
-                  countryCode: arrApt.countryCode,
-                  countryName: arrApt.countryName || arrApt.country,
-                  latitude: arrApt.latitude || arrApt.lat,
-                  longitude: arrApt.longitude || arrApt.lon,
-                  firstVisited: new Date().toISOString(),
-                  lastVisited: new Date().toISOString(),
-                  visitCount: 1,
-                });
+              // Record unique airports visited on this flight
+              const uniqueAirportIcaos = new Set<string>();
+              if (depApt) uniqueAirportIcaos.add(depApt.icao);
+              if (resolvedArrApt) uniqueAirportIcaos.add(resolvedArrApt.icao);
+              for (const td of currentTouchdowns) {
+                if (td.airportIcao) uniqueAirportIcaos.add(td.airportIcao);
+              }
+
+              for (const icao of uniqueAirportIcaos) {
+                const aptToRecord = (depApt && depApt.icao === icao) ? depApt : (resolvedArrApt && resolvedArrApt.icao === icao) ? resolvedArrApt : null;
+                if (aptToRecord) {
+                  get().addVisitedAirport({
+                    icao: aptToRecord.icao,
+                    name: aptToRecord.name,
+                    countryCode: aptToRecord.countryCode,
+                    countryName: aptToRecord.countryName || (aptToRecord as any).country,
+                    latitude: aptToRecord.latitude || (aptToRecord as any).lat,
+                    longitude: aptToRecord.longitude || (aptToRecord as any).lon,
+                    firstVisited: new Date().toISOString(),
+                    lastVisited: new Date().toISOString(),
+                    visitCount: 1,
+                  });
+                }
               }
 
               const updatedFlights = [completedFlight, ...flights.filter((f) => f.id !== completedFlight.id)];
@@ -877,6 +1235,7 @@ export const useFlightStore = create<FlightState>()(
                 showEndFlightPrompt: false,
                 visitedCountries: computeVisitedCountries(updatedFlights, get().visitedAirports),
               });
+              checkAndMarkFlownSavedRoutes(completedFlight, get().savedRoutes, get().updateRouteStatus);
               return;
             }
           }
@@ -938,6 +1297,14 @@ export const useFlightStore = create<FlightState>()(
           }
         }
 
+        const [depApt, resolvedArrApt] = await Promise.all([
+          resolveAirport(activeFlight.departureIcao),
+          resolveAirport(arrIcao),
+        ]);
+
+        const allPoints = activeFlight.telemetryPoints || [];
+        const totalDistanceNm = calculateRecordedFlightDistance(allPoints, depApt, resolvedArrApt);
+
         const tds = activeFlight.touchdowns || [];
         const avgLandingRate = computeAverageTouchdownRate(tds, currentTelemetry.verticalSpeed);
 
@@ -948,11 +1315,37 @@ export const useFlightStore = create<FlightState>()(
           status: 'COMPLETED',
           landingRateFpm: avgLandingRate,
           touchdowns: tds,
+          distanceFlownNm: totalDistanceNm,
         };
 
-        safeInvoke('save_flight', { flight: completedFlight });
         flushTelemetryBuffer();
+        safeInvoke('save_flight', { flight: completedFlight });
         stoppedSinceTimestamp = null;
+
+        // Record unique airports visited on this flight
+        const uniqueAirportIcaos = new Set<string>();
+        if (depApt) uniqueAirportIcaos.add(depApt.icao);
+        if (resolvedArrApt) uniqueAirportIcaos.add(resolvedArrApt.icao);
+        for (const td of tds) {
+          if (td.airportIcao) uniqueAirportIcaos.add(td.airportIcao);
+        }
+
+        for (const icao of uniqueAirportIcaos) {
+          const aptToRecord = (depApt && depApt.icao === icao) ? depApt : (resolvedArrApt && resolvedArrApt.icao === icao) ? resolvedArrApt : null;
+          if (aptToRecord) {
+            get().addVisitedAirport({
+              icao: aptToRecord.icao,
+              name: aptToRecord.name,
+              countryCode: aptToRecord.countryCode,
+              countryName: aptToRecord.countryName || (aptToRecord as any).country,
+              latitude: aptToRecord.latitude || (aptToRecord as any).lat,
+              longitude: aptToRecord.longitude || (aptToRecord as any).lon,
+              firstVisited: new Date().toISOString(),
+              lastVisited: new Date().toISOString(),
+              visitCount: 1,
+            });
+          }
+        }
 
         const updatedFlights = [completedFlight, ...flights.filter((f) => f.id !== completedFlight.id)];
         set({
@@ -963,6 +1356,7 @@ export const useFlightStore = create<FlightState>()(
           showEndFlightPrompt: false,
           visitedCountries: computeVisitedCountries(updatedFlights, visitedAirports),
         });
+        checkAndMarkFlownSavedRoutes(completedFlight, get().savedRoutes, get().updateRouteStatus);
       },
 
       deleteFlight: async (id) => {

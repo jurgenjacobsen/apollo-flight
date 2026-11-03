@@ -37,7 +37,7 @@ interface ExportMenuState {
 }
 
 export const LogbookView: React.FC = () => {
-  const { flights, setSelectedFlightId, setActiveView, deleteFlight, exportFlight, exportLogbook } = useFlightStore();
+  const { flights, setSelectedFlightId, setActiveView, deleteFlight, exportFlight, exportLogbook, loadFlightDetails } = useFlightStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [exportMenu, setExportMenu] = useState<ExportMenuState | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -46,6 +46,17 @@ export const LogbookView: React.FC = () => {
   const [exportScope, setExportScope] = useState<'all' | 'filtered'>('all');
   const menuRef = useRef<HTMLDivElement>(null);
   const logbookMenuRef = useRef<HTMLDivElement>(null);
+  const attemptedHealingRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    // Auto-heal legacy flights with missing/0 distance
+    flights.forEach((f) => {
+      if ((!f.distanceFlownNm || f.distanceFlownNm <= 0) && !attemptedHealingRef.current.has(f.id)) {
+        attemptedHealingRef.current.add(f.id);
+        loadFlightDetails(f.id);
+      }
+    });
+  }, [flights, loadFlightDetails]);
 
   const filteredFlights = flights.filter(f => 
     f.departureIcao.toLowerCase().includes(searchTerm.toLowerCase()) ||
