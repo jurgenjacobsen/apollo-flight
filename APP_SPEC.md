@@ -14,6 +14,7 @@
 - **Async Runtime:** `tokio` for background FSUIPC polling and non-blocking database flushing.
 - **Serialization:** `serde`, `serde_json` for crossing the Tauri IPC bridge.
 - **Native OS Dialogs:** Native Explorer save dialogs for multi-format flight track exports.
+- **Backward Compatibility:** All system updates accommodate older app versions and databases via non-destructive migrations, graceful payload degradation, and automated legacy data backfills.
 
 ### Frontend (Desktop UI)
 - **Framework:** React 19 + TypeScript + Vite
@@ -151,10 +152,24 @@ The Rust backend exposes the following IPC commands registered in `tauri::genera
 * `get_flight_details(flight_id: String) -> Result<FlightDetails, String>`: Lazily fetches a flight with its complete array of `flight_telemetry` coordinates and touchdown events for detailed profile and map rendering.
 * `delete_flight(flight_id: String) -> Result<(), String>`: Deletes a flight and cascades associated telemetry points.
 * `export_flight(flight_id: String, format: String) -> Result<String, String>`: Generates and returns a GPX, KML, GeoJSON, or CSV formatted track. Prompts user via native OS Explorer save dialog.
+* `export_logbook(format: String) -> Result<String, String>`: Exports the complete flight logbook (flight summary details without raw telemetry) in CSV or JSON format.
 * `search_airports_near(lat: f64, lon: f64, radius_nm: f64) -> Result<Option<Airport>, String>`: Queries embedded `airports` table for the nearest aerodrome within `radius_nm` (default 3.0 NM).
 * `get_visited_stats() -> Result<VisitedStats, String>`: Returns aggregated visited airport and country counts directly from SQLite.
 * `get_airports_count() -> Result<i64, String>`: Returns total number of indexed aerodromes in the SQLite `airports` database.
 * `sync_ourairports() -> Result<OurAirportsSyncResult, String>`: Downloads and indexes the latest global dataset from OurAirports (86,000+ aerodromes, runway surfaces, lengths, and country metadata).
+
+### Backward Compatibility & Database Migration Policy
+All future application and system updates must accommodate older application versions and existing user databases (`aerotrack.db`):
+1. **Non-Destructive Database Schema Evolution:**
+   - Any database modifications must be non-destructive. Never drop or rename existing tables or columns without backward-compatible fallback aliases.
+   - Use idempotent schema migrations (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN`, `CREATE INDEX IF NOT EXISTS`) with default column values so legacy databases upgrade smoothly without manual intervention or data loss.
+2. **Automated Legacy Data Backfill & Self-Healing:**
+   - When new derived metrics, indices, or calculated fields are introduced (e.g. solved flight distances, touchdown physics, or visited statistics), database initialization must execute self-healing reconciliation queries to backfill legacy records where those fields were previously missing or zeroed.
+3. **Graceful IPC & Payload Degradation:**
+   - The Tauri IPC bridge and TypeScript state models must remain tolerant of missing, null, or newly added fields.
+   - Data serializers and deserializers (`serde`, `JSON.parse`) must use optional types (`Option<T>`, `?`), default fallbacks, and null-coalescing operators so an updated client running against an older database (or an older client encountering new fields) operates without runtime crashes.
+4. **Updater Package & Signature Compatibility:**
+   - The auto-updater packaging pipeline must maintain artifact compatibility with previously installed client versions (e.g. `createUpdaterArtifacts: true`), ensuring older app installs can reliably discover, verify signatures for, and apply incoming release updates.
 
 ---
 
@@ -281,10 +296,20 @@ Six standardized ICAO aircraft categories with realistic performance envelopes:
 
 #### 2. Route Constraints & Multi-Sector Engine
 - **Sector Count:** Configurable from 1 to 6 consecutive legs with optional ground turnaround / taxi times.
-- **Limitation Modes:** Switch between limiting by **Total Flight** or **Per-Sector** for both Duration (15 min min to 12 hrs max) and Distance (20 NM to 8,000 NM).
+- **Limitation Modes:** Switch between limiting by **Total Flight** or **Per-Sector** for both Duration (15 min to 12 hrs) and Distance (20 NM to 8,000 NM).
+  - When limiting by duration with ground time enabled, taxi times are deducted from the flight time budget so that individual sectors do not exceed the user's selected limit.
+- **Corridor & Destination Routing Architecture:**
+  - **Destination-Locked Routing (Backwards Generation):** When an arrival airport is locked without a fixed origin, the engine generates legs backwards starting from the destination aerodrome. Every preceding sector is constrained within `[minSectorDist, maxSectorDist]`, ensuring the route terminates realistically at the destination without oversized final sectors.
+  - **Fixed Origin & Destination (Corridor Guidance):** When both departure and arrival are fixed, the algorithm verifies that the direct distance does not exceed the maximum cumulative capability ($N \times \text{maxSectorDist}$) and guides intermediate waypoints along the Great Circle corridor.
 - **Altitude & Flight Level Rules:**
   - Semi-circular cruising levels (Eastbound odd thousands, Westbound even thousands).
   - Short-hop parabolic climb/descent scaling when sector distance is shorter than unconstrained climb-to-descent distance.
+  - **Corridor Terrain-Aware Clamping (MSA / Grid MORA):**
+    - 10 NM cross-track buffer queries major worldwide mountain massifs and topography.
+    - **Mountainous Terrain Definition:** Classified as mountainous when terrain variation within 10 NM is $\ge 3,000\text{ ft}$ (ICAO PANS-OPS / FAA standard).
+    - **Altitude Clearance Margins:** 1,000 ft clearance margin in non-mountainous terrain; 2,000 ft clearance margin in mountainous terrain.
+    - **Flight Level & Altitude Formatting:** Altitudes $\le 3,000\text{ ft}$ are shown in feet (e.g. `2,500 ft`); altitudes $> 3,000\text{ ft}$ are formatted as 3-digit zero-padded flight levels (e.g. `FL060` for 6,000 ft, `FL100` for 10,000 ft, `FL600` for 60,000 ft).
+    - Recommended cruising altitude uses the category typical altitude as a baseline starting point (not a rigid ceiling cap) and is safely elevated to clear highest terrain peaks while complying with semi-circular IFR rules. Mountainous terrain advisories are issued specifically when traversing mountainous terrain.
 
 #### 3. Airport Filter Engine with Collapsible Accordions
 - Smooth animated collapsible sections (`Chevron` toggle with CSS transition).
@@ -353,7 +378,54 @@ Six standardized ICAO aircraft categories with realistic performance envelopes:
 - [x] Render interactive great-circle route map with bearing indicators and clipboard briefing export.
 - [x] Replace native `<select>` dropdowns across the application with custom accessible `Select` component.
 
-### Phase 7: Future Architectural Enhancements
-- [ ] Implement corridor terrain-aware minimum safe altitude (MSA / Grid MORA) query to clamp cruising flight levels over mountainous terrain.
+### Phase 7: Architectural Enhancements
+- [x] Implement corridor terrain-aware minimum safe altitude (MSA / Grid MORA) query to clamp cruising flight levels over mountainous terrain.
+- [x] Add distance calculation for recorded flights solving the distance by the distance between recorded points and the dep/arr airports instead of solely using the dep/arr airports.
+    - [x] Make this distance (total) be calculated when the flight recording is saved, instead of solving this calc everytime the page is loaded, avoiding complex calculations on runtime.
+
+- [x] Add the possibility for the user to choose a polygon OR circle area in the map with the radius or size they want where the search route algorhythm will search for airfields.
+    - [x] This selector will be place in the section "4. Region or Country" of the search menu.
+
+### Phase 8: Route List
+This feature will allow users to save routes flown and the ones they want to fly, with a "favorite" option to tag their favorite ones.
+Currently when using the "new route" page/feature the users has the option to copy the flight briefing with all the details or to "Fly this route" 
+which will automatically start running that route and the recording of the flight, even when they don't have the FSUIPC bridge or MSFS running.
+
+The fix to this will be a rework and addition of a complemental feature:
+
+- [x] In the "New Route" page after the user has searched for a new route / flight, they will have the following options:
+    - [x] Copy - Which will maintain the current feature of copying the flight briefing;
+    - [x] Draft - Which will save this flight as a draft for the next explained feature;
+    - [x] Favorite ( which will only be a heart button ) - Which will already save the flight as a draft (same as the earlier feature) but will already tag that saved flight as a favorite one;
+- [x] A new sub-page will be create with a list view of all saved flights;
+    - [x] It shall have all the saved flight details:
+        - [x] Totals: Distance, Airborne flight time, Block time, Recommended altitude;
+        - [x] Aircraft category chosen for the flight and calculations;
+        - [x] If the flight is of one sector only, display departure and arrival airports;
+        - [x] If the flight has multiple sectors, each listed flight should have a dropdown drawer with a inside list of each sector with its own details such as the details on the "New Route" page;
+    - [x] Each listed flight will have three action buttons:
+        - [x] Fly - Which will only available and not disabled, if the user is connected to FSUIPC & MSFS, and the app detects that the user is within a reasonable distance (e.g 25 NM) from the first departure airport.
+        - [x] Favorite - Will toggle the flight from the favorite or not tag;
+        - [x] Delete - Will remove the flight from the saved list;
+    - [x] Each listed flight will have a stored status which will tell if the flight is:
+        - [x] Draft - The user only saved it for later but hasn't flown it;
+        - [x] Flown - The user has flown that route/saved flight already;
+    - [x] The saved flight will be considered "FLOWN" if (it should meet some of the conditions below):
+        - [x] The user clicked on the "Fly" action button, meeting all listed criterias to started, and that initiated flight has been completed to the final destination planned on that saved flight;
+        - [x] After the flight has been saved/drafted, the user has executed a flight (which was recorded into the logbook) and that flight meets the departure and arrival airports.
+            - [x] If that flight includes more than one segment and more than one airport, the user should have executed a touch and go OR full stop landing and then a take-off from those airports in between the first and last airport.
+            - [x] For this feature to fully work, make sure you can resolve the touchdowns of a recorded flight, being aware where each touchdown during a recorded flight was executed.
+    - [x] After a saved flight was "Flown" as marked as such, the user should have the possibility to "Draft" the same flight again, without unfavoritizing the flight, doing so for them to re-execute that flight if they really liked it.
+- [x] Fixes that should be made for the "Visited destinations" feature:
+    - [x] User visits should be accounted by each recorded flight when that airport was the depature, arrival or enroute visit (such as a touch-and-go or a full-stop landing and take-off) all during the same flight.
+        - [x] Currently visits are being counted for each take-off or touchdown made, even if the airport is the same;
+        - [x] If a flight departed and landed in the same airport, that should count as one visit.
+        - [x] Multiple touch-and-go's or landing and take-off or any sort of touchdowns during the same flight, should NOT be considered multiple visits or multiple operations.
+    - [x] The number of operations per country shouldn't also be considered multiple if the dep/arr of a recorded flight are both the same. Only consider in that case 1 operation.
+
+### Phase 9: Responsiveness & UI Improvements
+- [ ] Currently the UI is not responsive through smaller screen/window sizes;
+
+### Phase 99: Eventual Changes (not planned in short future)
 - [ ] Abstract database repository layer using Rust traits (`FlightRepository`).
 - [ ] Plan JWT auth / Supabase / PostgreSQL schema alignment so local SQLite syncs transparently to remote backend.
