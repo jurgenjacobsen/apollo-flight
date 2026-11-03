@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useFlightStore } from '../store/flightStore';
-import { ExportFormat, FlightRecord } from '../types/flight';
+import { ExportFormat, FlightRecord, LogbookExportFormat } from '../types/flight';
 import { 
   BookOpen, 
   Search, 
@@ -22,7 +22,8 @@ import {
   Check,
   Globe,
   Navigation,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileJson
 } from 'lucide-react';
 
 interface ExportMenuState {
@@ -36,11 +37,15 @@ interface ExportMenuState {
 }
 
 export const LogbookView: React.FC = () => {
-  const { flights, setSelectedFlightId, setActiveView, deleteFlight, exportFlight } = useFlightStore();
+  const { flights, setSelectedFlightId, setActiveView, deleteFlight, exportFlight, exportLogbook } = useFlightStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [exportMenu, setExportMenu] = useState<ExportMenuState | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isLogbookExportOpen, setIsLogbookExportOpen] = useState(false);
+  const [logbookExportSuccess, setLogbookExportSuccess] = useState<string | null>(null);
+  const [exportScope, setExportScope] = useState<'all' | 'filtered'>('all');
   const menuRef = useRef<HTMLDivElement>(null);
+  const logbookMenuRef = useRef<HTMLDivElement>(null);
 
   const filteredFlights = flights.filter(f => 
     f.departureIcao.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -121,6 +126,41 @@ export const LogbookView: React.FC = () => {
     }
   };
 
+  const isFiltered = searchTerm.trim().length > 0 && filteredFlights.length !== flights.length;
+
+  const handleExportLogbookAction = async (format: LogbookExportFormat) => {
+    const chosenFlights = isFiltered && exportScope === 'filtered' ? filteredFlights : flights;
+    setIsLogbookExportOpen(false);
+    const result = await exportLogbook(format, chosenFlights);
+    if (result) {
+      setLogbookExportSuccess(`${format.toUpperCase()} Exported!`);
+      setTimeout(() => setLogbookExportSuccess(null), 2500);
+    }
+  };
+
+  useEffect(() => {
+    if (!isLogbookExportOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (logbookMenuRef.current && !logbookMenuRef.current.contains(e.target as Node)) {
+        setIsLogbookExportOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsLogbookExportOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isLogbookExportOpen]);
+
   useEffect(() => {
     if (!exportMenu) return;
 
@@ -158,15 +198,141 @@ export const LogbookView: React.FC = () => {
           </p>
         </div>
 
-        <div className="relative w-full md:w-72">
-          <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="Filter ICAO, aircraft..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full h-8 bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm pl-9 pr-3 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-600 focus-visible:outline-none focus-visible:border-neutral-400 transition-colors"
-          />
+        <div className="flex items-center gap-2.5 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Filter ICAO, aircraft..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-8 bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm pl-9 pr-3 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-600 focus-visible:outline-none focus-visible:border-neutral-400 transition-colors"
+            />
+          </div>
+
+          {/* Export Logbook Dropdown */}
+          <div className="relative shrink-0" ref={logbookMenuRef}>
+            <button
+              onClick={() => setIsLogbookExportOpen(!isLogbookExportOpen)}
+              disabled={flights.length === 0}
+              title={flights.length === 0 ? 'No flights to export' : 'Export logbook flight records (CSV / JSON)'}
+              className={`h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border transition-colors duration-150 select-none ${
+                flights.length === 0
+                  ? 'opacity-50 cursor-not-allowed bg-neutral-100 dark:bg-[#181818] border-neutral-200 dark:border-geist-hairline text-neutral-400'
+                  : isLogbookExportOpen
+                  ? 'bg-neutral-200 dark:bg-[#282828] text-neutral-900 dark:text-white border-neutral-300 dark:border-neutral-600'
+                  : 'bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-geist-hairline shadow-xs'
+              }`}
+            >
+              {logbookExportSuccess ? (
+                <Check className="w-3.5 h-3.5 text-emerald-500" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
+              )}
+              <span>{logbookExportSuccess || 'Export Logbook'}</span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-150 ${
+                  isLogbookExportOpen ? 'rotate-180 text-neutral-700 dark:text-neutral-200' : ''
+                }`}
+              />
+            </button>
+
+            {isLogbookExportOpen && (
+              <div
+                className="absolute right-0 mt-1 z-50 w-72 bg-white dark:bg-[#161616] border border-neutral-200 dark:border-[#2a2a2a] rounded-sm shadow-xl py-1 text-left text-neutral-900 dark:text-neutral-100 animate-in fade-in zoom-in-95 duration-100 select-none"
+              >
+                {/* Dropdown Header */}
+                <div className="px-3 py-2 border-b border-neutral-100 dark:border-[#222222]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                      Export Logbook
+                    </span>
+                    <span className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-[#202020] px-1.5 py-0.5 rounded">
+                      {isFiltered && exportScope === 'filtered' ? `${filteredFlights.length} of ${flights.length}` : `${flights.length} flights`}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Flight summary details without raw telemetry.
+                  </p>
+
+                  {/* Scope filter switch if search is active */}
+                  {isFiltered && (
+                    <div className="mt-2 flex items-center p-0.5 bg-neutral-100 dark:bg-[#202020] rounded text-[11px]">
+                      <button
+                        onClick={() => setExportScope('filtered')}
+                        className={`flex-1 py-1 rounded text-center font-medium transition-colors ${
+                          exportScope === 'filtered'
+                            ? 'bg-white dark:bg-[#2e2e2e] text-neutral-900 dark:text-white shadow-xs'
+                            : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
+                        }`}
+                      >
+                        Filtered ({filteredFlights.length})
+                      </button>
+                      <button
+                        onClick={() => setExportScope('all')}
+                        className={`flex-1 py-1 rounded text-center font-medium transition-colors ${
+                          exportScope === 'all'
+                            ? 'bg-white dark:bg-[#2e2e2e] text-neutral-900 dark:text-white shadow-xs'
+                            : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
+                        }`}
+                      >
+                        All ({flights.length})
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Export Format Options */}
+                <div className="p-1 space-y-0.5">
+                  {/* CSV */}
+                  <button
+                    onClick={() => handleExportLogbookAction('csv')}
+                    className="w-full px-2.5 py-2 rounded-sm text-left text-xs hover:bg-neutral-100 dark:hover:bg-[#222222] transition-colors flex items-center gap-2.5 group"
+                  >
+                    <div className="p-1.5 rounded-sm bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 shrink-0">
+                      <FileSpreadsheet className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                          CSV Spreadsheet
+                        </span>
+                        <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                          .CSV
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                        Table for Excel, Google Sheets, Numbers
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* JSON */}
+                  <button
+                    onClick={() => handleExportLogbookAction('json')}
+                    className="w-full px-2.5 py-2 rounded-sm text-left text-xs hover:bg-neutral-100 dark:hover:bg-[#222222] transition-colors flex items-center gap-2.5 group"
+                  >
+                    <div className="p-1.5 rounded-sm bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 shrink-0">
+                      <FileJson className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                          JSON Document
+                        </span>
+                        <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                          .JSON
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                        Structured records for backup & analysis
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

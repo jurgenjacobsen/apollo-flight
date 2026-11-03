@@ -1557,6 +1557,103 @@ pub fn export_flight_format(conn: &Connection, id: &str, format: &str) -> Result
     }
 }
 
+pub fn export_logbook_format(conn: &Connection, format: &str) -> Result<String, String> {
+    let flights = get_flights(conn).map_err(|e| e.to_string())?;
+
+    match format.to_lowercase().as_str() {
+        "csv" => {
+            let mut out = String::from(
+                "Flight ID,Departure ICAO,Arrival ICAO,Aircraft Type,Start Time (UTC),End Time (UTC),Duration (Seconds),Duration,Distance (NM),Max Altitude (ft),Peak Ground Speed (kt),Landing Rate (fpm),Status\r\n",
+            );
+            for f in flights {
+                let mins = (f.flight_time_seconds + 30) / 60;
+                let hrs = mins / 60;
+                let rem_mins = mins % 60;
+                let duration_fmt = format!("{}h {:02}m", hrs, rem_mins);
+
+                let escape_csv = |val: &str| -> String {
+                    if val.contains(',') || val.contains('"') || val.contains('\n') || val.contains('\r') {
+                        format!("\"{}\"", val.replace('"', "\"\""))
+                    } else {
+                        val.to_string()
+                    }
+                };
+
+                out.push_str(&format!(
+                    "{},{},{},{},{},{},{},{},{:.1},{},{},{},{}\r\n",
+                    escape_csv(&f.id),
+                    escape_csv(f.departure_icao.as_deref().unwrap_or("")),
+                    escape_csv(f.arrival_icao.as_deref().unwrap_or("")),
+                    escape_csv(&f.aircraft_type),
+                    escape_csv(&f.start_time),
+                    escape_csv(f.end_time.as_deref().unwrap_or("")),
+                    f.flight_time_seconds,
+                    escape_csv(&duration_fmt),
+                    f.distance_flown_nm,
+                    f.max_altitude,
+                    f.max_ground_speed,
+                    f.landing_rate_fpm
+                        .map(|lr| format!("{:.0}", lr.round()))
+                        .unwrap_or_default(),
+                    escape_csv(&f.status)
+                ));
+            }
+            Ok(out)
+        }
+        "json" => {
+            #[derive(Serialize)]
+            #[serde(rename_all = "camelCase")]
+            struct LogbookFlightItem<'a> {
+                id: &'a str,
+                departure_icao: &'a str,
+                arrival_icao: &'a str,
+                aircraft_type: &'a str,
+                start_time: &'a str,
+                end_time: Option<&'a str>,
+                flight_time_seconds: i64,
+                flight_time_formatted: String,
+                distance_nm: f64,
+                max_altitude_ft: i64,
+                max_ground_speed_kt: i64,
+                landing_rate_fpm: Option<f64>,
+                status: &'a str,
+            }
+
+            let items: Vec<LogbookFlightItem> = flights
+                .iter()
+                .map(|f| {
+                    let mins = (f.flight_time_seconds + 30) / 60;
+                    let hrs = mins / 60;
+                    let rem_mins = mins % 60;
+                    let duration_fmt = format!("{}h {:02}m", hrs, rem_mins);
+
+                    LogbookFlightItem {
+                        id: &f.id,
+                        departure_icao: f.departure_icao.as_deref().unwrap_or(""),
+                        arrival_icao: f.arrival_icao.as_deref().unwrap_or(""),
+                        aircraft_type: &f.aircraft_type,
+                        start_time: &f.start_time,
+                        end_time: f.end_time.as_deref(),
+                        flight_time_seconds: f.flight_time_seconds,
+                        flight_time_formatted: duration_fmt,
+                        distance_nm: (f.distance_flown_nm * 10.0).round() / 10.0,
+                        max_altitude_ft: f.max_altitude,
+                        max_ground_speed_kt: f.max_ground_speed,
+                        landing_rate_fpm: f.landing_rate_fpm.map(|lr| lr.round()),
+                        status: &f.status,
+                    }
+                })
+                .collect();
+
+            serde_json::to_string_pretty(&items).map_err(|e| e.to_string())
+        }
+        _ => Err(format!(
+            "Unsupported logbook export format '{}'. Supported: csv, json",
+            format
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1689,6 +1786,52 @@ mod tests {
             assert_ne!(apt.airport_type.as_deref(), Some("heliport"));
             assert_ne!(apt.airport_type.as_deref(), Some("helipad"));
         }
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn test_export_logbook_format() {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join(format!("test_apollo_export_{}.db", uuid::Uuid::new_v4()));
+        let conn = init_database(&db_path).expect("init_database should succeed");
+
+        let flight = FlightRecord {
+            id: "test-flight-123".to_string(),
+            aircraft_type: "Cessna 172 Skyhawk".to_string(),
+            departure_icao: Some("LOWW".to_string()),
+            arrival_icao: Some("LOWI".to_string()),
+            start_time: "2026-11-02T10:00:00Z".to_string(),
+            end_time: Some("2026-11-02T11:15:00Z".to_string()),
+            flight_time_seconds: 4500,
+            max_altitude: 8500,
+            max_ground_speed: 135,
+            distance_flown_nm: 220.5,
+            landing_rate_fpm: Some(-150.0),
+            status: "COMPLETED".to_string(),
+        };
+
+        save_flight(&conn, &flight).expect("save flight");
+
+        // CSV export
+        let csv = export_logbook_format(&conn, "csv").expect("export csv");
+        assert!(csv.contains("Flight ID,Departure ICAO,Arrival ICAO"));
+        assert!(csv.contains("test-flight-123"));
+        assert!(csv.contains("LOWW"));
+        assert!(csv.contains("LOWI"));
+        assert!(csv.contains("Cessna 172 Skyhawk"));
+        assert!(csv.contains("1h 15m"));
+        // Ensure no telemetry data/headers are present
+        assert!(!csv.contains("altitude_msl"));
+        assert!(!csv.contains("indicated_airspeed"));
+
+        // JSON export
+        let json = export_logbook_format(&conn, "json").expect("export json");
+        assert!(json.contains("\"id\": \"test-flight-123\""));
+        assert!(json.contains("\"departureIcao\": \"LOWW\""));
+        assert!(json.contains("\"arrivalIcao\": \"LOWI\""));
+        assert!(json.contains("\"flightTimeFormatted\": \"1h 15m\""));
+        assert!(!json.contains("telemetryPoints"));
 
         let _ = std::fs::remove_file(db_path);
     }

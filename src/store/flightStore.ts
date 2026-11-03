@@ -7,6 +7,7 @@ import {
   VisitedCountry,
   FlightStage,
   ExportFormat,
+  LogbookExportFormat,
   TelemetryPoint,
   Airport,
   TouchdownEvent,
@@ -62,6 +63,7 @@ export async function triggerFileSave(
         kml: 'Google Earth KML (*.kml)',
         geojson: 'GeoJSON Map File (*.geojson)',
         csv: 'CSV Comma Delimited (*.csv)',
+        json: 'JSON Data File (*.json)',
       };
 
       const extensions: Record<ExportFormat, string[]> = {
@@ -69,6 +71,7 @@ export async function triggerFileSave(
         kml: ['.kml'],
         geojson: ['.geojson'],
         csv: ['.csv'],
+        json: ['.json'],
       };
 
       const handle = await (window as any).showSaveFilePicker({
@@ -209,7 +212,89 @@ export function generateFlightExport(flight: FlightRecord, format: ExportFormat)
       }
       return out;
     }
+    default:
+      return '';
   }
+}
+
+export function generateLogbookExport(flights: FlightRecord[], format: LogbookExportFormat): string {
+  if (format === 'json') {
+    const flightSummaries = flights.map((f) => {
+      const durationMins = Math.round(f.flightTimeSeconds / 60);
+      const hours = Math.floor(durationMins / 60);
+      const mins = durationMins % 60;
+      const formattedDuration = `${hours}h ${mins.toString().padStart(2, '0')}m`;
+
+      return {
+        id: f.id,
+        departureIcao: f.departureIcao || '',
+        arrivalIcao: f.arrivalIcao || '',
+        aircraftType: f.aircraftType || '',
+        startTime: f.startTime || '',
+        endTime: f.endTime || null,
+        flightTimeSeconds: f.flightTimeSeconds || 0,
+        flightTimeFormatted: formattedDuration,
+        distanceNm: Number((f.distanceFlownNm || 0).toFixed(1)),
+        maxAltitudeFt: f.maxAltitude || 0,
+        maxGroundSpeedKt: f.maxGroundSpeed || 0,
+        landingRateFpm: f.landingRateFpm !== undefined && f.landingRateFpm !== null ? Math.round(f.landingRateFpm) : null,
+        status: f.status || 'COMPLETED',
+      };
+    });
+
+    return JSON.stringify(flightSummaries, null, 2);
+  }
+
+  // CSV format
+  const escapeCsvField = (val: any): string => {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const headers = [
+    'Flight ID',
+    'Departure ICAO',
+    'Arrival ICAO',
+    'Aircraft Type',
+    'Start Time (UTC)',
+    'End Time (UTC)',
+    'Duration (Seconds)',
+    'Duration',
+    'Distance (NM)',
+    'Max Altitude (ft)',
+    'Peak Ground Speed (kt)',
+    'Landing Rate (fpm)',
+    'Status',
+  ];
+
+  const rows = flights.map((f) => {
+    const durationMins = Math.round(f.flightTimeSeconds / 60);
+    const hours = Math.floor(durationMins / 60);
+    const mins = durationMins % 60;
+    const formattedDuration = `${hours}h ${mins.toString().padStart(2, '0')}m`;
+
+    return [
+      escapeCsvField(f.id),
+      escapeCsvField(f.departureIcao || ''),
+      escapeCsvField(f.arrivalIcao || ''),
+      escapeCsvField(f.aircraftType || ''),
+      escapeCsvField(f.startTime || ''),
+      escapeCsvField(f.endTime || ''),
+      escapeCsvField(f.flightTimeSeconds || 0),
+      escapeCsvField(formattedDuration),
+      escapeCsvField(Number((f.distanceFlownNm || 0).toFixed(1))),
+      escapeCsvField(f.maxAltitude || 0),
+      escapeCsvField(f.maxGroundSpeed || 0),
+      escapeCsvField(f.landingRateFpm !== undefined && f.landingRateFpm !== null ? Math.round(f.landingRateFpm) : ''),
+      escapeCsvField(f.status || 'COMPLETED'),
+    ].join(',');
+  });
+
+  return [headers.join(','), ...rows].join('\r\n');
 }
 
 export const computeVisitedCountries = (
@@ -296,6 +381,7 @@ export interface FlightState {
   endActiveFlight: () => Promise<void>;
   deleteFlight: (id: string) => Promise<void>;
   exportFlight: (id: string, format: ExportFormat) => Promise<string | null>;
+  exportLogbook: (format: LogbookExportFormat, flightsOverride?: FlightRecord[]) => Promise<string | null>;
   addVisitedAirport: (airport: VisitedAirport) => void;
 }
 
@@ -903,6 +989,7 @@ export const useFlightStore = create<FlightState>()(
             kml: 'application/vnd.google-earth.kml+xml',
             geojson: 'application/geo+json',
             csv: 'text/csv',
+            json: 'application/json',
           };
           const dep = flight?.departureIcao || 'DEP';
           const arr = flight?.arrivalIcao || 'ARR';
@@ -912,6 +999,41 @@ export const useFlightStore = create<FlightState>()(
           const saved = await triggerFileSave(content, filename, format, mimeTypes[format] || 'text/plain');
           if (!saved) {
             // User cancelled in the Explorer file picker
+            return null;
+          }
+        }
+
+        return content;
+      },
+
+      exportLogbook: async (format, flightsOverride) => {
+        const targetFlights = flightsOverride ?? get().flights;
+        if (!targetFlights || targetFlights.length === 0) {
+          return null;
+        }
+
+        let content: string | null = null;
+        // Attempt backend export if no custom filtered list is provided
+        if (!flightsOverride) {
+          content = await safeInvoke<string>('export_logbook', { format });
+        }
+
+        // Fallback to client-side generator
+        if (!content) {
+          content = generateLogbookExport(targetFlights, format);
+        }
+
+        if (content && typeof document !== 'undefined') {
+          const mimeTypes: Record<LogbookExportFormat, string> = {
+            csv: 'text/csv',
+            json: 'application/json',
+          };
+          const now = new Date().toISOString().slice(0, 10);
+          const isFiltered = flightsOverride && flightsOverride.length !== get().flights.length;
+          const filename = `apollo_logbook_${isFiltered ? 'filtered_' : ''}${now}.${format}`;
+
+          const saved = await triggerFileSave(content, filename, format, mimeTypes[format]);
+          if (!saved) {
             return null;
           }
         }

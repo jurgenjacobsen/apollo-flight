@@ -68,13 +68,13 @@ export const SettingsView: React.FC = () => {
         if (update?.available) {
           setUpdateMessage(`Update v${update.version} is available!`);
         } else {
-          setUpdateMessage(`Apollo Flight is up to date (v${packageJson.version}).`);
+          setUpdateMessage(`Apollo Flight is up to date (v${packageJson.version})`);
         }
       } else {
-        setUpdateMessage('Updater configured for signed release builds.');
+        setUpdateMessage('Updater configured for signed release builds');
       }
     } catch {
-      setUpdateMessage(`You are running the latest version (v${packageJson.version}).`);
+      setUpdateMessage(`Already running latest version`);
     } finally {
       setIsCheckingUpdate(false);
     }
@@ -426,15 +426,16 @@ export const SettingsView: React.FC = () => {
                   <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
                     Software Updates
                   </h3>
+                    {updateMessage && (
+                    <span className="text-[11px] text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-black/50 py-0.5 px-2 rounded-sm border border-neutral-200 dark:border-geist-hairline animate-fade-in">
+                        {updateMessage}
+                    </span>
+                    )}
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
                   Check for newer releases from our Github repository.
                 </p>
-                {updateMessage && (
-                  <p className="text-[11px] text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-black/50 py-1 px-2 rounded-sm border border-neutral-200 dark:border-geist-hairline mt-2 animate-fade-in">
-                    {updateMessage}
-                  </p>
-                )}
+                
               </div>
 
               <div className="shrink-0 flex items-center">

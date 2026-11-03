@@ -136,6 +136,15 @@ mod commands {
     }
 
     #[tauri::command]
+    pub fn export_logbook(
+        state: tauri::State<'_, DbState>,
+        format: String,
+    ) -> Result<String, String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::export_logbook_format(&conn, &format)
+    }
+
+    #[tauri::command]
     pub fn get_airports_count(state: tauri::State<'_, DbState>) -> Result<i64, String> {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
         db::get_airports_count(&conn).map_err(|e| e.to_string())
@@ -288,6 +297,7 @@ pub fn run() {
             commands::get_visited_stats,
             commands::record_airport_visit,
             commands::export_flight,
+            commands::export_logbook,
             commands::get_airports_count,
             commands::get_airport,
             commands::search_route_airports,

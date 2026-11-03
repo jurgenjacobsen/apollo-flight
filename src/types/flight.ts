@@ -37,7 +37,9 @@ export type FlightStage =
   | 'TOUCHDOWN_ROLLOUT'
   | 'ARRIVED';
 
-export type ExportFormat = 'gpx' | 'kml' | 'geojson' | 'csv';
+export type ExportFormat = 'gpx' | 'kml' | 'geojson' | 'csv' | 'json';
+
+export type LogbookExportFormat = 'csv' | 'json';
 
 export interface Airport {
   icao: string;
