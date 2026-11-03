@@ -31,6 +31,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Remove local machine Cargo config
+        run: rm -f .cargo/config.toml src-tauri/.cargo/config.toml
+        shell: bash
+
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
