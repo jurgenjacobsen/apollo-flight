@@ -102,8 +102,8 @@ jobs:
       - name: Publish Draft Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          echo "All platform builds completed successfully. Publishing release $TAG_NAME..."
-          gh release edit "$TAG_NAME" --draft=false
+          echo "All platform builds completed successfully. Publishing release $TAG_NAME for $GH_REPO..."
+          gh release edit "$TAG_NAME" --repo "$GH_REPO" --draft=false
