@@ -423,7 +423,46 @@ The fix to this will be a rework and addition of a complemental feature:
         - [x] Multiple touch-and-go's or landing and take-off or any sort of touchdowns during the same flight, should NOT be considered multiple visits or multiple operations.
     - [x] The number of operations per country shouldn't also be considered multiple if the dep/arr of a recorded flight are both the same. Only consider in that case 1 operation.
 
-### Phase 9: Responsiveness & UI Improvements
+### Phase 9: Troubleshooting
+- [x] Currently when the user tries to update their dataset from OurAirports the apps open/closes a terminal window multiple times and then the app freezes;
+    - [x] The fix to be done would be to totally self-contain the fetch action from OurAirports dataset and monitor the update progress in there next to the update button;
+- [x] Currently if the user encounters any issue with their experience there is no way for them to report it
+    - [x] In the sidebar there should be a feedback button which allows the user to submit their feedback & bug reports;
+        - [x] The feedback action would trigger opening a feedback page where the user can write some contact information;
+        - [x] Describe their feedback/bug/error;
+        - [x] Choose from a select input the log files from the /log folder where the app stores the crash reports;
+        - [x] A privacy switch button where the user can choose to share their operating system information and app version and installation information;
+        - [x] A select input where the user can choose specific recorded flight from their logbook that will be submitted into the report as a source of info for analysis;
+        - [x] A select input for the user to choose a specific saved route for the same usage as the above;
+    - [x] Consider logging app crashes and errors that have occured throughout usage of the app, preferably in a "/log" folder (.txt files);
+    - [x] We should plan a way to report this issues from the app into something like Github Issues;
+
+### Phase 10: Export / Import Data Rework
+The user must be able to export and import their own data for multiple reasons. They should be able to export their data in separated segments or even their whole logged data.
+For that we will apply these improvements:
+- [ ] Export (JSON, and other viable file formats)
+    - [ ] Let the user export their data as a whole (user information, settings, logbook including individual flight telemetry, saved routes, etc.)
+    - [ ] The user should be able to individually export data individually:
+        - [ ] Export user information + settings;
+        - [ ] Export logbook including telemetry by default (make it optional)
+        - [ ] Export saved routes;
+- [ ] Import
+    - [ ] Users must be able to import their data from multiple ways and segments;
+    - [ ] Allow users to import the exported complete app/user data from any accepted file format;
+    - [ ] Make it viable to import segmented data export files:
+        - [ ] If the user has uniquely export their logbook, with or without telemetry, allow them to solely import that data;
+            - [ ] If the user has imported their logbook without flight telemetry handle it correctly so the app doesn't brake because of missing data;
+    - [ ] Make sure that imported user data and settings when imported won't brake or conflict with current data;
+            - [ ] Conflicting data can be prompted to the user for them to choose between each data property;
+    - [ ] Add OS file support for the app:
+        - [ ] Files extensions such as JSON (and any other we decide is viable for this export/import feature) should have Apollo Flight option when they click on the "Open with" option in the context menu of the file;
+            (We can even write something like "Import in Apollo Flight")
+        - [ ] When the user takes this action it will prompt the app to open (in case it is not running), after the app loads and window opens, prompt the user with a modal (confirmation) displaying to them:
+            - [ ] Type of data (complete Apollo Flight user data / user logbook / specific flight / saved routes ) 
+            - [ ] In case it is something like the user logbook, specific flight or saved route display the metadata and details and give the option to the user to import or cancel action
+            
+
+### Phase 10: Responsiveness & UI Improvements
 - [ ] Currently the UI is not responsive through smaller screen/window sizes;
 
 ### Phase 99: Eventual Changes (not planned in short future)

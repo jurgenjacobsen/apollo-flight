@@ -1,0 +1,118 @@
+name: "Bug Report"
+description: "Report a bug, crash, calculation error, or telemetry anomaly in Apollo Flight."
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue!
+        > [!TIP]
+        > You can also automatically generate and pre-fill this report from inside the Apollo Flight desktop application via the **Feedback** view.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug or anomaly is.
+      placeholder: "e.g. Telemetry trajectory gap during high bank turn at LOWI..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: What steps are needed to reproduce the behavior?
+      placeholder: |
+        1. Launch MSFS with FSUIPC7 connected
+        2. Start flight from LOWI to EDDM
+        3. Switch to Map view while in flight
+        4. See error or missing trajectory line...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs Observed Behavior
+      description: What did you expect to happen, and what actually occurred?
+      placeholder: "Expected the trajectory line to remain continuous, but recorded coordinates jumped."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: simulator
+    attributes:
+      label: Simulator & Platform
+      description: Which simulator were you flying in when the issue occurred?
+      options:
+        - "Microsoft Flight Simulator 2024 (MSFS 2024)"
+        - "Microsoft Flight Simulator 2020 (MSFS 2020)"
+        - "Prepar3D (v4 / v5 / v6)"
+        - "FSX / FSX: Steam Edition"
+        - "None / Not in simulator (App standalone)"
+    validations:
+      required: true
+
+  - type: input
+    id: aircraft
+    attributes:
+      label: Aircraft Used
+      description: Simulator aircraft type or addon (if applicable).
+      placeholder: "e.g. Fenix A320, PMDG 737-800, FlyByWire A32NX, Default C172 G1000"
+    validations:
+      required: false
+
+  - type: textarea
+    id: flight_details
+    attributes:
+      label: Flight & Route Details
+      description: If the issue occurred during a flight, paste the route, departure, arrival, or landing stats.
+      placeholder: |
+        - Route: LOWI -> EDDM
+        - Duration: 42 minutes
+        - Landing Rate: -140 fpm (1.12G)
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Application Log / Crash Dump
+      description: Paste any relevant lines from your session log (`apollo-flight-YYYY-MM-DD.log`) or crash dump (`crash-*.txt`).
+      render: text
+      placeholder: |
+        Paste log excerpt or crash dump here...
+    validations:
+      required: false
+
+  - type: input
+    id: app_version
+    attributes:
+      label: Apollo Flight Version
+      description: App version (found in Settings or Feedback view).
+      placeholder: "e.g. v0.0.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - "Windows 11 (64-bit)"
+        - "Windows 10 (64-bit)"
+        - "Windows Server"
+        - "Other"
+    validations:
+      required: true
+
+  - type: input
+    id: contact
+    attributes:
+      label: Pilot Name / Call-Sign (Optional)
+      description: Optional contact name, callsign, or pilot handle for follow-up questions.
+      placeholder: "e.g. Captain Miller / pilot@example.com"
+    validations:
+      required: false

@@ -1,0 +1,69 @@
+name: "Feature Request"
+description: "Suggest an idea, enhancement, new telemetry gauge, or workflow improvement for Apollo Flight."
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature! Community ideas help shape Apollo Flight's roadmap.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: What feature or improvement are you proposing?
+      placeholder: "e.g. Add SimBrief flight plan import support to Saved Routes..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Target Module / Screen
+      description: Which part of Apollo Flight does this feature enhance?
+      options:
+        - "Logbook & Flight History"
+        - "Route Planner & Saved Routes"
+        - "Map & Live Telemetry Tracking"
+        - "Touchdown Analysis & Landing Rates"
+        - "OurAirports Database & Airport Search"
+        - "Settings & Sim Connection"
+        - "General / Desktop Integration"
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Pilot Use Case & Problem Solved
+      description: Why would pilots want this? How does it improve the flight planning or post-flight analysis workflow?
+      placeholder: "Currently, entering waypoints manually takes time. Being able to paste an OFP route string or fetch the latest SimBrief dispatch would make flight prep seamless."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution or Implementation Ideas
+      description: Describe how you imagine this feature working in the interface.
+      placeholder: "A 'Fetch SimBrief' button next to 'New Route' that queries the username and pre-fills departure, arrival, and aircraft type."
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any alternative approaches or workarounds?
+    validations:
+      required: false
+
+  - type: input
+    id: contact
+    attributes:
+      label: Pilot Name / Call-Sign (Optional)
+      description: Optional contact name or pilot handle.
+      placeholder: "e.g. Captain Miller"
+    validations:
+      required: false

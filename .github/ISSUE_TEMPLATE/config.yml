@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "Apollo Flight In-App Feedback"
+    url: "https://github.com/jurgenjacobsen/apollo-flight"
+    about: "You can also submit reports with automatic log and flight attachment directly from within the Apollo Flight app."
