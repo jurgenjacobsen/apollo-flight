@@ -100,9 +100,11 @@ export type SavedRouteStatus = 'draft' | 'flown';
 export interface SavedRoute {
   id: string;
   name: string;
+  aircraftName?: string;
   departureIcao: string;
   arrivalIcao: string;
   intermediateIcaos: string; // JSON string e.g. "[\"EDDM\"]"
+  sectorCount?: number;
   aircraftCategory: AircraftCategory;
   sectorsJson: string; // JSON string of RouteSector[]
   sectors?: RouteSector[]; // Parsed convenience field
@@ -110,6 +112,8 @@ export interface SavedRoute {
   totalAirborneMinutes: number;
   totalGroundMinutes: number;
   totalDurationMinutes: number;
+  includeGroundTime?: boolean;
+  isRoundTrip?: boolean;
   recommendedAltitudeFt?: number | null;
   status: SavedRouteStatus;
   isFavorite: boolean;

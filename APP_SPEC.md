@@ -473,7 +473,13 @@ For that we will apply these improvements:
             - [ ] In case it is something like the user logbook, specific flight or saved route display the metadata and details and give the option to the user to import or cancel action
             
 
-### Phase 10: Responsiveness & UI Improvements
+### Phase 11: Saved Flight Improvements
+- [ ] Users should be able to edit saved flights (only drafted flight);
+- [ ] Users can edit the single flight details such as aircraft category, dep/arr airports. (Recalculate times and distances);
+- [ ] Allow users to edit individual sectors of each flight;
+- [ ] Add a way for the users to entry their saved flights manually into the saved routes page/list;
+
+### Phase 12: Responsiveness & UI Improvements
 - [ ] Currently the UI is not responsive through smaller screen/window sizes;
 
 ### Phase 99: Eventual Changes (not planned in short future)

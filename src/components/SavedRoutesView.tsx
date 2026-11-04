@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useFlightStore } from '../store/flightStore';
 import { SavedRoute, RouteSector } from '../types/route';
 import { formatDurationHoursMinutes, formatFlightLevelOrAltitude } from '../data/aircraftCategories';
@@ -30,6 +30,7 @@ import {
 export const SavedRoutesView: React.FC = () => {
   const {
     savedRoutes,
+    fetchSavedRoutes,
     currentTelemetry,
     startManualFlight,
     setActiveView,
@@ -37,6 +38,10 @@ export const SavedRoutesView: React.FC = () => {
     updateRouteStatus,
     deleteSavedRoute,
   } = useFlightStore();
+
+  useEffect(() => {
+    fetchSavedRoutes();
+  }, [fetchSavedRoutes]);
 
   const [activeTab, setActiveTab] = useState<'all' | 'favorites' | 'draft' | 'flown'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -102,9 +107,11 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
         const matchesIcao =
           route.departureIcao.toLowerCase().includes(q) ||
           route.arrivalIcao.toLowerCase().includes(q) ||
-          route.intermediateIcaos.toLowerCase().includes(q);
+          (typeof route.intermediateIcaos === 'string' ? route.intermediateIcaos : '').toLowerCase().includes(q);
         const matchesName = route.name.toLowerCase().includes(q);
-        const matchesCategory = `cat ${route.aircraftCategory}`.toLowerCase().includes(q);
+        const matchesCategory =
+          `cat ${route.aircraftCategory}`.toLowerCase().includes(q) ||
+          (route.aircraftName || '').toLowerCase().includes(q);
         if (!matchesIcao && !matchesName && !matchesCategory) {
           return false;
         }
@@ -518,7 +525,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                   startManualFlight(
                                     route.departureIcao,
                                     finalSector?.arrival?.icao || route.arrivalIcao,
-                                    `Category ${route.aircraftCategory}`
+                                    route.aircraftName || `Category ${route.aircraftCategory}`
                                   );
                                   setActiveView('dashboard');
                                 }}

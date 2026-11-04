@@ -12,7 +12,7 @@ import {
   Airport,
   TouchdownEvent,
 } from '../types/flight';
-import { SavedRoute } from '../types/route';
+import { SavedRoute, GeneratedRoute } from '../types/route';
 import { calculateTouchdownGForce } from '../utils/touchdownPhysics';
 import { calculateDistanceNm } from '../data/mockData';
 import { resolveAirport } from '../services/routeGenerator';
@@ -455,6 +455,7 @@ export interface FlightState {
   visitedAirports: VisitedAirport[];
   visitedCountries: VisitedCountry[];
   savedRoutes: SavedRoute[];
+  currentGeneratedRoute: GeneratedRoute | null;
   selectedFlightId: string | null;
   scrubbedTelemetryIndex: number | null;
   activeView: 'dashboard' | 'new-route' | 'saved-routes' | 'logbook' | 'flight-detail' | 'visited' | 'ifr-trainer' | 'hold-trainer' | 'settings' | 'feedback';
@@ -473,6 +474,7 @@ export interface FlightState {
   // Actions
   initFromDatabase: () => Promise<void>;
   fetchSavedRoutes: () => Promise<SavedRoute[]>;
+  setCurrentGeneratedRoute: (route: GeneratedRoute | null) => void;
   saveRoute: (route: Partial<SavedRoute> & { departureIcao: string; arrivalIcao: string }) => Promise<SavedRoute | null>;
   toggleRouteFavorite: (id: string) => Promise<boolean>;
   updateRouteStatus: (id: string, status: 'draft' | 'flown', linkedFlightId?: string) => Promise<void>;
@@ -545,8 +547,18 @@ function hydrateSavedRoute(r: any): SavedRoute {
   try {
     sectors = JSON.parse(r.sectorsJson || '[]');
   } catch {}
+  const intermediateIcaos =
+    r.intermediateIcaos ||
+    (Array.isArray(sectors) && sectors.length > 1
+      ? JSON.stringify(sectors.slice(0, -1).map((s: any) => s.arrival?.icao).filter(Boolean))
+      : '[]');
   return {
     ...r,
+    aircraftName: r.aircraftName || 'Aircraft',
+    sectorCount: r.sectorCount ?? (Array.isArray(sectors) && sectors.length > 0 ? sectors.length : 1),
+    includeGroundTime: r.includeGroundTime ?? true,
+    isRoundTrip: r.isRoundTrip ?? false,
+    intermediateIcaos,
     sectors: Array.isArray(sectors) ? sectors : [],
   };
 }
@@ -615,6 +627,7 @@ export const useFlightStore = create<FlightState>()(
       visitedAirports: [],
       visitedCountries: [],
       savedRoutes: [],
+      currentGeneratedRoute: null,
       selectedFlightId: null,
       scrubbedTelemetryIndex: null,
       activeView: 'dashboard',
@@ -817,13 +830,28 @@ export const useFlightStore = create<FlightState>()(
           const list = await safeInvoke<SavedRoute[]>('get_saved_routes');
           if (list && Array.isArray(list)) {
             const hydrated = list.map(hydrateSavedRoute);
-            set({ savedRoutes: hydrated });
-            return hydrated;
+            if (hydrated.length > 0) {
+              set({ savedRoutes: hydrated });
+              return hydrated;
+            } else if (get().savedRoutes.length > 0) {
+              // Sync existing cached routes to SQLite backend
+              for (const r of get().savedRoutes) {
+                await safeInvoke('save_route', { route: r });
+              }
+              return get().savedRoutes;
+            } else {
+              set({ savedRoutes: [] });
+              return [];
+            }
           }
         } catch (err) {
           console.warn('[flightStore] Failed to fetch saved routes:', err);
         }
         return get().savedRoutes;
+      },
+
+      setCurrentGeneratedRoute: (route) => {
+        set({ currentGeneratedRoute: route });
       },
 
       saveRoute: async (routeInput) => {
@@ -841,19 +869,30 @@ export const useFlightStore = create<FlightState>()(
 
         const id = routeInput.id || existing?.id || `route-${Date.now()}`;
         const now = new Date().toISOString();
+        const sectors = routeInput.sectors || existing?.sectors || [];
+        const sectorsJson = routeInput.sectorsJson || existing?.sectorsJson || JSON.stringify(sectors);
+        const sectorCount = routeInput.sectorCount ?? (sectors.length > 0 ? sectors.length : 1);
+        const aircraftName = routeInput.aircraftName || existing?.aircraftName || 'Aircraft';
+        const includeGroundTime = routeInput.includeGroundTime ?? existing?.includeGroundTime ?? true;
+        const isRoundTrip = routeInput.isRoundTrip ?? existing?.isRoundTrip ?? false;
+
         const fullRoute: SavedRoute = {
           id,
           name: routeInput.name || existing?.name || `${routeInput.departureIcao} ➔ ${routeInput.arrivalIcao}`,
+          aircraftName,
+          aircraftCategory: routeInput.aircraftCategory || existing?.aircraftCategory || 'A',
           departureIcao: routeInput.departureIcao,
           arrivalIcao: routeInput.arrivalIcao,
           intermediateIcaos: routeInput.intermediateIcaos || existing?.intermediateIcaos || '[]',
-          aircraftCategory: routeInput.aircraftCategory || existing?.aircraftCategory || 'A',
-          sectorsJson: routeInput.sectorsJson || existing?.sectorsJson || JSON.stringify(routeInput.sectors || []),
-          sectors: routeInput.sectors || existing?.sectors,
+          sectorCount,
+          sectorsJson,
+          sectors: sectors.length > 0 ? sectors : undefined,
           totalDistanceNm: routeInput.totalDistanceNm ?? existing?.totalDistanceNm ?? 0,
           totalAirborneMinutes: routeInput.totalAirborneMinutes ?? existing?.totalAirborneMinutes ?? 0,
           totalGroundMinutes: routeInput.totalGroundMinutes ?? existing?.totalGroundMinutes ?? 0,
           totalDurationMinutes: routeInput.totalDurationMinutes ?? existing?.totalDurationMinutes ?? 0,
+          includeGroundTime,
+          isRoundTrip,
           recommendedAltitudeFt: routeInput.recommendedAltitudeFt ?? existing?.recommendedAltitudeFt ?? null,
           status: routeInput.status || existing?.status || 'draft',
           isFavorite: routeInput.isFavorite !== undefined ? routeInput.isFavorite : (existing?.isFavorite ?? false),
@@ -1558,6 +1597,7 @@ export const useFlightStore = create<FlightState>()(
         theme: state.theme,
         closeToTray: state.closeToTray,
         autoStartRecording: state.autoStartRecording,
+        savedRoutes: state.savedRoutes,
       }),
       onRehydrateStorage: () => (state) => {
         if (state && typeof document !== 'undefined') {

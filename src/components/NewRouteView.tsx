@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useFlightStore } from '../store/flightStore';
 import { Select } from './ui/Select';
 import { 
@@ -222,7 +222,18 @@ const POPULAR_COUNTRIES = [
 ];
 
 export const NewRouteView: React.FC = () => {
-  const { currentTelemetry, startManualFlight, setActiveView, theme, nearestAirport, fetchNearestAirport, saveRoute } = useFlightStore();
+  const {
+    currentTelemetry,
+    startManualFlight,
+    setActiveView,
+    theme,
+    nearestAirport,
+    fetchNearestAirport,
+    saveRoute,
+    savedRoutes,
+    currentGeneratedRoute,
+    setCurrentGeneratedRoute,
+  } = useFlightStore();
 
   // Form State
   const [category, setCategory] = useState<AircraftCategory>('C');
@@ -455,10 +466,26 @@ export const NewRouteView: React.FC = () => {
 
   // Generation state
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [route, setRoute] = useState<GeneratedRoute | null>(null);
+  const [route, setRoute] = useState<GeneratedRoute | null>(currentGeneratedRoute);
   const [copied, setCopied] = useState<boolean>(false);
-  const [draftSaved, setDraftSaved] = useState<boolean>(false);
-  const [favoriteSaved, setFavoriteSaved] = useState<boolean>(false);
+  const [draftSavedNotice, setDraftSavedNotice] = useState<boolean>(false);
+  const currentSavedRoute = useMemo(() => {
+    if (!route || route.sectors.length === 0) return null;
+    const firstLeg = route.sectors[0];
+    const finalLeg = route.sectors[route.sectors.length - 1];
+    return savedRoutes.find((r) => {
+      if (r.id === route.id) return true;
+      return (
+        r.departureIcao === firstLeg.departure.icao &&
+        r.arrivalIcao === finalLeg.arrival.icao &&
+        r.aircraftCategory === route.aircraftCategory &&
+        r.totalDistanceNm === route.totalDistanceNm
+      );
+    });
+  }, [route, savedRoutes]);
+
+  const isFavorite = Boolean(currentSavedRoute?.isFavorite);
+  const isDraftSaved = Boolean(currentSavedRoute);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null);
 
@@ -472,7 +499,9 @@ export const NewRouteView: React.FC = () => {
 
   // Auto-generate an initial route on first mount
   useEffect(() => {
-    handleGenerateRoute();
+    if (!currentGeneratedRoute) {
+      handleGenerateRoute();
+    }
   }, []);
 
   const handleGenerateRoute = async () => {
@@ -516,8 +545,8 @@ export const NewRouteView: React.FC = () => {
 
       const result = await generateRouteSuggestion(searchParams);
       setRoute(result);
-      setDraftSaved(false);
-      setFavoriteSaved(false);
+      setCurrentGeneratedRoute(result);
+      setDraftSavedNotice(false);
 
       // Only trigger a map auto-fit when a route is actually generated
       if (result && result.sectors.length > 0) {
@@ -607,9 +636,11 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
     await saveRoute({
       id: route.id,
       name: `${firstLeg.departure.icao} ➔ ${finalLeg.arrival.icao}`,
+      aircraftName: route.aircraftName,
       departureIcao: firstLeg.departure.icao,
       arrivalIcao: finalLeg.arrival.icao,
       intermediateIcaos: JSON.stringify(intermediateIcaos),
+      sectorCount: route.sectors.length,
       aircraftCategory: route.aircraftCategory,
       sectorsJson: JSON.stringify(route.sectors),
       sectors: route.sectors,
@@ -617,13 +648,15 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
       totalAirborneMinutes: route.totalAirborneMinutes,
       totalGroundMinutes: route.totalGroundMinutes,
       totalDurationMinutes: route.totalDurationMinutes,
+      includeGroundTime: route.includeGroundTime,
+      isRoundTrip: route.isRoundTrip,
       recommendedAltitudeFt: route.sectors[0]?.cruiseAltitudeFt || null,
       status: 'draft',
-      isFavorite: favoriteSaved,
+      isFavorite: isFavorite,
     });
 
-    setDraftSaved(true);
-    setTimeout(() => setDraftSaved(false), 2000);
+    setDraftSavedNotice(true);
+    setTimeout(() => setDraftSavedNotice(false), 2000);
   };
 
   const handleSaveFavorite = async () => {
@@ -632,13 +665,15 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
     const finalLeg = route.sectors[route.sectors.length - 1];
     const intermediateIcaos = route.sectors.slice(0, -1).map((s) => s.arrival.icao);
 
-    const nextFav = !favoriteSaved;
+    const nextFav = !isFavorite;
     await saveRoute({
       id: route.id,
       name: `${firstLeg.departure.icao} ➔ ${finalLeg.arrival.icao}`,
+      aircraftName: route.aircraftName,
       departureIcao: firstLeg.departure.icao,
       arrivalIcao: finalLeg.arrival.icao,
       intermediateIcaos: JSON.stringify(intermediateIcaos),
+      sectorCount: route.sectors.length,
       aircraftCategory: route.aircraftCategory,
       sectorsJson: JSON.stringify(route.sectors),
       sectors: route.sectors,
@@ -646,14 +681,12 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
       totalAirborneMinutes: route.totalAirborneMinutes,
       totalGroundMinutes: route.totalGroundMinutes,
       totalDurationMinutes: route.totalDurationMinutes,
+      includeGroundTime: route.includeGroundTime,
+      isRoundTrip: route.isRoundTrip,
       recommendedAltitudeFt: route.sectors[0]?.cruiseAltitudeFt || null,
       status: 'draft',
       isFavorite: nextFav,
     });
-
-    setFavoriteSaved(nextFav);
-    setDraftSaved(true);
-    setTimeout(() => setFavoriteSaved(false), 2000);
   };
 
   const handleFlyRoute = () => {
@@ -1568,29 +1601,29 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                   <button
                     onClick={handleSaveDraft}
                     className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium border transition-colors ${
-                      draftSaved
+                      isDraftSaved || draftSavedNotice
                         ? 'bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-600 dark:border-emerald-600'
                         : 'border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1a1a1a] text-neutral-700 dark:text-neutral-200'
                     }`}
                   >
-                    {draftSaved ? <Check className="w-3.5 h-3.5 text-white" /> : <Bookmark className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />}
-                    <span>{draftSaved ? 'Draft Saved' : 'Draft'}</span>
+                    {isDraftSaved || draftSavedNotice ? <Check className="w-3.5 h-3.5 text-white" /> : <Bookmark className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />}
+                    <span>{draftSavedNotice ? 'Draft Saved' : isDraftSaved ? 'Saved in Routes' : 'Draft'}</span>
                   </button>
 
                   <button
                     onClick={handleSaveFavorite}
                     className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-sm text-xs font-medium border transition-colors ${
-                      favoriteSaved
+                      isFavorite
                         ? 'bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-600 dark:border-emerald-600'
                         : 'border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1a1a1a] text-neutral-700 dark:text-neutral-200'
                     }`}
                   >
-                    {favoriteSaved ? (
+                    {isFavorite ? (
                       <Check className="w-3.5 h-3.5 text-white" />
                     ) : (
                       <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500/20" />
                     )}
-                    <span>{favoriteSaved ? 'Favorited' : 'Favorite'}</span>
+                    <span>{isFavorite ? 'Favorited' : 'Favorite'}</span>
                   </button>
                 </div>
               </div>

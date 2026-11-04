@@ -130,23 +130,46 @@ pub struct OurAirportsSyncProgress {
     pub message: String,
 }
 
+fn default_aircraft_name() -> String {
+    "Aircraft".to_string()
+}
+
+fn default_sector_count() -> i32 {
+    1
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_status() -> String {
+    "draft".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedRouteRecord {
     pub id: String,
     pub name: String,
+    #[serde(default = "default_aircraft_name")]
     pub aircraft_name: String,
     pub aircraft_category: String,
     pub departure_icao: String,
     pub arrival_icao: String,
+    #[serde(default = "default_sector_count")]
     pub sector_count: i32,
     pub total_distance_nm: f64,
     pub total_airborne_minutes: i32,
     pub total_duration_minutes: i32,
+    #[serde(default)]
     pub total_ground_minutes: i32,
+    #[serde(default = "default_true")]
     pub include_ground_time: bool,
+    #[serde(default)]
     pub is_round_trip: bool,
+    #[serde(default = "default_status")]
     pub status: String,
+    #[serde(default)]
     pub is_favorite: bool,
     pub sectors_json: String,
     pub created_at: String,
