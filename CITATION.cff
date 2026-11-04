@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Jacobsen"
+  given-names: "Jürgen"
+  orcid: "https://orcid.org/0009-0005-5106-5589"
+title: "Apollo Flight: Library Management & Cataloging System"
+version: 1.0.0
+date-released: 2026-03-31
+url: "https://github.com/jurgenjacobsen/apollo-flight"
+identifiers:
+  - type: url
+    value: "https://github.com/jurgenjacobsen/apollo-flight"
+    description: "The GitHub repository for the Apollo Flight project."
