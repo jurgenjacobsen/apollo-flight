@@ -137,6 +137,12 @@ CREATE TABLE IF NOT EXISTS airports (
     has_unpaved BOOLEAN DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS user_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_telemetry_flight_id ON flight_telemetry(flight_id);
 CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON flight_telemetry(timestamp);
 CREATE INDEX IF NOT EXISTS idx_airports_coords ON airports(latitude, longitude);
@@ -148,6 +154,11 @@ The Rust backend exposes the following IPC commands registered in `tauri::genera
 * `get_connection_status() -> bool`: Returns active FSUIPC connection state.
 * `start_polling() -> Result<String, String>`: Manually activates or resumes telemetry polling.
 * `stop_polling() -> Result<String, String>`: Pauses FSUIPC background worker.
+* `get_close_to_tray() -> bool`: Returns current tray minimize preference.
+* `set_close_to_tray(enabled: bool) -> Result<(), String>`: Updates close-to-tray preference in both memory and `user_settings` table in `logbook.db`.
+* `get_user_setting(key: String) -> Result<Option<String>, String>`: Fetches user setting value from SQLite.
+* `set_user_setting(key: String, value: String) -> Result<(), String>`: Persists user setting key-value pair to `user_settings` in `logbook.db`.
+* `get_all_user_settings() -> Result<HashMap<String, String>, String>`: Fetches all stored configuration settings from `logbook.db`.
 * `get_flights() -> Result<Vec<FlightRecord>, String>`: Fetches list of all logged flight headers ordered by `start_time DESC`.
 * `get_flight_details(flight_id: String) -> Result<FlightDetails, String>`: Lazily fetches a flight with its complete array of `flight_telemetry` coordinates and touchdown events for detailed profile and map rendering.
 * `delete_flight(flight_id: String) -> Result<(), String>`: Deletes a flight and cascades associated telemetry points.

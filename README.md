@@ -124,14 +124,32 @@ The repository includes a GitHub Actions workflow (`.github/workflows/release.ym
 To trigger an automated multi-platform release build, commit your changes and push a version tag:
 
 ```powershell
-git tag v0.0.2
-git push origin v0.0.2
+git tag v0.0.3
+git push origin v0.0.3
 ```
 
 The workflow will:
 1. Compile the app on Windows x64, macOS (Apple Silicon `aarch64` and Intel `x86_64`), and Ubuntu Linux.
 2. Sign the update bundles using the repository's `TAURI_SIGNING_PRIVATE_KEY`.
-3. Create a GitHub Release for `v0.0.2` and publish `.msi`, `.exe`, `.dmg`, `.deb`, `.AppImage`, and `latest.json`.
+3. Create a GitHub Release for `v0.0.3` and publish `.msi`, `.exe`, `.dmg`, `.deb`, `.AppImage`, and `latest.json`.
+
+---
+
+## Versioning Checklist
+
+When bumping the application version, ensure the version string is updated across the following files:
+
+| File | Field / Location | Description |
+| :--- | :--- | :--- |
+| [`package.json`](package.json) | `"version": "x.y.z"` | Node.js frontend package and in-app diagnostic version |
+| [`src-tauri/Cargo.toml`](src-tauri/Cargo.toml) | `version = "x.y.z"` | Rust crate package version |
+| [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) | `"version": "x.y.z"` | Tauri desktop application & native installer bundle metadata |
+| [`SECURITY.md`](SECURITY.md) | Supported versions table | Minimum supported security patch version |
+| [`.github/ISSUE_TEMPLATE/*.yml`](.github/ISSUE_TEMPLATE/) | Form placeholder versions | Issue forms (`bug_report.yml`, `general_feedback.yml`) |
+| [`README.md`](README.md) | Release commands & examples | Documentation and release instructions |
+
+> [!NOTE]
+> The Rust session logger in `src-tauri/src/lib.rs` automatically tracks `src-tauri/Cargo.toml` via `env!("CARGO_PKG_VERSION")`.
 
 ---
 

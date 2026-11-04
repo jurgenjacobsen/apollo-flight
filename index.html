@@ -9,6 +9,21 @@
     <meta name="description" content="Modern flight tracking, telemetry analysis, and IFR companion for Microsoft Flight Simulator." />
     <meta name="author" content="Jürgen Jacobsen" />
     <title>Apollo Flight</title>
+    <script>
+      (function() {
+        try {
+          const raw = localStorage.getItem('apollo-flight-store');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.state && parsed.state.theme === 'dark') {
+              document.documentElement.classList.add('dark');
+            } else if (parsed && parsed.state && parsed.state.theme === 'light') {
+              document.documentElement.classList.remove('dark');
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   </head>
   <body class="bg-[#0a0d14] text-slate-100 antialiased overflow-hidden select-none">

@@ -36,7 +36,7 @@ body:
     attributes:
       label: Apollo Flight Version
       description: Version of Apollo Flight you are currently running.
-      placeholder: "e.g. v0.0.2"
+      placeholder: "e.g. v0.0.3"
     validations:
       required: false
 

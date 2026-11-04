@@ -12,7 +12,7 @@ Apollo Flight is a desktop flight tracking, telemetry analysis, and IFR companio
 - **Desktop Runtime:** [Tauri v2](https://v2.tauri.app/) (native OS webview with Rust backend).
 - **Backend (Rust):** Asynchronous telemetry polling loop, FSUIPC7 inter-process communication, file-based logging, crash dump capture, and SQLite storage.
 - **Database Architecture:** Split dual SQLite database:
-  - `logbook.db`: Stores all user-generated data — flight summaries, high-frequency telemetry samples, touchdown analysis, saved routes, and visited destination statistics.
+  - `logbook.db`: Stores all user-generated data — flight summaries, high-frequency telemetry samples, touchdown analysis, saved routes, visited destination statistics, and user configuration preferences (`user_settings`).
   - `navdata.db`: Stores the worldwide [OurAirports](https://ourairports.com) dataset (~80,000 airports and runways) with full-text search indices, completely decoupled from user logbooks.
 
 ---

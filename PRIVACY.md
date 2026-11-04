@@ -20,19 +20,20 @@ Apollo Flight is designed with a strict **privacy-first, local-first** philosoph
 
 All data created or processed by Apollo Flight is stored locally in your operating system's standard application data directory (e.g., `%APPDATA%/apollo-flight/` on Windows):
 
-1. **User Logbook (`logbook.db`):**
+1. **User Logbook & Configuration (`logbook.db`):**
    - Flight metadata: departure/arrival ICAO, aircraft type, departure/arrival timestamps, total flight time, distance flown, cruise altitude, and maximum ground speed.
    - High-frequency telemetry: recorded latitude, longitude, altitude MSL, indicated/ground airspeed, pitch, bank, and heading coordinates.
    - Touchdown analysis: vertical speed at contact (fpm), G-force, pitch angle, bank angle, and touchdown coordinates.
    - Saved routes and waypoint plans.
    - Visited destinations and country coverage statistics.
+   - User settings (`user_settings` table): dark/light interface theme, system tray close behavior, automatic recording triggers, and optional feedback call-sign/email for bug reporting.
 2. **Navigation Database (`navdata.db`):**
    - Publicly available worldwide airport and runway records sourced from OurAirports. Decoupled completely from your personal flight data.
 3. **Session & Crash Logs (`/logs/`):**
    - Application initialization timestamps, internal Rust worker states, and simulator connection lifecycle events.
    - Panic and crash dump files (`crash-*.txt`) captured locally to assist troubleshooting if the app unexpectedly terminates.
-4. **Interface Preferences (`localStorage`):**
-   - Dark/Light theme mode, system tray close behavior, and recording trigger preferences stored in the local webview browser sandbox.
+4. **Client-Side Theme Pre-Render Cache (`localStorage`):**
+   - The selected theme (`light` or `dark`) is mirrored into `localStorage` exclusively to enable zero-latency, synchronous stylesheet application upon application launch prior to SQLite connection bootstrap.
 
 ---
 

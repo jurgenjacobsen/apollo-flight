@@ -15,11 +15,13 @@ import {
   HardDrive,
   Cpu,
   ArrowUpCircle,
-  Download
+  Download,
+  AlertTriangle
 } from 'lucide-react';
 
 import packageJson from '../../package.json'; 
 import type { Update } from '@tauri-apps/plugin-updater'; 
+import { Select } from './ui';
 
 export const SettingsView: React.FC = () => {
   const { 
@@ -28,9 +30,12 @@ export const SettingsView: React.FC = () => {
     autoStartRecording,
     setAutoStartRecording,
     theme, 
+    setTheme,
     toggleTheme,
     airportsCount,
     isSyncingAirports,
+    syncProgress,
+    activeFlight,
     syncOurAirports,
     lastSyncMessage
   } = useFlightStore();
@@ -213,10 +218,10 @@ export const SettingsView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      if (theme !== 'light') {
-                        toggleTheme();
-                        notifySaved();
-                      }
+                      setTheme('light');
+
+                      notifySaved();
+
                     }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xs text-xs font-medium transition-colors ${
                       theme === 'light'
@@ -230,10 +235,10 @@ export const SettingsView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      if (theme !== 'dark') {
-                        toggleTheme();
-                        notifySaved();
-                      }
+                      setTheme('dark');
+
+                      notifySaved();
+
                     }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xs text-xs font-medium transition-colors ${
                       theme === 'dark'
@@ -363,9 +368,33 @@ export const SettingsView: React.FC = () => {
                   </h3>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                  Synchronize official global airport, runway, and sovereign territory datasets from OurAirports for zero-latency offline flight resolution and visited countries calculations.
+                  Synchronize global airport, runway, and territory datasets from OurAirports for offline flights resolution.
                 </p>
-                {lastSyncMessage && (
+                {activeFlight && (
+                  <div className="flex items-center gap-2 p-2.5 rounded-sm text-xs bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 mt-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span>
+                      Dataset update is locked while flight recording is active ({activeFlight.departureIcao} ➔ {activeFlight.arrivalIcao}). Finalize flight before updating dataset.
+                    </span>
+                  </div>
+                )}
+
+                {isSyncingAirports && syncProgress && (
+                  <div className="space-y-1.5 p-3 rounded-sm bg-neutral-50 dark:bg-black/40 border border-neutral-200 dark:border-geist-hairline mt-2">
+                    <div className="flex items-center justify-between text-xs font-mono text-neutral-600 dark:text-neutral-300">
+                      <span className="truncate pr-2">{syncProgress.message}</span>
+                      <span className="shrink-0 font-semibold">{syncProgress.percent}%</span>
+                    </div>
+                    <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-emerald-500 h-full transition-all duration-300 ease-out" 
+                        style={{ width: `${Math.max(5, syncProgress.percent)}%` }} 
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {lastSyncMessage && !isSyncingAirports && (
                   <p className="text-[11px] font-mono text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-black/50 p-2 rounded-sm border border-neutral-200 dark:border-geist-hairline mt-2">
                     {lastSyncMessage}
                   </p>
@@ -376,7 +405,7 @@ export const SettingsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleSyncAirports}
-                  disabled={isSyncingAirports}
+                  disabled={isSyncingAirports || !!activeFlight}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAirports ? 'animate-spin' : ''}`} />
@@ -391,17 +420,17 @@ export const SettingsView: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <HardDrive className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
                   <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
-                    SQLite Database Engine
+                    Database Engine
                   </h3>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                  Persistent local embedded database storage file storing flight records, high-frequency GPS coordinate breadcrumbs, and visited country history with ACID safety.
+                  Persistent local database storage file storing flight records, saved routes and visited country history.
                 </p>
               </div>
 
               <div className="shrink-0 flex items-center gap-2">
                 <span className="px-2.5 py-1 rounded-sm text-xs font-medium bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline text-neutral-900 dark:text-white tabular-nums">
-                  aerotrack.db
+                  Local Storage
                 </span>
               </div>
             </div>
@@ -415,7 +444,7 @@ export const SettingsView: React.FC = () => {
                   </h3>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                  Total count of worldwide airports, civil landing strips, military bases, and helipads currently indexed in local storage for spatial radius querying.
+                  Total count of worldwide airports, landing strips, and helipads currently indexed in local storage.
                 </p>
               </div>
 

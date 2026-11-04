@@ -14,6 +14,7 @@ import {
   HardDrive,
   Settings,
   Route,
+  LifeBuoy,
   Bookmark
 } from 'lucide-react';
 
@@ -24,7 +25,8 @@ export const Sidebar: React.FC = () => {
     setActiveView, 
     activeFlight,
     endActiveFlight,
-    startManualFlight
+    startManualFlight,
+    isSyncingAirports
   } = useFlightStore();
 
   const navSections = [
@@ -50,6 +52,7 @@ export const Sidebar: React.FC = () => {
       label: 'Configuration',
       items: [
         { id: 'settings', label: 'Settings', icon: Settings },
+        { id: 'feedback', label: 'Help & Feedback', icon: LifeBuoy },
       ]
     }
   ];
@@ -149,11 +152,13 @@ export const Sidebar: React.FC = () => {
           </div>
         ) : (
           <button
+            disabled={isSyncingAirports}
+            title={isSyncingAirports ? 'Dataset update in progress... Flight recording is temporarily disabled.' : undefined}
             onClick={() => setActiveView('dashboard')}
             className="w-full flex items-center justify-center gap-2 bg-neutral-100 hover:bg-neutral-200 dark:bg-[#171717] dark:hover:bg-[#222222] text-neutral-800 dark:text-[#ededed] text-xs py-1.5 rounded-sm border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
           >
             <Play className="w-3 h-3 text-emerald-600 dark:text-geist-success fill-emerald-600 dark:fill-geist-success" />
-            <span>Flight Operations</span>
+            <span>{isSyncingAirports ? 'Dataset Syncing...' : 'Flight Operations'}</span>
           </button>
         )}
       </div>

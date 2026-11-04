@@ -124,6 +124,14 @@ pub struct OurAirportsSyncResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OurAirportsSyncProgress {
+    pub stage: String,
+    pub percent: u32,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SavedRouteRecord {
     pub id: String,
     pub name: String,
@@ -144,6 +152,222 @@ pub struct SavedRouteRecord {
     pub created_at: String,
     pub flown_at: Option<String>,
     pub linked_flight_id: Option<String>,
+}
+
+pub fn init_databases(
+    logbook_path: &Path,
+    navdata_path: &Path,
+    resource_dirs: &[std::path::PathBuf],
+) -> Result<(Connection, Connection)> {
+    // 1. Check if legacy aerotrack.db exists in the same directory and needs migration
+    if let Some(parent) = logbook_path.parent() {
+        let legacy_db = parent.join("aerotrack.db");
+        if legacy_db.exists() && (!logbook_path.exists() || !navdata_path.exists()) {
+            log::info!("Found legacy aerotrack.db, partitioning into logbook.db and navdata.db...");
+            let _ = migrate_from_legacy_aerotrack(&legacy_db, logbook_path, navdata_path);
+        }
+    }
+
+    // 2. Open and initialize navdata.db (Global aerodromes and runways)
+    let mut navdata_conn = Connection::open(navdata_path)?;
+    navdata_conn.execute_batch(
+        r#"
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
+
+        CREATE TABLE IF NOT EXISTS airports (
+            icao TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            elevation_ft INTEGER,
+            country_code TEXT NOT NULL,
+            country_name TEXT NOT NULL,
+            municipality TEXT,
+            airport_type TEXT DEFAULT 'medium_airport',
+            continent TEXT DEFAULT 'EU',
+            max_runway_length_ft INTEGER,
+            max_paved_runway_length_ft INTEGER,
+            max_unpaved_runway_length_ft INTEGER,
+            has_paved BOOLEAN DEFAULT 1,
+            has_unpaved BOOLEAN DEFAULT 0,
+            all_runways_closed BOOLEAN DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS runways (
+            id INTEGER PRIMARY KEY,
+            airport_ident TEXT NOT NULL,
+            length_ft INTEGER,
+            width_ft INTEGER,
+            surface TEXT,
+            is_paved BOOLEAN NOT NULL DEFAULT 1,
+            is_unpaved BOOLEAN NOT NULL DEFAULT 0,
+            lighted BOOLEAN NOT NULL DEFAULT 0,
+            closed BOOLEAN NOT NULL DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_airports_coords ON airports(latitude, longitude);
+        CREATE INDEX IF NOT EXISTS idx_airports_type ON airports(airport_type);
+        CREATE INDEX IF NOT EXISTS idx_airports_continent ON airports(continent);
+        CREATE INDEX IF NOT EXISTS idx_airports_rwy_len ON airports(max_runway_length_ft);
+        CREATE INDEX IF NOT EXISTS idx_airports_rwy_paved ON airports(max_paved_runway_length_ft);
+        CREATE INDEX IF NOT EXISTS idx_airports_rwy_unpaved ON airports(max_unpaved_runway_length_ft);
+        CREATE INDEX IF NOT EXISTS idx_airports_rwy_closed ON airports(all_runways_closed);
+
+        CREATE INDEX IF NOT EXISTS idx_runways_ident ON runways(airport_ident);
+        CREATE INDEX IF NOT EXISTS idx_runways_length ON runways(length_ft);
+        CREATE INDEX IF NOT EXISTS idx_runways_closed ON runways(closed);
+        "#
+    )?;
+
+    // Auto-seed or import OurAirports data if navdata is empty
+    seed_or_import_airports(&mut navdata_conn, resource_dirs)?;
+
+    // 3. Open and initialize logbook.db (Personal flight records, telemetry, routes, visited stats)
+    let logbook_conn = Connection::open(logbook_path)?;
+    logbook_conn.execute_batch(
+        r#"
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
+
+        CREATE TABLE IF NOT EXISTS flights (
+            id TEXT PRIMARY KEY,
+            aircraft_type TEXT NOT NULL,
+            departure_icao TEXT,
+            arrival_icao TEXT,
+            start_time TEXT NOT NULL,
+            end_time TEXT,
+            flight_time_seconds INTEGER DEFAULT 0,
+            max_altitude INTEGER DEFAULT 0,
+            max_ground_speed INTEGER DEFAULT 0,
+            distance_flown_nm REAL DEFAULT 0.0,
+            landing_rate_fpm REAL,
+            status TEXT CHECK(status IN ('RECORDING', 'COMPLETED', 'DISCARDED')) DEFAULT 'RECORDING'
+        );
+
+        CREATE TABLE IF NOT EXISTS flight_telemetry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            flight_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            altitude_msl REAL NOT NULL,
+            altitude_agl REAL,
+            indicated_airspeed REAL NOT NULL,
+            ground_speed REAL NOT NULL,
+            heading REAL NOT NULL,
+            pitch REAL,
+            bank REAL,
+            vertical_speed REAL,
+            is_on_ground BOOLEAN NOT NULL,
+            FOREIGN KEY (flight_id) REFERENCES flights(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS visited_airports (
+            icao TEXT PRIMARY KEY,
+            name TEXT,
+            country_code TEXT NOT NULL,
+            country_name TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            first_visited TEXT NOT NULL,
+            last_visited TEXT NOT NULL,
+            visit_count INTEGER DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS visited_countries (
+            iso_a2 TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            first_visited TEXT NOT NULL,
+            last_visited TEXT NOT NULL,
+            flight_count INTEGER DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS saved_routes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            aircraft_name TEXT NOT NULL,
+            aircraft_category TEXT NOT NULL,
+            departure_icao TEXT NOT NULL,
+            arrival_icao TEXT NOT NULL,
+            sector_count INTEGER NOT NULL,
+            total_distance_nm REAL NOT NULL,
+            total_airborne_minutes INTEGER NOT NULL,
+            total_duration_minutes INTEGER NOT NULL,
+            total_ground_minutes INTEGER DEFAULT 0,
+            include_ground_time BOOLEAN NOT NULL DEFAULT 1,
+            is_round_trip BOOLEAN NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'draft',
+            is_favorite BOOLEAN NOT NULL DEFAULT 0,
+            sectors_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            flown_at TEXT,
+            linked_flight_id TEXT,
+            FOREIGN KEY (linked_flight_id) REFERENCES flights(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_telemetry_flight_id ON flight_telemetry(flight_id);
+        CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON flight_telemetry(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_saved_routes_status ON saved_routes(status);
+        CREATE INDEX IF NOT EXISTS idx_saved_routes_favorite ON saved_routes(is_favorite);
+        CREATE INDEX IF NOT EXISTS idx_saved_routes_dep_arr ON saved_routes(departure_icao, arrival_icao);
+
+        CREATE TABLE IF NOT EXISTS user_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        );
+        "#
+    )?;
+
+    // Attach navdata to logbook so logbook can query navdata.airports and navdata.runways seamlessly
+    let navdata_abs = navdata_path.to_string_lossy().to_string();
+    let _ = logbook_conn.execute("ATTACH DATABASE ?1 AS navdata", [&navdata_abs]);
+    let _ = logbook_conn.execute("CREATE TEMP VIEW IF NOT EXISTS airports AS SELECT * FROM navdata.airports", []);
+    let _ = logbook_conn.execute("CREATE TEMP VIEW IF NOT EXISTS runways AS SELECT * FROM navdata.runways", []);
+
+    Ok((logbook_conn, navdata_conn))
+}
+
+fn migrate_from_legacy_aerotrack(legacy_db: &Path, logbook_path: &Path, navdata_path: &Path) -> Result<()> {
+    if legacy_db.exists() {
+        let legacy_abs = legacy_db.to_string_lossy().to_string();
+        // If logbook_path doesn't exist yet, copy user tables
+        if !logbook_path.exists() {
+            if let Ok(logbook) = Connection::open(logbook_path) {
+                let _ = logbook.execute("ATTACH DATABASE ?1 AS legacy", [&legacy_abs]);
+                let _ = logbook.execute_batch(
+                    r#"
+                    CREATE TABLE IF NOT EXISTS flights AS SELECT * FROM legacy.flights;
+                    CREATE TABLE IF NOT EXISTS flight_telemetry AS SELECT * FROM legacy.flight_telemetry;
+                    CREATE TABLE IF NOT EXISTS visited_airports AS SELECT * FROM legacy.visited_airports;
+                    CREATE TABLE IF NOT EXISTS visited_countries AS SELECT * FROM legacy.visited_countries;
+                    CREATE TABLE IF NOT EXISTS saved_routes AS SELECT * FROM legacy.saved_routes;
+                    CREATE TABLE IF NOT EXISTS schema_migrations AS SELECT * FROM legacy.schema_migrations;
+                    "#
+                );
+                let _ = logbook.execute("CREATE TABLE IF NOT EXISTS user_settings AS SELECT * FROM legacy.user_settings", []);
+            }
+        }
+        // If navdata_path doesn't exist yet, copy airport and runway tables
+        if !navdata_path.exists() {
+            if let Ok(navdata) = Connection::open(navdata_path) {
+                let _ = navdata.execute("ATTACH DATABASE ?1 AS legacy", [&legacy_abs]);
+                let _ = navdata.execute_batch(
+                    r#"
+                    CREATE TABLE IF NOT EXISTS airports AS SELECT * FROM legacy.airports;
+                    CREATE TABLE IF NOT EXISTS runways AS SELECT * FROM legacy.runways;
+                    "#
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn init_database<P: AsRef<Path>>(path: P) -> Result<Connection> {
@@ -273,6 +497,12 @@ pub fn init_database_with_resources(db_path: &Path, resource_dirs: &[std::path::
         CREATE INDEX IF NOT EXISTS idx_saved_routes_status ON saved_routes(status);
         CREATE INDEX IF NOT EXISTS idx_saved_routes_favorite ON saved_routes(is_favorite);
         CREATE INDEX IF NOT EXISTS idx_saved_routes_dep_arr ON saved_routes(departure_icao, arrival_icao);
+
+        CREATE TABLE IF NOT EXISTS user_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         "#,
     )?;
 
@@ -473,6 +703,15 @@ pub fn import_ourairports_files<P: AsRef<Path>>(
     airports_path: P,
     countries_path: P,
 ) -> Result<usize> {
+    import_ourairports_files_with_progress(conn, airports_path, countries_path, |_| {})
+}
+
+pub fn import_ourairports_files_with_progress<P: AsRef<Path>, F: FnMut(usize)>(
+    conn: &mut Connection,
+    airports_path: P,
+    countries_path: P,
+    mut on_batch: F,
+) -> Result<usize> {
     // 1. Build countries map (ISO_A2 -> Full Name)
     let mut countries_map: HashMap<String, String> = HashMap::new();
     if let Ok(file) = File::open(countries_path) {
@@ -494,99 +733,98 @@ pub fn import_ourairports_files<P: AsRef<Path>>(
         }
     }
 
-    // 2. Stream airports into a single SQLite transaction
+    // 2. Stream airports into chunked SQLite transactions of 5,000 items
     let airports_file = File::open(airports_path)
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let reader = BufReader::new(airports_file);
 
-    let tx = conn.transaction()?;
-    let mut imported = 0usize;
+    let is_valid_icao = |s: &str| s.len() == 4 && s.chars().all(|c| c.is_ascii_alphabetic());
 
-    {
-        let mut stmt = tx.prepare(
+    let mut imported = 0usize;
+    let mut batch_count = 0usize;
+    const BATCH_SIZE: usize = 5000;
+
+    let mut tx = conn.transaction()?;
+
+    for (idx, line) in reader.lines().enumerate() {
+        if idx == 0 {
+            continue; // Skip header
+        }
+        let l = match line {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let cols = parse_csv_line(&l);
+        if cols.len() < 11 {
+            continue;
+        }
+
+        let apt_type = cols[2].trim().to_lowercase();
+        let name = &cols[3];
+        let name_lower = name.to_lowercase();
+
+        // Strictly exclude closed facilities, helipads, heliports, seaplane bases, and balloonports
+        if apt_type == "closed"
+            || apt_type == "heliport"
+            || apt_type == "helipad"
+            || apt_type.contains("heli")
+            || apt_type.contains("pad")
+            || apt_type == "seaplane_base"
+            || apt_type == "balloonport"
+            || name_lower.contains("heliport")
+            || name_lower.contains("helipad")
+            || name_lower.contains("helistop")
+        {
+            continue;
+        }
+
+        let ident = cols[1].trim();
+        if ident.is_empty() {
+            continue;
+        }
+
+        // Strictly require official 4-letter alphabetic ICAO aerodrome designators (e.g. LOWI, EDDM, KJFK)
+        let icao = if cols.len() > 12 && is_valid_icao(cols[12].trim()) {
+            cols[12].trim().to_uppercase()
+        } else if is_valid_icao(ident) {
+            ident.to_uppercase()
+        } else {
+            // Not an official 4-letter ICAO airfield (e.g. PT-02313, 00AA, regional local codes), skip
+            continue;
+        };
+
+        let lat: f64 = match cols[4].parse() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let lon: f64 = match cols[5].parse() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let ele: Option<i32> = cols[6].parse().ok();
+        let country_code = cols[8].to_uppercase();
+        let country_name = countries_map
+            .get(&country_code)
+            .cloned()
+            .unwrap_or_else(|| country_code.clone());
+        let municipality = if !cols[10].is_empty() {
+            Some(cols[10].clone())
+        } else {
+            None
+        };
+        let continent = if cols.len() > 7 && !cols[7].is_empty() {
+            cols[7].trim()
+        } else {
+            "NA"
+        };
+
+        tx.execute(
             "INSERT OR REPLACE INTO airports (
                 icao, name, latitude, longitude, elevation_ft, country_code, country_name, municipality, airport_type, continent
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        )?;
-
-        for (idx, line) in reader.lines().enumerate() {
-            if idx == 0 {
-                continue; // Skip header
-            }
-            let l = match line {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-
-            let cols = parse_csv_line(&l);
-            if cols.len() < 11 {
-                continue;
-            }
-
-            let apt_type = cols[2].trim().to_lowercase();
-            let name = &cols[3];
-            let name_lower = name.to_lowercase();
-
-            // Strictly exclude closed facilities, helipads, heliports, seaplane bases, and balloonports
-            if apt_type == "closed"
-                || apt_type == "heliport"
-                || apt_type == "helipad"
-                || apt_type.contains("heli")
-                || apt_type.contains("pad")
-                || apt_type == "seaplane_base"
-                || apt_type == "balloonport"
-                || name_lower.contains("heliport")
-                || name_lower.contains("helipad")
-                || name_lower.contains("helistop")
-            {
-                continue;
-            }
-
-            let ident = cols[1].trim();
-            if ident.is_empty() {
-                continue;
-            }
-
-            // Strictly require official 4-letter alphabetic ICAO aerodrome designators (e.g. LOWI, EDDM, KJFK)
-            let is_valid_icao = |s: &str| s.len() == 4 && s.chars().all(|c| c.is_ascii_alphabetic());
-
-            let icao = if cols.len() > 12 && is_valid_icao(cols[12].trim()) {
-                cols[12].trim().to_uppercase()
-            } else if is_valid_icao(ident) {
-                ident.to_uppercase()
-            } else {
-                // Not an official 4-letter ICAO airfield (e.g. PT-02313, 00AA, regional local codes), skip
-                continue;
-            };
-
-            let name = &cols[3];
-            let lat: f64 = match cols[4].parse() {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let lon: f64 = match cols[5].parse() {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-
-            let ele: Option<i32> = cols[6].parse().ok();
-            let country_code = cols[8].to_uppercase();
-            let country_name = countries_map
-                .get(&country_code)
-                .cloned()
-                .unwrap_or_else(|| country_code.clone());
-            let municipality = if !cols[10].is_empty() {
-                Some(cols[10].clone())
-            } else {
-                None
-            };
-            let continent = if cols.len() > 7 && !cols[7].is_empty() {
-                cols[7].trim()
-            } else {
-                "NA"
-            };
-
-            stmt.execute(params![
+            params![
                 icao,
                 name,
                 lat,
@@ -597,13 +835,28 @@ pub fn import_ourairports_files<P: AsRef<Path>>(
                 municipality,
                 apt_type,
                 continent
-            ])?;
+            ],
+        )?;
 
-            imported += 1;
+        imported += 1;
+        batch_count += 1;
+
+        if batch_count >= BATCH_SIZE {
+            tx.commit()?;
+            on_batch(imported);
+            std::thread::yield_now();
+            tx = conn.transaction()?;
+            batch_count = 0;
         }
     }
 
-    tx.commit()?;
+    if batch_count > 0 {
+        tx.commit()?;
+        on_batch(imported);
+    } else {
+        drop(tx);
+    }
+
     Ok(imported)
 }
 
@@ -624,51 +877,59 @@ pub fn is_unpaved_surface(surface: &str) -> bool {
 }
 
 pub fn import_runways_file<P: AsRef<Path>>(conn: &mut Connection, runways_path: P) -> Result<usize> {
+    import_runways_file_with_progress(conn, runways_path, |_| {})
+}
+
+pub fn import_runways_file_with_progress<P: AsRef<Path>, F: FnMut(usize)>(
+    conn: &mut Connection,
+    runways_path: P,
+    mut on_batch: F,
+) -> Result<usize> {
     let file = File::open(runways_path).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let reader = BufReader::new(file);
 
-    let tx = conn.transaction()?;
-    let mut imported = 0usize;
+    let is_valid_icao = |s: &str| s.len() == 4 && s.chars().all(|c| c.is_ascii_alphabetic());
 
-    {
-        let mut stmt = tx.prepare(
+    let mut imported = 0usize;
+    let mut batch_count = 0usize;
+    const BATCH_SIZE: usize = 5000;
+
+    let mut tx = conn.transaction()?;
+
+    for (idx, line) in reader.lines().enumerate() {
+        if idx == 0 {
+            continue; // Skip header
+        }
+        let l = match line {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let cols = parse_csv_line(&l);
+        if cols.len() < 8 {
+            continue;
+        }
+
+        let ident = cols[2].trim().to_uppercase();
+        if !is_valid_icao(&ident) {
+            continue;
+        }
+
+        let id: Option<i64> = cols[0].parse().ok();
+        let length_ft: Option<i32> = cols[3].parse().ok();
+        let width_ft: Option<i32> = cols[4].parse().ok();
+        let surface = cols[5].trim().to_uppercase();
+        let lighted: bool = cols[6].trim() == "1";
+        let closed: bool = cols[7].trim() == "1";
+
+        let is_paved = is_paved_surface(&surface);
+        let is_unpaved = is_unpaved_surface(&surface) || (!is_paved && surface != "WATER");
+
+        tx.execute(
             "INSERT OR REPLACE INTO runways (
                 id, airport_ident, length_ft, width_ft, surface, is_paved, is_unpaved, lighted, closed
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
-        )?;
-
-        let is_valid_icao = |s: &str| s.len() == 4 && s.chars().all(|c| c.is_ascii_alphabetic());
-
-        for (idx, line) in reader.lines().enumerate() {
-            if idx == 0 {
-                continue; // Skip header
-            }
-            let l = match line {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-
-            let cols = parse_csv_line(&l);
-            if cols.len() < 8 {
-                continue;
-            }
-
-            let ident = cols[2].trim().to_uppercase();
-            if !is_valid_icao(&ident) {
-                continue;
-            }
-
-            let id: Option<i64> = cols[0].parse().ok();
-            let length_ft: Option<i32> = cols[3].parse().ok();
-            let width_ft: Option<i32> = cols[4].parse().ok();
-            let surface = cols[5].trim().to_uppercase();
-            let lighted: bool = cols[6].trim() == "1";
-            let closed: bool = cols[7].trim() == "1";
-
-            let is_paved = is_paved_surface(&surface);
-            let is_unpaved = is_unpaved_surface(&surface) || (!is_paved && surface != "WATER");
-
-            stmt.execute(params![
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
                 id,
                 ident,
                 length_ft,
@@ -678,13 +939,27 @@ pub fn import_runways_file<P: AsRef<Path>>(conn: &mut Connection, runways_path: 
                 is_unpaved,
                 lighted,
                 closed
-            ])?;
+            ],
+        )?;
 
-            imported += 1;
+        imported += 1;
+        batch_count += 1;
+
+        if batch_count >= BATCH_SIZE {
+            tx.commit()?;
+            on_batch(imported);
+            std::thread::yield_now();
+            tx = conn.transaction()?;
+            batch_count = 0;
         }
     }
 
-    tx.commit()?;
+    if batch_count > 0 {
+        tx.commit()?;
+        on_batch(imported);
+    } else {
+        drop(tx);
+    }
 
     // Update airport summary metrics
     conn.execute_batch(
@@ -721,40 +996,117 @@ pub fn import_runways_file<P: AsRef<Path>>(conn: &mut Connection, runways_path: 
     Ok(imported)
 }
 
-pub fn sync_ourairports_data(conn: &mut Connection, work_dir: &Path) -> Result<OurAirportsSyncResult, String> {
+pub fn sync_ourairports_data<F>(
+    conn: &mut Connection,
+    work_dir: &Path,
+    on_progress: F,
+) -> Result<OurAirportsSyncResult, String>
+where
+    F: Fn(OurAirportsSyncProgress),
+{
     let airports_path = work_dir.join("airports.csv");
     let countries_path = work_dir.join("countries.csv");
     let runways_path = work_dir.join("runways.csv");
 
-    // Download fresh copy from OurAirports when update is requested
     let curl_bin = if cfg!(windows) { "curl.exe" } else { "curl" };
 
-    let _ = std::process::Command::new(curl_bin)
+    on_progress(OurAirportsSyncProgress {
+        stage: "downloading".to_string(),
+        percent: 5,
+        message: "Fetching countries dataset from OurAirports...".to_string(),
+    });
+
+    let mut cmd1 = std::process::Command::new(curl_bin);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd1.creation_flags(0x08000000);
+    }
+    let _ = cmd1
         .args(["-L", "-s", "-o", countries_path.to_str().unwrap(), "https://davidmegginson.github.io/ourairports-data/countries.csv"])
         .status();
 
-    let _ = std::process::Command::new(curl_bin)
+    on_progress(OurAirportsSyncProgress {
+        stage: "downloading".to_string(),
+        percent: 25,
+        message: "Fetching runways dataset...".to_string(),
+    });
+
+    let mut cmd2 = std::process::Command::new(curl_bin);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd2.creation_flags(0x08000000);
+    }
+    let _ = cmd2
         .args(["-L", "-s", "-o", runways_path.to_str().unwrap(), "https://davidmegginson.github.io/ourairports-data/runways.csv"])
         .status();
 
-    let status = std::process::Command::new(curl_bin)
+    on_progress(OurAirportsSyncProgress {
+        stage: "downloading".to_string(),
+        percent: 50,
+        message: "Fetching global airports dataset (13MB)...".to_string(),
+    });
+
+    let mut cmd3 = std::process::Command::new(curl_bin);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd3.creation_flags(0x08000000);
+    }
+    let status = cmd3
         .args(["-L", "-s", "-o", airports_path.to_str().unwrap(), "https://davidmegginson.github.io/ourairports-data/airports.csv"])
         .status()
         .map_err(|e| format!("Failed to download OurAirports data: {}", e))?;
 
     if !status.success() {
-        return Err("curl failed to download OurAirports data".to_string());
+        return Err("curl failed to download OurAirports data. Please check your internet connection.".to_string());
     }
 
-    let apt_count = import_ourairports_files(conn, &airports_path, &countries_path)
-        .map_err(|e| format!("Failed to parse OurAirports airports file: {}", e))?;
+    on_progress(OurAirportsSyncProgress {
+        stage: "importing".to_string(),
+        percent: 65,
+        message: "Parsing & indexing aerodromes into SQLite in batches...".to_string(),
+    });
+
+    let apt_count = import_ourairports_files_with_progress(conn, &airports_path, &countries_path, |imported| {
+        let pct = 65 + ((imported as f32 / 80000.0) * 15.0).min(15.0) as u32;
+        on_progress(OurAirportsSyncProgress {
+            stage: "importing".to_string(),
+            percent: pct,
+            message: format!("Indexed {} aerodromes...", imported),
+        });
+    }).map_err(|e| format!("Failed to parse OurAirports airports file: {}", e))?;
+
+    on_progress(OurAirportsSyncProgress {
+        stage: "importing".to_string(),
+        percent: 82,
+        message: "Parsing & indexing runway dimensions and surface data in batches...".to_string(),
+    });
 
     let rwy_count = if runways_path.exists() {
-        import_runways_file(conn, &runways_path)
-            .map_err(|e| format!("Failed to parse OurAirports runways file: {}", e))?
+        import_runways_file_with_progress(conn, &runways_path, |imported| {
+            let pct = 82 + ((imported as f32 / 45000.0) * 10.0).min(10.0) as u32;
+            on_progress(OurAirportsSyncProgress {
+                stage: "importing".to_string(),
+                percent: pct,
+                message: format!("Indexed {} runways...", imported),
+            });
+        }).map_err(|e| format!("Failed to parse OurAirports runways file: {}", e))?
     } else {
         0
     };
+
+    // Clean up temporary downloaded CSV files now that SQLite indexing is complete
+    let _ = std::fs::remove_file(&airports_path);
+    let _ = std::fs::remove_file(&countries_path);
+    let _ = std::fs::remove_file(&runways_path);
+
+    on_progress(OurAirportsSyncProgress {
+        stage: "complete".to_string(),
+        percent: 100,
+        message: format!("Successfully synced and indexed {} airports and {} runways from OurAirports.", apt_count, rwy_count),
+    });
 
     Ok(OurAirportsSyncResult {
         success: true,
@@ -1741,6 +2093,10 @@ pub fn delete_saved_route(conn: &Connection, id: &str) -> Result<()> {
 }
 
 pub fn recompute_visited_stats(conn: &Connection) -> Result<()> {
+    recompute_visited_stats_with_navdata(conn, conn)
+}
+
+pub fn recompute_visited_stats_with_navdata(conn: &Connection, navdata: &Connection) -> Result<()> {
     conn.execute("DELETE FROM visited_airports", [])?;
     conn.execute("DELETE FROM visited_countries", [])?;
 
@@ -1800,7 +2156,7 @@ pub fn recompute_visited_stats(conn: &Connection) -> Result<()> {
             drop(tel_stmt);
 
             for (lat, lon) in ground_points {
-                if let Ok(Some(apt)) = search_airports_near(conn, lat, lon, 3.0) {
+                if let Ok(Some(apt)) = search_airports_near(navdata, lat, lon, 3.0) {
                     if apt.icao.len() == 4 && apt.icao != "ZZZZ" {
                         unique_apts.insert(apt.icao);
                     }
@@ -1811,7 +2167,7 @@ pub fn recompute_visited_stats(conn: &Connection) -> Result<()> {
         let mut unique_countries: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
 
         for icao in unique_apts {
-            if let Ok(Some(apt)) = get_airport_by_icao(conn, &icao) {
+            if let Ok(Some(apt)) = get_airport_by_icao(navdata, &icao) {
                 conn.execute(
                     r#"
                     INSERT INTO visited_airports (
@@ -2116,6 +2472,40 @@ pub fn export_logbook_format(conn: &Connection, format: &str) -> Result<String, 
             format
         )),
     }
+}
+
+pub fn get_user_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT value FROM user_settings WHERE key = ?1")?;
+    let mut rows = stmt.query([key])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(row.get(0)?))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn set_user_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO user_settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        [key, value, &now],
+    )?;
+    Ok(())
+}
+
+pub fn get_all_user_settings(conn: &Connection) -> Result<std::collections::HashMap<String, String>> {
+    let mut stmt = conn.prepare("SELECT key, value FROM user_settings")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut map = std::collections::HashMap::new();
+    for row in rows {
+        if let Ok((k, v)) = row {
+            map.insert(k, v);
+        }
+    }
+    Ok(map)
 }
 
 #[cfg(test)]

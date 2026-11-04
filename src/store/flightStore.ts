@@ -18,7 +18,7 @@ import { calculateDistanceNm } from '../data/mockData';
 import { resolveAirport } from '../services/routeGenerator';
 
 // Dynamic safe invoke helper for Tauri v2 / browser compatibility
-async function safeInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T | null> {
+export async function safeInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T | null> {
   if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -457,11 +457,12 @@ export interface FlightState {
   savedRoutes: SavedRoute[];
   selectedFlightId: string | null;
   scrubbedTelemetryIndex: number | null;
-  activeView: 'dashboard' | 'new-route' | 'saved-routes' | 'logbook' | 'flight-detail' | 'visited' | 'ifr-trainer' | 'hold-trainer' | 'settings';
+  activeView: 'dashboard' | 'new-route' | 'saved-routes' | 'logbook' | 'flight-detail' | 'visited' | 'ifr-trainer' | 'hold-trainer' | 'settings' | 'feedback';
   theme: 'light' | 'dark';
   dbInitialized: boolean;
   airportsCount: number;
   isSyncingAirports: boolean;
+  syncProgress: { stage: string; percent: number; message: string } | null;
   lastSyncMessage: string | null;
   closeToTray: boolean;
   autoStartRecording: boolean;
@@ -480,6 +481,7 @@ export interface FlightState {
   fetchAirportsCount: () => Promise<void>;
   fetchNearestAirport: (lat: number, lon: number, radiusNm?: number) => Promise<Airport | null>;
   syncOurAirports: () => Promise<any>;
+  setTheme: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
   setActiveView: (view: FlightState['activeView']) => void;
   setSelectedFlightId: (id: string | null) => void;
@@ -616,10 +618,24 @@ export const useFlightStore = create<FlightState>()(
       selectedFlightId: null,
       scrubbedTelemetryIndex: null,
       activeView: 'dashboard',
-      theme: 'light',
+      theme: (() => {
+        try {
+          if (typeof localStorage !== 'undefined') {
+            const raw = localStorage.getItem('apollo-flight-store');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.state?.theme === 'dark' || parsed?.state?.theme === 'light') {
+                return parsed.state.theme;
+              }
+            }
+          }
+        } catch {}
+        return 'light';
+      })(),
       dbInitialized: false,
       airportsCount: 75,
       isSyncingAirports: false,
+      syncProgress: null,
       lastSyncMessage: null,
       closeToTray: false,
       autoStartRecording: true,
@@ -654,10 +670,12 @@ export const useFlightStore = create<FlightState>()(
       setCloseToTray: async (enabled: boolean) => {
         set({ closeToTray: enabled });
         await safeInvoke('set_close_to_tray', { enabled });
+        await safeInvoke('set_user_setting', { key: 'closeToTray', value: String(enabled) });
       },
 
       setAutoStartRecording: (enabled: boolean) => {
         set({ autoStartRecording: enabled });
+        safeInvoke('set_user_setting', { key: 'autoStartRecording', value: String(enabled) });
       },
 
       setShowEndFlightPrompt: (show: boolean) => {
@@ -669,19 +687,48 @@ export const useFlightStore = create<FlightState>()(
       },
 
       syncOurAirports: async () => {
-        set({ isSyncingAirports: true, lastSyncMessage: 'Downloading and indexing OurAirports dataset...' });
+        if (get().activeFlight) {
+          const msg = 'Cannot update OurAirports dataset while a flight recording is active.';
+          set({ lastSyncMessage: msg });
+          return { success: false, message: msg };
+        }
+
+        set({
+          isSyncingAirports: true,
+          syncProgress: { stage: 'starting', percent: 0, message: 'Initializing dataset synchronization...' },
+          lastSyncMessage: 'Initializing dataset synchronization...',
+        });
+
+        let unlisten: (() => void) | null = null;
         try {
+          if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
+            const { listen } = await import('@tauri-apps/api/event');
+            unlisten = await listen<any>('ourairports-sync-progress', (event) => {
+              if (event?.payload) {
+                set({
+                  syncProgress: event.payload,
+                  lastSyncMessage: event.payload.message || 'Syncing...',
+                });
+              }
+            });
+          }
+
           const result = await safeInvoke<any>('sync_ourairports');
           if (result && result.success) {
             set({
               airportsCount: result.totalAirports,
               isSyncingAirports: false,
+              syncProgress: { stage: 'complete', percent: 100, message: result.message },
               lastSyncMessage: result.message,
             });
+            setTimeout(() => {
+              set({ syncProgress: null });
+            }, 4000);
             return result;
           } else {
             set({
               isSyncingAirports: false,
+              syncProgress: null,
               lastSyncMessage: result?.message || 'Sync failed or not supported in web mode',
             });
             return null;
@@ -689,9 +736,14 @@ export const useFlightStore = create<FlightState>()(
         } catch (err: any) {
           set({
             isSyncingAirports: false,
+            syncProgress: null,
             lastSyncMessage: `Sync failed: ${err?.message || err}`,
           });
           return null;
+        } finally {
+          if (unlisten) {
+            unlisten();
+          }
         }
       },
 
@@ -708,6 +760,28 @@ export const useFlightStore = create<FlightState>()(
 
           if (typeof count === 'number' && count > 0) {
             set({ airportsCount: count });
+          }
+
+          // Load persisted user settings from SQLite (logbook.db)
+          const dbSettings = await safeInvoke<Record<string, string>>('get_all_user_settings');
+          if (dbSettings && Object.keys(dbSettings).length > 0) {
+            if (dbSettings.theme === 'dark' || dbSettings.theme === 'light') {
+              get().setTheme(dbSettings.theme);
+            }
+            if (typeof dbSettings.closeToTray === 'string') {
+              set({ closeToTray: dbSettings.closeToTray === 'true' });
+            }
+            if (typeof dbSettings.autoStartRecording === 'string') {
+              set({ autoStartRecording: dbSettings.autoStartRecording === 'true' });
+            }
+          } else {
+            // Seed existing preferences into logbook.db user_settings table on initial migration
+            const currentTheme = get().theme;
+            const currentCloseToTray = get().closeToTray;
+            const currentAutoStart = get().autoStartRecording;
+            await safeInvoke('set_user_setting', { key: 'theme', value: currentTheme });
+            await safeInvoke('set_user_setting', { key: 'closeToTray', value: String(currentCloseToTray) });
+            await safeInvoke('set_user_setting', { key: 'autoStartRecording', value: String(currentAutoStart) });
           }
 
           if (dbFlights && Array.isArray(dbFlights) && dbFlights.length > 0) {
@@ -917,16 +991,21 @@ export const useFlightStore = create<FlightState>()(
         return existing || null;
       },
 
-      toggleTheme: () => {
-        const next = get().theme === 'light' ? 'dark' : 'light';
+      setTheme: (theme: 'light' | 'dark') => {
         if (typeof document !== 'undefined') {
-          if (next === 'dark') {
+          if (theme === 'dark') {
             document.documentElement.classList.add('dark');
           } else {
             document.documentElement.classList.remove('dark');
           }
         }
-        set({ theme: next });
+        set({ theme });
+        safeInvoke('set_user_setting', { key: 'theme', value: theme });
+      },
+
+      toggleTheme: () => {
+        const next = get().theme === 'light' ? 'dark' : 'light';
+        get().setTheme(next);
       },
 
       setActiveView: (view) => set({ activeView: view }),
@@ -955,7 +1034,7 @@ export const useFlightStore = create<FlightState>()(
         // Auto-flight start triggers (Item 4 in FIXES.md):
         // 1. Moving faster than 20kt
         // 2. Engine started (combustion 0 -> 1)
-        if (!active && current.simConnected && get().autoStartRecording) {
+        if (!active && current.simConnected && get().autoStartRecording && !get().isSyncingAirports) {
           const engineStarted = !prev.isEngineRunning && current.isEngineRunning;
           const speedOver20 = current.groundSpeed > 20;
 
@@ -1259,6 +1338,10 @@ export const useFlightStore = create<FlightState>()(
 
       startManualFlight: (depIcao, arrIcao, aircraft) => {
         const state = get();
+        if (state.isSyncingAirports) {
+          console.warn('Cannot start flight recording while OurAirports dataset sync is in progress');
+          return;
+        }
         const newFlightId = `fl-${Date.now()}`;
         const newFlight: FlightRecord = {
           id: newFlightId,
@@ -1476,6 +1559,15 @@ export const useFlightStore = create<FlightState>()(
         closeToTray: state.closeToTray,
         autoStartRecording: state.autoStartRecording,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state && typeof document !== 'undefined') {
+          if (state.theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        }
+      },
     }
   )
 );

@@ -11,9 +11,12 @@ import { VisitedWorldView, preloadCountriesGeoJson } from './components/VisitedW
 import { IfrTrainer } from './components/IfrTrainer';
 import { HoldTrainer } from './components/HoldTrainer';
 import { SettingsView } from './components/SettingsView';
+import { FeedbackView } from './components/FeedbackView';
 import { SimBridge } from './components/SimBridge';
+import { safeInvoke } from './store/flightStore';
 
 export const App: React.FC = () => {
+  const theme = useFlightStore((s) => s.theme);
   const { 
     activeView, 
     currentTelemetry, 
@@ -24,6 +27,17 @@ export const App: React.FC = () => {
     lastSyncMessage 
   } = useFlightStore();
 
+  // Keep <html> dark class strictly in sync with theme state across all sessions and restarts
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+  }, [theme]);
+
   useEffect(() => {
     // Silently preheat the GeoJSON country borders in the background during idle time
     // so switching to 'Visited Destinations' has zero network latency
@@ -31,6 +45,33 @@ export const App: React.FC = () => {
       preloadCountriesGeoJson();
     }, 1200);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    // Global client runtime error forwarding to persistent log files in /log directory
+    const handleWindowError = (event: ErrorEvent) => {
+      safeInvoke('log_client_message', {
+        level: 'error',
+        message: event.message || 'Window Error',
+        context: `${event.filename || 'unknown'}:${event.lineno || 0}:${event.colno || 0}`,
+      });
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      safeInvoke('log_client_message', {
+        level: 'error',
+        message: String(event.reason || 'Unhandled Promise Rejection'),
+        context: 'UnhandledPromiseRejection',
+      });
+    };
+
+    window.addEventListener('error', handleWindowError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleWindowError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
   }, []);
 
   return (
@@ -57,6 +98,7 @@ export const App: React.FC = () => {
           {activeView === 'ifr-trainer' && <IfrTrainer />}
           {activeView === 'hold-trainer' && <HoldTrainer />}
           {activeView === 'settings' && <SettingsView />}
+          {activeView === 'feedback' && <FeedbackView />}
         </main>
       </div>
     </div>
