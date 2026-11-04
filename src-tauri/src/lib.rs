@@ -28,18 +28,72 @@ pub struct LogFileInfo {
     pub is_crash: bool,
 }
 
-pub fn get_log_dir(app: &AppHandle) -> std::path::PathBuf {
-    if let Ok(dir) = app.path().app_log_dir() {
+pub fn get_app_data_dir(app: &AppHandle) -> std::path::PathBuf {
+    if let Ok(data_dir) = app.path().data_dir() {
+        let dir = data_dir.join("Apollo Flight");
         let _ = std::fs::create_dir_all(&dir);
         dir
     } else if let Ok(dir) = app.path().app_data_dir() {
-        let logs = dir.join("logs");
-        let _ = std::fs::create_dir_all(&logs);
-        logs
+        let _ = std::fs::create_dir_all(&dir);
+        dir
     } else {
-        let fallback = std::path::PathBuf::from("logs");
-        let _ = std::fs::create_dir_all(&fallback);
-        fallback
+        std::path::PathBuf::from(".")
+    }
+}
+
+pub fn get_log_dir(app: &AppHandle) -> std::path::PathBuf {
+    let app_dir = get_app_data_dir(app);
+    let log_dir = app_dir.join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+    log_dir
+}
+
+fn migrate_legacy_com_apollo_flight_dir(app: &AppHandle, new_dir: &std::path::Path) {
+    if let Ok(old_dir) = app.path().app_data_dir() {
+        if old_dir.exists() && old_dir != new_dir {
+            // Migrate logbook.db and wal/shm files if new_dir doesn't have it yet
+            let old_logbook = old_dir.join("logbook.db");
+            let new_logbook = new_dir.join("logbook.db");
+            if old_logbook.exists() && !new_logbook.exists() {
+                let _ = std::fs::copy(&old_logbook, &new_logbook);
+                let _ = std::fs::copy(old_dir.join("logbook.db-wal"), new_dir.join("logbook.db-wal"));
+                let _ = std::fs::copy(old_dir.join("logbook.db-shm"), new_dir.join("logbook.db-shm"));
+            }
+
+            // Migrate navdata.db and wal/shm files
+            let old_navdata = old_dir.join("navdata.db");
+            let new_navdata = new_dir.join("navdata.db");
+            if old_navdata.exists() && !new_navdata.exists() {
+                let _ = std::fs::copy(&old_navdata, &new_navdata);
+                let _ = std::fs::copy(old_dir.join("navdata.db-wal"), new_dir.join("navdata.db-wal"));
+                let _ = std::fs::copy(old_dir.join("navdata.db-shm"), new_dir.join("navdata.db-shm"));
+            }
+
+            // Migrate legacy aerotrack.db if present
+            let old_aerotrack = old_dir.join("aerotrack.db");
+            let new_aerotrack = new_dir.join("aerotrack.db");
+            if old_aerotrack.exists() && !new_aerotrack.exists() {
+                let _ = std::fs::copy(&old_aerotrack, &new_aerotrack);
+            }
+
+            // Migrate logs folder
+            let old_logs = old_dir.join("logs");
+            let new_logs = new_dir.join("logs");
+            if old_logs.exists() {
+                let _ = std::fs::create_dir_all(&new_logs);
+                if let Ok(entries) = std::fs::read_dir(&old_logs) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            let dest = new_logs.join(entry.file_name());
+                            if !dest.exists() {
+                                let _ = std::fs::copy(&path, &dest);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -255,8 +309,7 @@ mod commands {
 
         let app_clone = app.clone();
         let app_worker = app.clone();
-        let work_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        let _ = std::fs::create_dir_all(&work_dir);
+        let work_dir = get_app_data_dir(&app_worker);
 
         let res = tokio::task::spawn_blocking(move || {
             let state = app_worker.state::<DbState>();
@@ -491,18 +544,17 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            // Initialize split databases: logbook.db (user data) and navdata.db (OurAirports dataset)
-            let app_data_dir = match app.path().app_data_dir() {
-                Ok(dir) => {
-                    let _ = std::fs::create_dir_all(&dir);
-                    dir
-                }
-                Err(_) => std::path::PathBuf::from("."),
-            };
+            // Resolve app data directory as %APPDATA%/Apollo Flight
+            let app_data_dir = get_app_data_dir(app.handle());
+
+            // Check and seamlessly migrate existing files from %APPDATA%/com.apollo.flight if needed
+            migrate_legacy_com_apollo_flight_dir(app.handle(), &app_data_dir);
+
             let logbook_path = app_data_dir.join("logbook.db");
             let navdata_path = app_data_dir.join("navdata.db");
 
             let mut search_dirs = Vec::new();
+            search_dirs.push(app_data_dir.clone());
             if let Ok(data_dir) = app.path().app_data_dir() {
                 search_dirs.push(data_dir);
             }
