@@ -1,5 +1,5 @@
 import { Airport } from '../types/flight';
-import { RouteSearchParams, GeneratedRoute, RouteSector, GeographicAreaFilter } from '../types/route';
+import { RouteSearchParams, GeneratedRoute, RouteSector, GeographicAreaFilter, AircraftCategory } from '../types/route';
 import { AIRCRAFT_CATEGORIES, calculateSectorFlightProfile, formatFlightLevelOrAltitude } from '../data/aircraftCategories';
 import { calculateDistanceNm, calculateInitialBearing, isHelipadOrHeliport } from '../data/mockData';
 import { FALLBACK_AIRPORTS } from '../data/fallbackAirports';
@@ -416,6 +416,61 @@ function pickSafeAirport(
 /**
  * Main route generation algorithm
  */
+export function computeRouteSector(
+  dep: Airport,
+  arr: Airport,
+  category: AircraftCategory,
+  includeGroundTime: boolean,
+  sectorIndex: number = 1
+): RouteSector {
+  const dist = calculateDistanceNm(dep.latitude, dep.longitude, arr.latitude, arr.longitude);
+  const bearing = calculateInitialBearing(dep.latitude, dep.longitude, arr.latitude, arr.longitude);
+
+  // Query terrain-aware corridor minimum safe altitude (MSA / Grid MORA)
+  const corridorMsaResult = getCorridorMsa(dep.latitude, dep.longitude, arr.latitude, arr.longitude, 10);
+
+  const profileMetrics = calculateSectorFlightProfile(
+    dist,
+    category,
+    includeGroundTime,
+    dep.elevationFt || 0,
+    arr.elevationFt || 0,
+    corridorMsaResult.msaFt,
+    bearing,
+    corridorMsaResult.peakTerrainFt,
+    corridorMsaResult.requiredMarginFt
+  );
+
+  let terrainWarning: string | undefined = undefined;
+  if (corridorMsaResult.isMountainous) {
+    terrainWarning = `Mountainous Terrain Advisory: This sector traverses mountainous terrain (elevation variation ≥ 3,000 ft within 10 NM). Recommended altitude is cleared with a 2,000 ft margin above peak terrain (~${corridorMsaResult.peakTerrainFt.toLocaleString()} ft MSL).`;
+  }
+
+  return {
+    sectorIndex,
+    departure: dep,
+    arrival: arr,
+    distanceNm: profileMetrics.distanceNm,
+    initialBearingDeg: bearing,
+    airborneMinutes: profileMetrics.airborneMinutes,
+    groundMinutes: profileMetrics.groundMinutes,
+    totalMinutes: profileMetrics.totalMinutes,
+    climbMinutes: profileMetrics.climbMinutes,
+    cruiseMinutes: profileMetrics.cruiseMinutes,
+    descentMinutes: profileMetrics.descentMinutes,
+    cruiseAltitudeFt: profileMetrics.cruiseAltitudeFt,
+    cruiseSpeedKt: profileMetrics.cruiseSpeedKt,
+    corridorMsaFt: corridorMsaResult.msaFt,
+    peakTerrainFt: corridorMsaResult.peakTerrainFt,
+    limitingCoord: corridorMsaResult.limitingCoord,
+    isAltitudeTerrainClamped: profileMetrics.isAltitudeTerrainClamped,
+    terrainWarning,
+    isMountainous: corridorMsaResult.isMountainous,
+    maxTerrainVariation10Nm: corridorMsaResult.maxTerrainVariation10Nm,
+    requiredMarginFt: corridorMsaResult.requiredMarginFt,
+  };
+}
+
 export async function generateRouteSuggestion(params: RouteSearchParams): Promise<GeneratedRoute> {
   const profile = AIRCRAFT_CATEGORIES[params.category];
   const isRoundTrip = params.sectorCount === -1;
@@ -856,56 +911,12 @@ export async function generateRouteSuggestion(params: RouteSearchParams): Promis
     const dep = validWaypoints[i];
     const arr = validWaypoints[i + 1];
 
-    const dist = calculateDistanceNm(dep.latitude, dep.longitude, arr.latitude, arr.longitude);
-    const bearing = calculateInitialBearing(dep.latitude, dep.longitude, arr.latitude, arr.longitude);
+    const sector = computeRouteSector(dep, arr, params.category, params.includeGroundTime, i + 1);
+    sectors.push(sector);
 
-    // Query terrain-aware corridor minimum safe altitude (MSA / Grid MORA)
-    const corridorMsaResult = getCorridorMsa(dep.latitude, dep.longitude, arr.latitude, arr.longitude, 10);
-
-    const profileMetrics = calculateSectorFlightProfile(
-      dist,
-      params.category,
-      params.includeGroundTime,
-      dep.elevationFt || 0,
-      arr.elevationFt || 0,
-      corridorMsaResult.msaFt,
-      bearing,
-      corridorMsaResult.peakTerrainFt,
-      corridorMsaResult.requiredMarginFt
-    );
-
-    let terrainWarning: string | undefined = undefined;
-    if (corridorMsaResult.isMountainous) {
-      terrainWarning = `Mountainous Terrain Advisory: This sector traverses mountainous terrain (elevation variation ≥ 3,000 ft within 10 NM). Recommended altitude is cleared with a 2,000 ft margin above peak terrain (~${corridorMsaResult.peakTerrainFt.toLocaleString()} ft MSL).`;
-    }
-
-    sectors.push({
-      sectorIndex: i + 1,
-      departure: dep,
-      arrival: arr,
-      distanceNm: profileMetrics.distanceNm,
-      initialBearingDeg: bearing,
-      airborneMinutes: profileMetrics.airborneMinutes,
-      groundMinutes: profileMetrics.groundMinutes,
-      totalMinutes: profileMetrics.totalMinutes,
-      climbMinutes: profileMetrics.climbMinutes,
-      cruiseMinutes: profileMetrics.cruiseMinutes,
-      descentMinutes: profileMetrics.descentMinutes,
-      cruiseAltitudeFt: profileMetrics.cruiseAltitudeFt,
-      cruiseSpeedKt: profileMetrics.cruiseSpeedKt,
-      corridorMsaFt: corridorMsaResult.msaFt,
-      peakTerrainFt: corridorMsaResult.peakTerrainFt,
-      limitingCoord: corridorMsaResult.limitingCoord,
-      isAltitudeTerrainClamped: profileMetrics.isAltitudeTerrainClamped,
-      terrainWarning,
-      isMountainous: corridorMsaResult.isMountainous,
-      maxTerrainVariation10Nm: corridorMsaResult.maxTerrainVariation10Nm,
-      requiredMarginFt: corridorMsaResult.requiredMarginFt,
-    });
-
-    totalDistanceNm += profileMetrics.distanceNm;
-    totalAirborneMinutes += profileMetrics.airborneMinutes;
-    totalGroundMinutes += profileMetrics.groundMinutes;
+    totalDistanceNm += sector.distanceNm;
+    totalAirborneMinutes += sector.airborneMinutes;
+    totalGroundMinutes += sector.groundMinutes;
   }
 
   const aircraftExample = profile.examples[0] || 'Aircraft';

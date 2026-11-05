@@ -6,8 +6,8 @@ import {
   RefreshCw,
   Sliders,
   Radio,
-  Activity,
-  Compass
+  PlaneTakeoff,
+  Lock
 } from 'lucide-react';
 
 export const HoldTrainer: React.FC = () => {
@@ -101,6 +101,12 @@ export const HoldTrainer: React.FC = () => {
     const inboundRad = ((inboundCourse - 90) * Math.PI) / 180;
     const sectorRadius = 150;
 
+    // 0. Base circle background
+    ctx.beginPath();
+    ctx.arc(0, 0, sectorRadius, 0, Math.PI * 2);
+    ctx.fillStyle = theme === 'dark' ? '#0a0a0a' : '#f8fafc';
+    ctx.fill();
+
     // 1. Draw Entry Sectors
     ctx.beginPath();
     ctx.moveTo(0, 0);
@@ -116,7 +122,7 @@ export const HoldTrainer: React.FC = () => {
     const tdSpan = (70 * Math.PI) / 180;
     ctx.arc(0, 0, sectorRadius, tdStart, tdStart + tdSpan, false);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(245, 166, 35, 0.12)';
+    ctx.fillStyle = 'rgba(245, 166, 35, 0.15)';
     ctx.fill();
 
     ctx.beginPath();
@@ -125,13 +131,14 @@ export const HoldTrainer: React.FC = () => {
     const parSpan = (110 * Math.PI) / 180;
     ctx.arc(0, 0, sectorRadius, parStart, parStart + parSpan, false);
     ctx.closePath();
-    ctx.fillStyle = theme === 'dark' ? 'rgba(255, 255, 255, 0.09)' : 'rgba(0, 0, 0, 0.08)';
+    ctx.fillStyle = theme === 'dark' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.08)';
     ctx.fill();
 
+    // Sector border
     ctx.beginPath();
     ctx.arc(0, 0, sectorRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = theme === 'dark' ? '#262626' : '#d4d4d4';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = theme === 'dark' ? '#262626' : '#e2e8f0';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
     // 2. Draw Holding Racetrack Pattern
@@ -140,29 +147,53 @@ export const HoldTrainer: React.FC = () => {
 
     const legLength = 110;
     const turnRadius = 35;
-    const mult = turnDirection === 'RIGHT' ? 1 : -1;
 
     ctx.beginPath();
-    // Inbound leg
+    // Inbound leg to fix (0,0)
     ctx.moveTo(-legLength, 0);
     ctx.lineTo(0, 0);
-    // Turn at fix
-    ctx.arc(0, mult * turnRadius, turnRadius, -Math.PI / 2, mult > 0 ? Math.PI / 2 : -Math.PI * 1.5, mult < 0);
-    // Outbound leg
-    ctx.lineTo(-legLength, mult * turnRadius * 2);
-    // Inbound turn
-    ctx.arc(-legLength, mult * turnRadius, turnRadius, mult > 0 ? Math.PI / 2 : -Math.PI * 1.5, -Math.PI / 2, mult < 0);
 
-    ctx.strokeStyle = '#0070f3';
+    if (turnDirection === 'RIGHT') {
+      // Standard right turn at fix:
+      // Center: (0, turnRadius), start at (0, 0) [-PI/2], turn 180° clockwise to (0, 2*turnRadius) [PI/2]
+      ctx.arc(0, turnRadius, turnRadius, -Math.PI / 2, Math.PI / 2, false);
+      // Outbound leg
+      ctx.lineTo(-legLength, turnRadius * 2);
+      // Inbound turn:
+      // Center: (-legLength, turnRadius), start at (-legLength, 2*turnRadius) [PI/2], turn 180° clockwise to (-legLength, 0) [3*PI/2]
+      ctx.arc(-legLength, turnRadius, turnRadius, Math.PI / 2, (3 * Math.PI) / 2, false);
+    } else {
+      // Non-standard left turn at fix:
+      // Center: (0, -turnRadius), start at (0, 0) [PI/2], turn 180° counterclockwise to (0, -2*turnRadius) [-PI/2]
+      ctx.arc(0, -turnRadius, turnRadius, Math.PI / 2, -Math.PI / 2, true);
+      // Outbound leg
+      ctx.lineTo(-legLength, -turnRadius * 2);
+      // Inbound turn:
+      // Center: (-legLength, -turnRadius), start at (-legLength, -2*turnRadius) [-PI/2], turn 180° counterclockwise to (-legLength, 0) [-3*PI/2]
+      ctx.arc(-legLength, -turnRadius, turnRadius, -Math.PI / 2, (-3 * Math.PI) / 2, true);
+    }
+    ctx.closePath();
+
+    ctx.strokeStyle = '#2563eb';
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // Arrow on inbound leg
+    // Arrows on racetrack:
+    // Arrow on inbound leg (pointing toward fix (0,0) in +X direction)
     ctx.beginPath();
     ctx.moveTo(-20, -5);
     ctx.lineTo(-5, 0);
     ctx.lineTo(-20, 5);
-    ctx.fillStyle = '#0070f3';
+    ctx.fillStyle = '#2563eb';
+    ctx.fill();
+
+    // Arrow on outbound leg (pointing toward -X)
+    const outY = turnDirection === 'RIGHT' ? turnRadius * 2 : -turnRadius * 2;
+    ctx.beginPath();
+    ctx.moveTo(-legLength + 20, outY - 5);
+    ctx.lineTo(-legLength + 5, outY);
+    ctx.lineTo(-legLength + 20, outY + 5);
+    ctx.fillStyle = '#2563eb';
     ctx.fill();
 
     ctx.restore();
@@ -170,9 +201,9 @@ export const HoldTrainer: React.FC = () => {
     // 3. Draw Holding Fix (center)
     ctx.beginPath();
     ctx.arc(0, 0, 7, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = theme === 'dark' ? '#000000' : '#ffffff';
     ctx.fill();
-    ctx.strokeStyle = '#0070f3';
+    ctx.strokeStyle = '#2563eb';
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
@@ -186,13 +217,13 @@ export const HoldTrainer: React.FC = () => {
     ctx.beginPath();
     ctx.moveTo(planeX, planeY);
     ctx.lineTo(0, 0);
-    ctx.strokeStyle = theme === 'dark' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.2)';
+    ctx.strokeStyle = theme === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.25)';
     ctx.lineWidth = 1.5;
     ctx.setLineDash([3, 3]);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Aircraft symbol
+    // Aircraft symbol oriented strictly by aircraftHeading
     ctx.save();
     ctx.translate(planeX, planeY);
     ctx.rotate((aircraftHeading * Math.PI) / 180);
@@ -205,7 +236,7 @@ export const HoldTrainer: React.FC = () => {
     ctx.closePath();
     ctx.fillStyle = '#10b981';
     ctx.fill();
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = theme === 'dark' ? '#000000' : '#ffffff';
     ctx.lineWidth = 1;
     ctx.stroke();
 
@@ -218,14 +249,18 @@ export const HoldTrainer: React.FC = () => {
     <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans">
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-200 dark:border-geist-hairline">
-        <div>
-          <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight flex items-center gap-2">
-            <RotateCw className="w-4 h-4 text-neutral-500" />
-            Holding Pattern Procedural Trainer
-          </h1>
-          <p className="text-xs text-neutral-500 dark:text-geist-muted mt-0.5">
-            FAA & ICAO Standard Entry Sector Analysis (Direct, Teardrop, Parallel)
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
+            <RotateCw className="w-5 h-5 text-neutral-500 dark:text-neutral-300" />
+          </div>
+          <div>
+            <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight flex items-center gap-2">
+              Holding Pattern Procedural Trainer
+            </h1>
+            <p className="text-xs text-neutral-500 dark:text-geist-muted mt-0.5">
+              FAA & ICAO Standard Entry Sector Analysis (Direct, Teardrop, Parallel)
+            </p>
+          </div>
         </div>
 
         {/* Controls: Mode Selector & Nav Source */}
@@ -277,7 +312,7 @@ export const HoldTrainer: React.FC = () => {
                   : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
               }`}
             >
-              <Activity className="w-3.5 h-3.5 text-emerald-500" />
+              <PlaneTakeoff className="w-3.5 h-3.5 text-emerald-500" />
               <span>Live MSFS Sync</span>
               {activeFlight && (
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="Ongoing flight active" />
@@ -363,12 +398,12 @@ export const HoldTrainer: React.FC = () => {
             ref={canvasRef}
             width={400}
             height={400}
-            className="w-full max-w-[400px] aspect-square rounded-full border border-neutral-200 dark:border-neutral-800"
+            className="w-full max-w-[400px] aspect-square rounded-full border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] shadow-xs"
           />
 
           <div className="mt-3 flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400">
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-neutral-300 dark:bg-[#222]" />
+              <span className="w-3 h-3 rounded-sm bg-neutral-200 dark:bg-[#222] border border-neutral-300 dark:border-neutral-700" />
               <span>Direct (180°)</span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -376,7 +411,7 @@ export const HoldTrainer: React.FC = () => {
               <span>Teardrop (70°)</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-neutral-400 dark:bg-[#333]" />
+              <span className="w-3 h-3 rounded-sm bg-blue-500/20 border border-blue-500/50" />
               <span>Parallel (110°)</span>
             </div>
           </div>
@@ -424,13 +459,26 @@ export const HoldTrainer: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Sliders className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
                 <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                  {mode === 'LIVE' ? 'Live Telemetry Sliders' : 'Hold Parameters'}
+                  {mode === 'LIVE' ? 'Live Telemetry Values (Read-Only)' : 'Hold Parameters'}
                 </span>
               </div>
               {mode === 'LIVE' && (
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">LIVE SYNCED</span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-1">
+                  <Lock className="w-2.5 h-2.5" />
+                  LOCKED / LIVE SYNCED
+                </span>
               )}
             </div>
+
+            {/* Live Sync Lock Notice */}
+            {mode === 'LIVE' && (
+              <div className="p-2.5 rounded-sm bg-neutral-100 dark:bg-[#181818] border border-neutral-200 dark:border-geist-hairline flex items-start gap-2">
+                <Lock className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                  Controls are locked during <strong>Live MSFS Sync</strong>. Aircraft heading and nav course are received directly from Microsoft Flight Simulator. Switch to <strong>Practice Mode</strong> to customize hold parameters.
+                </div>
+              </div>
+            )}
 
             <div className="space-y-3 text-xs">
               <div>
@@ -442,12 +490,12 @@ export const HoldTrainer: React.FC = () => {
                   type="range"
                   min="0"
                   max="359"
+                  disabled={mode === 'LIVE'}
                   value={aircraftHeading}
-                  onChange={(e) => {
-                    setMode('PRACTICE');
-                    setAircraftHeading(Number(e.target.value));
-                  }}
-                  className="w-full accent-neutral-900 dark:accent-white cursor-pointer h-1.5 bg-neutral-200 dark:bg-[#262626] rounded-sm"
+                  onChange={(e) => setAircraftHeading(Number(e.target.value))}
+                  className={`w-full accent-neutral-900 dark:accent-white h-1.5 bg-neutral-200 dark:bg-[#262626] rounded-sm ${
+                    mode === 'LIVE' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                  }`}
                 />
               </div>
 
@@ -460,12 +508,12 @@ export const HoldTrainer: React.FC = () => {
                   type="range"
                   min="0"
                   max="359"
+                  disabled={mode === 'LIVE'}
                   value={inboundCourse}
-                  onChange={(e) => {
-                    setMode('PRACTICE');
-                    setInboundCourse(Number(e.target.value));
-                  }}
-                  className="w-full accent-neutral-900 dark:accent-white cursor-pointer h-1.5 bg-neutral-200 dark:bg-[#262626] rounded-sm"
+                  onChange={(e) => setInboundCourse(Number(e.target.value))}
+                  className={`w-full accent-neutral-900 dark:accent-white h-1.5 bg-neutral-200 dark:bg-[#262626] rounded-sm ${
+                    mode === 'LIVE' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                  }`}
                 />
               </div>
 
@@ -473,22 +521,24 @@ export const HoldTrainer: React.FC = () => {
                 <span className="text-neutral-500 dark:text-geist-muted block mb-1 text-xs">Turn Direction</span>
                 <div className="grid grid-cols-2 gap-2">
                   <button
+                    disabled={mode === 'LIVE'}
                     onClick={() => setTurnDirection('RIGHT')}
                     className={`py-1.5 px-3 rounded-sm text-xs font-medium border transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 ${
                       turnDirection === 'RIGHT'
                         ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-[#ededed] dark:text-black dark:border-white'
                         : 'bg-white dark:bg-black text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-geist-hairline hover:text-black dark:hover:text-white'
-                    }`}
+                    } ${mode === 'LIVE' ? 'opacity-40 cursor-not-allowed' : ''}`}
                   >
                     Standard (Right)
                   </button>
                   <button
+                    disabled={mode === 'LIVE'}
                     onClick={() => setTurnDirection('LEFT')}
                     className={`py-1.5 px-3 rounded-sm text-xs font-medium border transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 ${
                       turnDirection === 'LEFT'
                         ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-[#ededed] dark:text-black dark:border-white'
                         : 'bg-white dark:bg-black text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-geist-hairline hover:text-black dark:hover:text-white'
-                    }`}
+                    } ${mode === 'LIVE' ? 'opacity-40 cursor-not-allowed' : ''}`}
                   >
                     Non-Std (Left)
                   </button>

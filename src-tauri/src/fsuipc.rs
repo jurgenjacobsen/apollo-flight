@@ -11,6 +11,8 @@ pub static IS_CONNECTED_TO_SIM: AtomicBool = AtomicBool::new(false);
 #[serde(rename_all = "camelCase")]
 pub struct TelemetryPacket {
     pub sim_connected: bool,
+    pub is_in_menu: bool,
+    pub flight_load_count: u16,
     pub latitude: f64,
     pub longitude: f64,
     pub altitude_msl: f64,
@@ -41,9 +43,11 @@ impl Default for TelemetryPacket {
     fn default() -> Self {
         Self {
             sim_connected: false,
-            latitude: 47.2602,
-            longitude: 11.3440,
-            altitude_msl: 1906.0,
+            is_in_menu: false,
+            flight_load_count: 0,
+            latitude: 0.0,
+            longitude: 0.0,
+            altitude_msl: 0.0,
             altitude_agl: 0.0,
             indicated_airspeed: 0.0,
             true_airspeed: 0.0,
@@ -52,7 +56,7 @@ impl Default for TelemetryPacket {
             pitch: 0.0,
             bank: 0.0,
             heading: 0.0,
-            aircraft_title: "Standby".to_string(),
+            aircraft_title: "Standby (Waiting for MSFS)".to_string(),
             is_on_ground: true,
             is_engine_running: false,
             nav1_obs: 0,
@@ -124,6 +128,8 @@ pub mod win {
     /// Read all required telemetry offsets in a single batch IPC transaction
     pub fn read_telemetry_batch(handle: &mut UserHandle) -> io::Result<TelemetryPacket> {
         let mut sim_ok: u8 = 0;
+        let mut raw_in_menu: u8 = 0;
+        let mut raw_flight_load_count: u16 = 0;
         let mut raw_lat: i64 = 0;
         let mut raw_lon: i64 = 0;
         let mut raw_alt_msl: i64 = 0;
@@ -152,6 +158,8 @@ pub mod win {
         {
             let mut session = handle.session();
             session.read(0x3364, &mut sim_ok)?;
+            session.read(0x3365, &mut raw_in_menu)?;
+            session.read(0x3F02, &mut raw_flight_load_count)?;
             session.read(0x0560, &mut raw_lat)?;
             session.read(0x0568, &mut raw_lon)?;
             session.read(0x0570, &mut raw_alt_msl)?;
@@ -184,6 +192,11 @@ pub mod win {
             .trim()
             .to_string();
 
+        let is_in_menu = aircraft_title.is_empty()
+            || aircraft_title == "Standby (Waiting for MSFS)"
+            || raw_in_menu != 0
+            || sim_ok != 0;
+
         let dme_dist = if raw_nav1_dme_dist == 0xFFFF {
             0.0
         } else {
@@ -215,6 +228,8 @@ pub mod win {
 
         Ok(TelemetryPacket {
             sim_connected: true,
+            is_in_menu,
+            flight_load_count: raw_flight_load_count,
             latitude: FsuipcConversions::parse_latitude(raw_lat),
             longitude: FsuipcConversions::parse_longitude(raw_lon),
             altitude_msl: FsuipcConversions::parse_altitude_msl(raw_alt_msl).round(),

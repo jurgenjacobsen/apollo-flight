@@ -16,12 +16,17 @@ import {
   Cpu,
   ArrowUpCircle,
   Download,
-  AlertTriangle
+  AlertTriangle,
+  Upload,
+  Trash2,
+  Archive,
+  FolderDown
 } from 'lucide-react';
 
 import packageJson from '../../package.json'; 
 import type { Update } from '@tauri-apps/plugin-updater'; 
 import { Select } from './ui';
+import { ImportModal } from './ImportModal';
 
 export const SettingsView: React.FC = () => {
   const { 
@@ -37,7 +42,12 @@ export const SettingsView: React.FC = () => {
     syncProgress,
     activeFlight,
     syncOurAirports,
-    lastSyncMessage
+    lastSyncMessage,
+    pageSize,
+    setPageSize,
+    exportDataBundle,
+    recycleBin,
+    setActiveView
   } = useFlightStore();
 
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -46,6 +56,24 @@ export const SettingsView: React.FC = () => {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [includeTelemetryExport, setIncludeTelemetryExport] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportSuccessMsg, setExportSuccessMsg] = useState<string | null>(null);
+
+  const handleExport = async (scope: 'full' | 'settings' | 'logbook' | 'routes') => {
+    setIsExporting(true);
+    setExportSuccessMsg(null);
+    try {
+      await exportDataBundle(scope, includeTelemetryExport);
+      setExportSuccessMsg(`Successfully exported ${scope} data.`);
+      setTimeout(() => setExportSuccessMsg(null), 3500);
+    } catch (err: any) {
+      console.error('[SettingsView] Export error:', err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const notifySaved = () => {
     setSavedSuccess(true);
@@ -136,7 +164,7 @@ export const SettingsView: React.FC = () => {
         <div className="flex items-center justify-between pb-5 border-b border-neutral-200 dark:border-geist-hairline">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
-              <Settings className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
+              <Settings className="w-5 h-5 text-neutral-500 dark:text-neutral-300" />
             </div>
             <div>
               <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight">
@@ -149,8 +177,7 @@ export const SettingsView: React.FC = () => {
           </div>
 
           {savedSuccess && (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-sm text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 animate-fade-in">
-              <CheckCircle2 className="w-3.5 h-3.5" />
+            <div className="px-4 py-1 rounded-sm text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 animate-fade-in">
               <span>Preferences updated</span>
             </div>
           )}
@@ -175,7 +202,7 @@ export const SettingsView: React.FC = () => {
                   </h3>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                  When enabled, closing the app window minimizes Apollo Flight to the system notification tray area instead of terminating the application. Real-time telemetry monitoring and active flight sessions continue uninterrupted in the background.
+                  When enabled, closing the app window minimizes Apollo Flight to the system notification tray area instead of terminating the application. Active flight sessions continue in the background.
                 </p>
               </div>
 
@@ -200,6 +227,42 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
+            {/* Preference: Table Pagination Limit */}
+            <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1 max-w-xl">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
+                    Table Pagination Limit
+                  </h3>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
+                  Controls the default number of flight records or saved routes displayed per page view in the Logbook and Saved Routes tables. Choose between 25, 50, or 100 items.
+                </p>
+              </div>
+
+              <div className="shrink-0 flex items-center">
+                <div className="inline-flex items-center rounded-sm overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline p-0.5 gap-1">
+                  {[25, 50, 100].map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={async () => {
+                        await setPageSize(size);
+                        notifySaved();
+                      }}
+                      className={`px-4 py-1 text-xs font-semibold rounded-xs transition-colors ${
+                        pageSize === size
+                          ? 'bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs'
+                          : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {/* Preference: Interface Theme */}
             <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1 max-w-xl">
@@ -209,23 +272,21 @@ export const SettingsView: React.FC = () => {
                   </h3>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                  Toggle between high-contrast dark cockpit styling and clean daylight canvas theme for optimal legibility across varying ambient lighting environments.
+                  Toggle between high-contrast dark mode and clean daylight theme for optimal legibility across varying ambient lighting environments.
                 </p>
               </div>
 
               <div className="shrink-0 flex items-center">
-                <div className="inline-flex items-center p-0.5 rounded-sm bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline">
+                <div className="inline-flex items-center rounded-full overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline">
                   <button
                     type="button"
                     onClick={() => {
                       setTheme('light');
-
                       notifySaved();
-
                     }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xs text-xs font-medium transition-colors ${
+                    className={`flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors ${
                       theme === 'light'
-                        ? 'bg-white text-neutral-900 shadow-xs'
+                        ? 'bg-white text-neutral-900'
                         : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
                     }`}
                   >
@@ -236,11 +297,9 @@ export const SettingsView: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setTheme('dark');
-
                       notifySaved();
-
                     }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xs text-xs font-medium transition-colors ${
+                    className={`flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors ${
                       theme === 'dark'
                         ? 'bg-neutral-900 text-white dark:bg-[#333333] shadow-xs'
                         : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
@@ -460,6 +519,147 @@ export const SettingsView: React.FC = () => {
         {/* Section Divider */}
         <hr className="border-neutral-200 dark:border-geist-hairline" />
 
+        {/* Section: Data Backup, Export & Import */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Archive className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
+            <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
+              Data Management, Backup & Export
+            </h2>
+          </div>
+
+          <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm divide-y divide-neutral-200 dark:divide-geist-hairline shadow-xs">
+            {/* Preference: Export Data */}
+            <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="space-y-1 max-w-xl">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
+                    Export Flight Simulator Data
+                  </h3>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
+                  Export your entire database or individual segments in JSON backup format.
+                </p>
+
+                {exportSuccessMsg && (
+                  <div className="pt-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    {exportSuccessMsg}
+                  </div>
+                )}
+
+                {/* Optional Telemetry Checkbox */}
+                <div className="pt-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="telemetryExportToggle"
+                    checked={includeTelemetryExport}
+                    onChange={(e) => setIncludeTelemetryExport(e.target.checked)}
+                    className="rounded border-neutral-300 dark:border-neutral-700 text-neutral-900 focus:ring-0 cursor-pointer"
+                  />
+                  <label htmlFor="telemetryExportToggle" className="text-xs text-neutral-600 dark:text-neutral-300 cursor-pointer select-none">
+                    Include high-resolution GPS telemetry points in logbook export
+                  </label>
+                </div>
+              </div>
+
+              <div className="shrink-0 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={isExporting}
+                  onClick={() => handleExport('full')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-900 hover:bg-black dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-black shadow-xs transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Full Backup</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isExporting}
+                  onClick={() => handleExport('logbook')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 hover:bg-neutral-200 dark:bg-[#202020] dark:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors"
+                >
+                  <FolderDown className="w-3.5 h-3.5 text-neutral-500" />
+                  <span>Logbook</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isExporting}
+                  onClick={() => handleExport('routes')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 hover:bg-neutral-200 dark:bg-[#202020] dark:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors"
+                >
+                  <FolderDown className="w-3.5 h-3.5 text-neutral-500" />
+                  <span>Routes</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isExporting}
+                  onClick={() => handleExport('settings')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 hover:bg-neutral-200 dark:bg-[#202020] dark:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors"
+                >
+                  <Sliders className="w-3.5 h-3.5 text-neutral-500" />
+                  <span>Settings</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Preference: Import Data */}
+            <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1 max-w-xl">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
+                    Import Backup
+                  </h3>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
+                  Restore from an exported Apollo Flight file. Includes conflict detection and property-level settings merging.
+                </p>
+              </div>
+
+              <div className="shrink-0 flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-sm border border-blue-600 bg-blue-600/25 hover:bg-blue-600/75 text-neutral-800 dark:text-white transition-colors"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Import Data File</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Preference: Recycle Bin Retention */}
+            <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1 max-w-xl">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
+                    Recycle Bin & Flight Retention
+                  </h3>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
+                  Deleted flights are kept safely in the Recycle Bin for 30 days before permanent purging.
+                </p>
+              </div>
+
+              <div className="shrink-0 flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setActiveView('recycle-bin')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 hover:bg-neutral-200 dark:bg-[#202020] dark:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Open Recycle Bin</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Section Divider */}
+        <hr className="border-neutral-200 dark:border-geist-hairline" />
+
         {/* Section 4: About Apollo Flight */}
         <section className="space-y-4">
           <div className="flex items-center gap-2">
@@ -474,13 +674,13 @@ export const SettingsView: React.FC = () => {
             <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1 max-w-xl">
                 <div className="flex items-center gap-2">
-                  <img src="/Icon.svg" alt="Apollo Flight" className="w-4 h-4 object-contain shrink-0" />
+                  <img src="/Icon.svg" alt="Apollo Flight" className="w-6 h-6 object-contain shrink-0" />
                   <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
                     Application Version
                   </h3>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                  Modern flight tracking, telemetry analysis, and IFR companion for Microsoft Flight Simulator 2020 & 2024. Featuring synchronized telemetry scrubbing and multi-touchdown analysis.
+                  Flight tracking, telemetry analysis, and IFR companion for Microsoft Flight Simulator 2020 & 2024.
                 </p>
               </div>
 
@@ -609,6 +809,11 @@ export const SettingsView: React.FC = () => {
           </div>
         </section>
       </div>
+
+      <ImportModal 
+        isOpen={isImportModalOpen} 
+        onClose={() => setIsImportModalOpen(false)} 
+      />
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useFlightStore } from '../store/flightStore';
+import { useFlightStore, formatFlightDuration } from '../store/flightStore';
 import { 
   Compass, 
   Gauge, 
@@ -27,6 +27,7 @@ export const DashboardView: React.FC = () => {
     endActiveFlight,
     showEndFlightPrompt,
     setShowEndFlightPrompt,
+    detectedMultiSectorRoute,
     nearestAirport,
     fetchNearestAirport,
     autoStartRecording,
@@ -61,11 +62,11 @@ export const DashboardView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
+    <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
       
-      {/* Manual Flight End Confirmation Prompt (Item 4 Safeguard) */}
+      {/* Flight End / Multi-Sector Continuation Prompt (Phase 9.1 & Item 4 Safeguard) */}
       {showEndFlightPrompt && (
-        <div className="bg-amber-50 dark:bg-[#1f170a] border border-amber-300 dark:border-amber-700/60 p-4 rounded-sm shadow-md animate-fade-in">
+        <div className="bg-amber-50 dark:bg-[#1f170a] border border-amber-300 dark:border-amber-700/60 p-4 rounded-sm animate-fade-in">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-start gap-3">
               <div className="p-1.5 rounded-sm bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 mt-0.5">
@@ -73,10 +74,23 @@ export const DashboardView: React.FC = () => {
               </div>
               <div className="space-y-0.5">
                 <h3 className="text-xs font-semibold text-amber-900 dark:text-amber-200">
-                  Finish Flight Recording?
+                  {detectedMultiSectorRoute 
+                    ? `Multi-Sector Route: ${detectedMultiSectorRoute.route.name}`
+                    : 'Finish Flight Recording?'}
                 </h3>
                 <p className="text-xs text-amber-800 dark:text-amber-300/90 leading-relaxed">
-                  The aircraft has been stationary for over 30 seconds with engines shut down. Since this flight was started manually, would you like to finish recording and log this flight?
+                  {detectedMultiSectorRoute ? (
+                    <>
+                      The aircraft is parked at <strong>{detectedMultiSectorRoute.currentAirportIcao}</strong> with engines shut down.
+                      We think you might be executing saved route <strong>"{detectedMultiSectorRoute.route.name}"</strong> ({detectedMultiSectorRoute.route.departureIcao} ➔ {detectedMultiSectorRoute.route.arrivalIcao}).
+                      {detectedMultiSectorRoute.nextSectorArrivalIcao && (
+                        <span> Next planned destination: <strong>{detectedMultiSectorRoute.nextSectorArrivalIcao}</strong>.</span>
+                      )}
+                      {' '}Would you like to keep recording for the next sector, or finish and save this flight now?
+                    </>
+                  ) : (
+                    'The aircraft has been stationary for over 30 seconds with engines shut down. Since this flight was started manually, would you like to finish recording and log this flight?'
+                  )}
                 </p>
               </div>
             </div>
@@ -86,11 +100,11 @@ export const DashboardView: React.FC = () => {
                 onClick={() => setShowEndFlightPrompt(false)}
                 className="px-3 py-1.5 text-xs font-medium rounded-sm text-neutral-700 dark:text-neutral-300 hover:bg-amber-100/60 dark:hover:bg-[#2c210e] border border-neutral-300 dark:border-neutral-700 transition-colors"
               >
-                Keep Recording
+                {detectedMultiSectorRoute ? 'Keep Recording (Next Sector)' : 'Keep Recording'}
               </button>
               <button
                 onClick={() => endActiveFlight()}
-                className="px-3.5 py-1.5 text-xs font-medium rounded-sm bg-amber-600 hover:bg-amber-500 text-white transition-colors flex items-center gap-1.5 shadow-sm"
+                className="px-3.5 py-1.5 text-xs font-medium rounded-sm bg-amber-600 hover:bg-amber-500 text-white transition-colors flex items-center gap-1.5"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>Finish & Save Flight</span>
@@ -101,80 +115,99 @@ export const DashboardView: React.FC = () => {
       )}
 
       {/* Telemetry Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-sm">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-sm">
           <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
             <span>Altitude MSL</span>
             <Gauge className="w-3.5 h-3.5 text-neutral-400" />
           </div>
           <div className="text-2xl font-semibold text-neutral-900 dark:text-white tabular-nums tracking-tight">
-            {currentTelemetry.altitudeMsl.toLocaleString()} <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted">ft</span>
+            {currentTelemetry.simConnected ? currentTelemetry.altitudeMsl.toLocaleString() : '--'}{' '}
+            <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted">
+              {currentTelemetry.simConnected ? 'ft' : ''}
+            </span>
           </div>
           <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1">
-            AGL {currentTelemetry.altitudeAgl} ft
+            {currentTelemetry.simConnected ? `AGL ${currentTelemetry.altitudeAgl} ft` : 'No Sim Connection'}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-sm">
+        <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-sm">
           <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
             <span>Ground Speed</span>
             <Wind className="w-3.5 h-3.5 text-neutral-400" />
           </div>
           <div className="text-2xl font-semibold text-neutral-900 dark:text-white tabular-nums tracking-tight">
-            {currentTelemetry.groundSpeed} <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted">kt</span>
+            {currentTelemetry.simConnected ? currentTelemetry.groundSpeed : '--'}{' '}
+            <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted">
+              {currentTelemetry.simConnected ? 'kt' : ''}
+            </span>
           </div>
           <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1">
-            IAS {currentTelemetry.indicatedAirspeed} · TAS {currentTelemetry.trueAirspeed}
+            {currentTelemetry.simConnected
+              ? `IAS ${currentTelemetry.indicatedAirspeed} · TAS ${currentTelemetry.trueAirspeed}`
+              : 'Standby'}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-sm">
+        <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-sm">
           <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
             <span>Magnetic Heading</span>
             <Compass className="w-3.5 h-3.5 text-neutral-400" />
           </div>
           <div className="text-2xl font-semibold text-neutral-900 dark:text-white tabular-nums tracking-tight">
-            {String(currentTelemetry.heading).padStart(3, '0')}°
+            {currentTelemetry.simConnected ? `${String(currentTelemetry.heading).padStart(3, '0')}°` : '--'}
           </div>
           <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1">
-            {currentTelemetry.heading >= 315 || currentTelemetry.heading < 45 ? 'North' :
-             currentTelemetry.heading >= 45 && currentTelemetry.heading < 135 ? 'East' :
-             currentTelemetry.heading >= 135 && currentTelemetry.heading < 225 ? 'South' : 'West'}
+            {currentTelemetry.simConnected ? (
+              currentTelemetry.heading >= 315 || currentTelemetry.heading < 45 ? 'North' :
+              currentTelemetry.heading >= 45 && currentTelemetry.heading < 135 ? 'East' :
+              currentTelemetry.heading >= 135 && currentTelemetry.heading < 225 ? 'South' : 'West'
+            ) : 'Standby'}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-sm">
+        <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-sm">
           <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
             <span>Vertical Speed</span>
             <ArrowUpRight className="w-3.5 h-3.5 text-neutral-400" />
           </div>
           <div className={`text-2xl font-semibold tabular-nums tracking-tight ${
+            !currentTelemetry.simConnected ? 'text-neutral-900 dark:text-white' :
             currentTelemetry.verticalSpeed > 100 ? 'text-emerald-600 dark:text-geist-success' :
             currentTelemetry.verticalSpeed < -100 ? 'text-red-600 dark:text-geist-error' : 'text-neutral-900 dark:text-white'
           }`}>
-            {currentTelemetry.verticalSpeed > 0 ? `+${currentTelemetry.verticalSpeed}` : currentTelemetry.verticalSpeed}
-            <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted ml-1">fpm</span>
+            {currentTelemetry.simConnected
+              ? (currentTelemetry.verticalSpeed > 0 ? `+${currentTelemetry.verticalSpeed}` : currentTelemetry.verticalSpeed)
+              : '--'}
+            <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted ml-1">
+              {currentTelemetry.simConnected ? 'fpm' : ''}
+            </span>
           </div>
           <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1">
-            {currentTelemetry.isOnGround ? 'On Runway / Surface' : 'Airborne'}
+            {currentTelemetry.simConnected ? (currentTelemetry.isOnGround ? 'On Runway / Surface' : 'Airborne') : 'Standby'}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-sm">
+        <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-sm">
           <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
             <span>Attitude & Engine</span>
             <Navigation className="w-3.5 h-3.5 text-neutral-400" />
           </div>
           <div className="text-2xl font-semibold text-neutral-900 dark:text-white tabular-nums tracking-tight">
-            {currentTelemetry.pitch}° <span className="text-xs font-normal text-neutral-400 dark:text-geist-muted">/</span> {currentTelemetry.bank}°
+            {currentTelemetry.simConnected ? `${currentTelemetry.pitch}° / ${currentTelemetry.bank}°` : '-- / --'}
           </div>
           <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1 flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${currentTelemetry.isEngineRunning ? 'bg-emerald-500' : 'bg-neutral-400'}`} />
-            <span>{currentTelemetry.isEngineRunning ? 'Engines Running' : 'Engines Off'}</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${currentTelemetry.simConnected && currentTelemetry.isEngineRunning ? 'bg-emerald-500' : 'bg-neutral-400'}`} />
+            <span>
+              {currentTelemetry.simConnected
+                ? (currentTelemetry.isEngineRunning ? 'Engines Running' : 'Engines Off')
+                : 'Sim Disconnected'}
+            </span>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-sm">
+        <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-sm">
           <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
             <span>Flight Stage</span>
             <Activity className="w-3.5 h-3.5 text-neutral-400" />
@@ -191,13 +224,13 @@ export const DashboardView: React.FC = () => {
       </div>
 
       {/* Main Section: Clean Flight Overview (PFD removed) & Flight Lifecycle Controller */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         
         {/* Left Column (lg:col-span-2): Active Telemetry & Nav Status Deck */}
         <div className="lg:col-span-2 space-y-4">
           
           {/* Live Flight & Navigation Overview Card */}
-          <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-5 shadow-sm space-y-4">
+          <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 shadow-sm space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-geist-hairline">
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${currentTelemetry.simConnected ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400'}`} />
@@ -205,8 +238,10 @@ export const DashboardView: React.FC = () => {
                   Flight Telemetry & Navigation Deck
                 </h2>
               </div>
-              <span className="text-[11px] text-neutral-500 dark:text-geist-muted tabular-nums font-mono">
-                LAT {currentTelemetry.latitude.toFixed(4)}° · LON {currentTelemetry.longitude.toFixed(4)}°
+              <span className="text-[11px] text-neutral-500 dark:text-geist-muted tabular-nums">
+                {currentTelemetry.simConnected
+                  ? `LAT ${currentTelemetry.latitude.toFixed(4)}° · LON ${currentTelemetry.longitude.toFixed(4)}°`
+                  : 'STANDBY · NO SIM SIGNAL'}
               </span>
             </div>
 
@@ -267,7 +302,7 @@ export const DashboardView: React.FC = () => {
                 <div>
                   <span className="text-[10px] text-neutral-500 dark:text-geist-muted block">Duration</span>
                   <span className="font-mono font-medium text-neutral-800 dark:text-neutral-200">
-                    {activeFlight ? `${Math.floor(activeFlight.flightTimeSeconds / 60)}m ${activeFlight.flightTimeSeconds % 60}s` : '--'}
+                    {activeFlight ? formatFlightDuration(activeFlight.flightTimeSeconds) : '--'}
                   </span>
                 </div>
                 <div>
@@ -298,7 +333,11 @@ export const DashboardView: React.FC = () => {
                 <div>
                   <span className="text-neutral-500 dark:text-geist-muted mr-1">Nearest Aerodrome:</span>
                   <span className="font-semibold text-neutral-900 dark:text-white">
-                    {nearestAirport ? `${nearestAirport.icao} — ${nearestAirport.name}` : 'Scanning aerodromes...'}
+                    {nearestAirport
+                      ? `${nearestAirport.icao} — ${nearestAirport.name}`
+                      : currentTelemetry.simConnected
+                      ? (currentTelemetry.isInMenu ? 'Simulator in Menu / Loading' : 'Scanning aerodromes...')
+                      : '-- (Disconnected)'}
                   </span>
                 </div>
               </div>
@@ -322,7 +361,7 @@ export const DashboardView: React.FC = () => {
         </div>
 
         {/* Right Column (lg:col-span-1): Flight Management & Recording Controller */}
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-5 flex flex-col justify-between shadow-sm">
+        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 flex flex-col justify-between shadow-sm">
           <div>
             <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-geist-hairline mb-4">
               <div className="flex items-center gap-2">
@@ -331,9 +370,6 @@ export const DashboardView: React.FC = () => {
                   Flight Logger
                 </h2>
               </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded-sm border font-mono ${getStageColor(flightStage)}`}>
-                {flightStage}
-              </span>
             </div>
 
             {activeFlight ? (
@@ -361,7 +397,7 @@ export const DashboardView: React.FC = () => {
                     <div className="flex justify-between">
                       <span className="text-neutral-500 dark:text-geist-muted">Duration:</span>
                       <span className="font-semibold tabular-nums text-neutral-900 dark:text-white">
-                        {Math.floor(activeFlight.flightTimeSeconds / 60)}m {activeFlight.flightTimeSeconds % 60}s
+                        {formatFlightDuration(activeFlight.flightTimeSeconds)}
                       </span>
                     </div>
                     <div className="flex justify-between">

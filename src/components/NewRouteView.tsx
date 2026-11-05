@@ -719,8 +719,8 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-neutral-200 dark:border-geist-hairline gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-sm bg-blue-50 dark:bg-[#0c182b] border border-blue-200 dark:border-blue-900/50 text-blue-600 dark:text-blue-400">
-            <Route className="w-5 h-5" />
+          <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
+            <Route className="w-5 h-5 text-neutral-500 dark:text-neutral-300" />
           </div>
           <div>
             <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight">

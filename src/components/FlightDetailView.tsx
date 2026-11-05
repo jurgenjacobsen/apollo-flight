@@ -28,6 +28,7 @@ import {
   FileSpreadsheet,
   ChevronDown,
   Loader2,
+  Plane,
 } from 'lucide-react';
 import { calculateTouchdownGForce } from '../utils/touchdownPhysics';
 
@@ -230,11 +231,15 @@ export const FlightDetailView: React.FC = () => {
 
   const targetFlightId = flight?.id || selectedFlightId;
   const hasTelemetryPoints = (flight?.telemetryPoints && flight.telemetryPoints.length > 0) || false;
+  const attemptedLoadsRef = useRef<Set<string>>(new Set());
 
   // Automatically fetch full telemetry trajectory dataset from SQLite if not loaded yet, or auto-heal distance if 0
   useEffect(() => {
-    if (targetFlightId && (!hasTelemetryPoints || !flight?.distanceFlownNm || flight.distanceFlownNm <= 0)) {
-      loadFlightDetails(targetFlightId);
+    if (targetFlightId && !attemptedLoadsRef.current.has(targetFlightId)) {
+      if (!hasTelemetryPoints || !flight?.distanceFlownNm || flight.distanceFlownNm <= 0) {
+        attemptedLoadsRef.current.add(targetFlightId);
+        loadFlightDetails(targetFlightId);
+      }
     }
   }, [targetFlightId, hasTelemetryPoints, flight?.distanceFlownNm, loadFlightDetails]);
 
@@ -790,15 +795,31 @@ export const FlightDetailView: React.FC = () => {
             <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden bg-neutral-100/60 dark:bg-[#111111]/80">
               <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
               <div className="relative flex flex-col items-center gap-2 px-4 py-3 rounded-md bg-white/90 dark:bg-black/70 border border-neutral-200/80 dark:border-neutral-800 backdrop-blur-sm shadow-sm">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-neutral-500 dark:text-neutral-400" />
-                  <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
-                    {isLoadingFlightDetails ? 'Fetching flight trajectory...' : 'Initializing 2D GPS track...'}
-                  </span>
-                </div>
-                <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Rendering altitude gradient waypoint segments
-                </span>
+                {points.length === 0 && !isLoadingFlightDetails ? (
+                  <div className="flex flex-col items-center gap-1.5 text-center">
+                    <div className="flex items-center gap-2">
+                      <Plane className="w-4 h-4 text-neutral-500" />
+                      <span className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                        Summary Flight (No Raw Telemetry)
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-neutral-500 max-w-xs">
+                      This flight was logged or imported without raw GPS telemetry tracks. Flight metrics and touchdowns are preserved.
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-neutral-500 dark:text-neutral-400" />
+                      <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
+                        {isLoadingFlightDetails ? 'Fetching flight trajectory...' : 'Initializing 2D GPS track...'}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                      Rendering altitude gradient waypoint segments
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           ) : coordinates.length > 0 ? (
@@ -941,15 +962,28 @@ export const FlightDetailView: React.FC = () => {
             <div className="absolute inset-x-0 top-2/4 border-b border-neutral-200/50 dark:border-neutral-800/50" />
             <div className="absolute inset-x-0 top-3/4 border-b border-neutral-200/50 dark:border-neutral-800/50" />
             <div className="relative flex flex-col items-center gap-2 px-4 py-3 rounded-md bg-white/90 dark:bg-black/70 border border-neutral-200/80 dark:border-neutral-800 backdrop-blur-sm shadow-sm">
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-neutral-500 dark:text-neutral-400" />
-                <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
-                  {isLoadingFlightDetails ? 'Loading flight telemetry points...' : 'Loading altitude & speed profile...'}
-                </span>
-              </div>
-              <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                Synchronizing flight telemetry graph
-              </span>
+              {chartData.length === 0 && !isLoadingFlightDetails ? (
+                <div className="flex flex-col items-center gap-1.5 text-center">
+                  <span className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                    No Altitude Profile Available
+                  </span>
+                  <span className="text-[11px] text-neutral-500 max-w-xs">
+                    Raw telemetry points were excluded from this flight record.
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-neutral-500 dark:text-neutral-400" />
+                    <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
+                      {isLoadingFlightDetails ? 'Loading flight telemetry points...' : 'Loading altitude & speed profile...'}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                    Synchronizing flight telemetry graph
+                  </span>
+                </>
+              )}
             </div>
           </div>
         ) : chartData.length > 0 ? (

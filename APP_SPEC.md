@@ -448,39 +448,64 @@ The fix to this will be a rework and addition of a complemental feature:
     - [x] Consider logging app crashes and errors that have occured throughout usage of the app, preferably in a "/log" folder (.txt files);
     - [x] We should plan a way to report this issues from the app into something like Github Issues;
 
-### Phase 10: Export / Import Data Rework
+### Phase 9.1: Fixes
+Currently if a user has a saved route with more than one sector and the app has automatically started the flight recording the app can automatically end the recording even thought the user has only completed one sector.
+To avoid that mistake, when the app is recording a flight, it should verify when the "stop-flight" criterias are met, which airport the user is stopped at. If the app resolves that the user is currently at one airport
+which is part of a multi-sector route, it should only ask the user if they want to stop the recording, and mention to the user that "we think you might be executing X route which was saved".
+
+Example problematic scenario:
+The user has a saved route which is EDDG -> LFSD -> LFTH. If the user has let the app automatically start the recording of that flight at EDDG, when the user lands at LFSD and shutdowns its engines and stays still for 30 seconds the app will stop the flight recording while the user was preparing to flight for the next airfield (LFTH). 
+
+Expected scenario:
+After the user of the previous example has stopped and parked the aircraft for the next sector of that flight, if the app notices it meets the criteria for auto-stopping the recording, it should resolve what airport the users is at
+if the apps notices the user is at LFSD it should look up for the recorded departure. The app notices that the departure was at EDDG and the "destination/arrival" was LFSD, BUT the app should see that there is a saved route which is 
+EDDG->LFSD PLUS LFTH, so instead of stopping the flight there, it should only prompt the user asking them if they want it to be stopped and it notices an existing planned route which so far is meeting the recorded flight.
+Allowing the user to continue the flight recording and connect and meet that with the planned route.
+
+Extra fixes to be done after this:
+- [x] When the flight recording is running and the duration of the flight is being displayed on the "Flight Logger" card, when the duration reaches 60 min format the time as 0h 00min 00s;
+- [x] When FSUIPC disconnects from the app, clean all the telemetry data displayed such as remaining showing altitude or nearest aerodrome;
+- [x] Think of a way to detect whenever the user returns to the menu or "restarts" the flight on MSFS, to make sure we stop getting the data for a flight recording in both cases;
+
+### Phase 10: Saved Flight Improvements
+- [x] Users should be able to edit saved flights (only drafted flight);
+- [x] Users can edit the single flight details such as aircraft category, dep/arr airports. (Recalculate times and distances);
+- [x] Allow users to edit individual sectors of each flight;
+- [x] Add a way for the users to entry their saved flights manually into the saved routes page/list;
+- [x] Add pagination to the saved routes and logbook pages:
+  - [x] The "table"/"list" of recorded flights or saved routes should have a limit of displayed flight per page view, the default would be 50 but the user can change it to 25 or up to 100.
+  - [x] The saved length will be saved inside the user settings, pagination should have two buttons to go to the first and last pages, a move backwards and forward pages, and a input where the user can write the page number.
+
+### Phase 11: Export / Import Data Rework
 The user must be able to export and import their own data for multiple reasons. They should be able to export their data in separated segments or even their whole logged data.
 For that we will apply these improvements:
-- [ ] Export (JSON, and other viable file formats)
-    - [ ] Let the user export their data as a whole (user information, settings, logbook including individual flight telemetry, saved routes, etc.)
-    - [ ] The user should be able to individually export data individually:
-        - [ ] Export user information + settings;
-        - [ ] Export logbook including telemetry by default (make it optional)
-        - [ ] Export saved routes;
-- [ ] Import
-    - [ ] Users must be able to import their data from multiple ways and segments;
-    - [ ] Allow users to import the exported complete app/user data from any accepted file format;
-    - [ ] Make it viable to import segmented data export files:
-        - [ ] If the user has uniquely export their logbook, with or without telemetry, allow them to solely import that data;
-            - [ ] If the user has imported their logbook without flight telemetry handle it correctly so the app doesn't brake because of missing data;
-    - [ ] Make sure that imported user data and settings when imported won't brake or conflict with current data;
-            - [ ] Conflicting data can be prompted to the user for them to choose between each data property;
-    - [ ] Add OS file support for the app:
-        - [ ] Files extensions such as JSON (and any other we decide is viable for this export/import feature) should have Apollo Flight option when they click on the "Open with" option in the context menu of the file;
-            (We can even write something like "Import in Apollo Flight")
-        - [ ] When the user takes this action it will prompt the app to open (in case it is not running), after the app loads and window opens, prompt the user with a modal (confirmation) displaying to them:
-            - [ ] Type of data (complete Apollo Flight user data / user logbook / specific flight / saved routes ) 
-            - [ ] In case it is something like the user logbook, specific flight or saved route display the metadata and details and give the option to the user to import or cancel action
-            
+- [x] Export (JSON, and other viable file formats)
+    - [x] Let the user export their data as a whole (user information, settings, logbook including individual flight telemetry, saved routes, etc.)
+    - [x] The user should be able to individually export data individually:
+        - [x] Export user information + settings;
+        - [x] Export logbook including telemetry by default (make it optional)
+        - [x] Export saved routes;
+- [x] Import
+    - [x] Users must be able to import their data from multiple ways and segments;
+    - [x] Allow users to import the exported complete app/user data from any accepted file format;
+    - [x] Make it viable to import segmented data export files:
+        - [x] If the user has uniquely export their logbook, with or without telemetry, allow them to solely import that data;
+            - [x] If the user has imported their logbook without flight telemetry handle it correctly so the app doesn't brake because of missing data;
+    - [x] Make sure that imported user data and settings when imported won't brake or conflict with current data;
+            - [x] Conflicting data can be prompted to the user for them to choose between each data property;
+    - [-] Add OS file support for the app (Explicitly skipped per user direction - file association for .json avoided to prevent hijacking OS defaults; file picker & drag-and-drop used instead):
+        - [-] Files extensions such as JSON (and any other we decide is viable for this export/import feature) should have Apollo Flight option when they click on the "Open with" option in the context menu of the file;
+        - [-] When the user takes this action it will prompt the app to open (in case it is not running), after the app loads and window opens, prompt the user with a modal (confirmation) displaying to them:
+            - [-] Type of data (complete Apollo Flight user data / user logbook / specific flight / saved routes ) 
+            - [-] In case it is something like the user logbook, specific flight or saved route display the metadata and details and give the option to the user to import or cancel action
+- [x] Recycle Bin:
+  - [x] A recycle bin feature page should be added making it so when the user deletes a recorded flight instead of absolutely deleting it, that flight will be moved to the trash bin and after 30 days after deletion it will be actually deleted;
+  - [x] The user should be able to "recycle" the flight making it come back to the actual list;
+  - [x] Once the app is started OR before the user actually opens the recycle bin page the app should check the 30 day period status for each deleted flight, after the user has viewed and closed/moved from the page the app will actually delete it.
+  - [x] If the app knows that recycle bin item is about to be deleted (within 24h) add a small chip/badge to the listed item saying it will deleted soon.
 
-### Phase 11: Saved Flight Improvements
-- [ ] Users should be able to edit saved flights (only drafted flight);
-- [ ] Users can edit the single flight details such as aircraft category, dep/arr airports. (Recalculate times and distances);
-- [ ] Allow users to edit individual sectors of each flight;
-- [ ] Add a way for the users to entry their saved flights manually into the saved routes page/list;
+### Phase 12:
 
-### Phase 12: Responsiveness & UI Improvements
-- [ ] Currently the UI is not responsive through smaller screen/window sizes;
 
 ### Phase 99: Eventual Changes (not planned in short future)
 - [ ] Abstract database repository layer using Rust traits (`FlightRepository`).

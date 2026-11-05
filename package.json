@@ -1,6 +1,6 @@
 {
   "name": "apollo-flight",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Modern flight tracking, telemetry analysis, and IFR companion for Microsoft Flight Simulator.",
   "author": "Jürgen Jacobsen",
   "private": true,

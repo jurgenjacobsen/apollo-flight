@@ -12,8 +12,11 @@ import { IfrTrainer } from './components/IfrTrainer';
 import { HoldTrainer } from './components/HoldTrainer';
 import { SettingsView } from './components/SettingsView';
 import { FeedbackView } from './components/FeedbackView';
+import { RecycleBinView } from './components/RecycleBinView';
+import { ImportModal } from './components/ImportModal';
 import { SimBridge } from './components/SimBridge';
 import { safeInvoke } from './store/flightStore';
+import { ApolloExportBundle } from './types/flight';
 
 export const App: React.FC = () => {
   const theme = useFlightStore((s) => s.theme);
@@ -26,6 +29,42 @@ export const App: React.FC = () => {
     syncOurAirports,
     lastSyncMessage 
   } = useFlightStore();
+
+  const [isImportModalOpen, setIsImportModalOpen] = React.useState(false);
+  const [droppedBundle, setDroppedBundle] = React.useState<ApolloExportBundle | null>(null);
+
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
+        const file = e.dataTransfer.files[0];
+        if (file.name.endsWith('.json') || file.name.endsWith('.apollo')) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            try {
+              const text = ev.target?.result as string;
+              const parsed = JSON.parse(text);
+              if (parsed && parsed.format === 'apollo-flight-bundle') {
+                setDroppedBundle(parsed);
+                setIsImportModalOpen(true);
+              }
+            } catch {}
+          };
+          reader.readAsText(file);
+        }
+      }
+    };
+
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('drop', handleDrop);
+    return () => {
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, []);
 
   // Keep <html> dark class strictly in sync with theme state across all sessions and restarts
   useEffect(() => {
@@ -99,8 +138,19 @@ export const App: React.FC = () => {
           {activeView === 'hold-trainer' && <HoldTrainer />}
           {activeView === 'settings' && <SettingsView />}
           {activeView === 'feedback' && <FeedbackView />}
+          {activeView === 'recycle-bin' && <RecycleBinView />}
         </main>
       </div>
+
+      {/* Global Import Modal (opened via drag & drop or user actions) */}
+      <ImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setDroppedBundle(null);
+        }}
+        initialBundle={droppedBundle}
+      />
     </div>
   );
 };

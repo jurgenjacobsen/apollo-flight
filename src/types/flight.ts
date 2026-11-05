@@ -1,5 +1,9 @@
+import type { SavedRoute } from './route';
+
 export interface TelemetryData {
   simConnected: boolean;
+  isInMenu?: boolean;
+  flightLoadCount?: number;
   latitude: number;
   longitude: number;
   altitudeMsl: number;
@@ -138,3 +142,28 @@ export interface VisitedStats {
   totalCountries: number;
   totalAirports: number;
 }
+
+export interface DeletedFlightRecord extends FlightRecord {
+  deletedAt: string;
+}
+
+export type ApolloExportScope = 'full' | 'settings' | 'logbook' | 'routes';
+
+export interface ApolloExportBundle {
+  format: 'apollo-flight-bundle';
+  version: '1.0';
+  exportedAt: string;
+  scope: ApolloExportScope;
+  metadata: {
+    appVersion: string;
+    flightCount?: number;
+    routeCount?: number;
+    hasTelemetry?: boolean;
+  };
+  userSettings?: Record<string, string>;
+  flights?: FlightRecord[];
+  savedRoutes?: SavedRoute[];
+  visitedAirports?: VisitedAirport[];
+  visitedCountries?: VisitedCountry[];
+}
+

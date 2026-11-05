@@ -11,11 +11,34 @@ import {
   TelemetryPoint,
   Airport,
   TouchdownEvent,
+  DeletedFlightRecord,
+  ApolloExportScope,
+  ApolloExportBundle,
 } from '../types/flight';
-import { SavedRoute, GeneratedRoute } from '../types/route';
+import { SavedRoute, GeneratedRoute, RouteSector } from '../types/route';
 import { calculateTouchdownGForce } from '../utils/touchdownPhysics';
 import { calculateDistanceNm } from '../data/mockData';
 import { resolveAirport } from '../services/routeGenerator';
+
+/**
+ * Formats flight duration in seconds for UI cards.
+ * When flight duration reaches 60 minutes (>= 3600 seconds), formats as '0h 00min 00s'.
+ * Otherwise formats as '0m 00s'.
+ */
+export function formatFlightDuration(totalSeconds: number): string {
+  if (isNaN(totalSeconds) || totalSeconds < 0) return '0m 00s';
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+
+  if (hours > 0) {
+    const padMin = String(minutes).padStart(2, '0');
+    const padSec = String(seconds).padStart(2, '0');
+    return `${hours}h ${padMin}min ${padSec}s`;
+  }
+
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
 
 // Dynamic safe invoke helper for Tauri v2 / browser compatibility
 export async function safeInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T | null> {
@@ -458,7 +481,9 @@ export interface FlightState {
   currentGeneratedRoute: GeneratedRoute | null;
   selectedFlightId: string | null;
   scrubbedTelemetryIndex: number | null;
-  activeView: 'dashboard' | 'new-route' | 'saved-routes' | 'logbook' | 'flight-detail' | 'visited' | 'ifr-trainer' | 'hold-trainer' | 'settings' | 'feedback';
+  activeView: 'dashboard' | 'new-route' | 'saved-routes' | 'logbook' | 'flight-detail' | 'visited' | 'ifr-trainer' | 'hold-trainer' | 'settings' | 'feedback' | 'recycle-bin';
+  recycleBin: DeletedFlightRecord[];
+  isSidebarCollapsed: boolean;
   theme: 'light' | 'dark';
   dbInitialized: boolean;
   airportsCount: number;
@@ -467,7 +492,15 @@ export interface FlightState {
   lastSyncMessage: string | null;
   closeToTray: boolean;
   autoStartRecording: boolean;
+  pageSize: number;
+  setPageSize: (size: number) => Promise<void>;
+  updateSavedRoute: (id: string, updates: Partial<SavedRoute>) => Promise<SavedRoute | null>;
   showEndFlightPrompt: boolean;
+  detectedMultiSectorRoute: {
+    route: SavedRoute;
+    currentAirportIcao: string;
+    nextSectorArrivalIcao?: string;
+  } | null;
   nearestAirport: Airport | null;
   isLoadingFlightDetails: boolean;
 
@@ -498,10 +531,24 @@ export interface FlightState {
   exportFlight: (id: string, format: ExportFormat) => Promise<string | null>;
   exportLogbook: (format: LogbookExportFormat, flightsOverride?: FlightRecord[]) => Promise<string | null>;
   addVisitedAirport: (airport: VisitedAirport) => void;
+  toggleSidebar: () => void;
+  moveToRecycleBin: (id: string) => Promise<void>;
+  restoreFlightFromRecycleBin: (id: string) => Promise<void>;
+  permanentlyDeleteFromRecycleBin: (id: string) => Promise<void>;
+  emptyRecycleBin: () => Promise<void>;
+  purgeExpiredRecycleBinItems: () => Promise<void>;
+  exportDataBundle: (scope: ApolloExportScope, includeTelemetry?: boolean) => Promise<string | null>;
+  importDataBundle: (
+    bundle: ApolloExportBundle,
+    strategy: 'skip' | 'overwrite' | 'keep_both',
+    settingsChoices?: Record<string, 'current' | 'imported'>
+  ) => Promise<{ importedFlights: number; importedRoutes: number; message: string }>;
 }
 
 const DEFAULT_TELEMETRY: TelemetryData = {
   simConnected: false,
+  isInMenu: false,
+  flightLoadCount: 0,
   latitude: 0,
   longitude: 0,
   altitudeMsl: 0,
@@ -532,6 +579,8 @@ const DEFAULT_TELEMETRY: TelemetryData = {
 let telemetryBuffer: TelemetryPoint[] = [];
 let lastFlushTimestamp = Date.now();
 let stoppedSinceTimestamp: number | null = null;
+let isTurnaroundStay = false;
+let lastFlightLoadCount: number | null = null;
 
 async function flushTelemetryBuffer() {
   if (telemetryBuffer.length === 0) return;
@@ -617,6 +666,60 @@ async function checkAndMarkFlownSavedRoutes(
   }
 }
 
+/**
+ * Phase 9.1: Checks if an aircraft stopped at `currentIcao` is at an intermediate airport
+ * of a multi-sector saved route that started at `departureIcao`.
+ */
+function findMatchingMultiSectorSavedRoute(
+  departureIcao: string,
+  currentIcao: string,
+  savedRoutes: SavedRoute[]
+): { route: SavedRoute; nextSectorArrivalIcao?: string } | null {
+  if (!departureIcao || !currentIcao) return null;
+  const dep = departureIcao.toUpperCase().trim();
+  const cur = currentIcao.toUpperCase().trim();
+  if (dep === cur || dep === 'ZZZZ' || cur === 'ZZZZ') return null;
+
+  for (const sr of savedRoutes) {
+    if (sr.status === 'flown') continue;
+    const srDep = (sr.departureIcao || '').toUpperCase().trim();
+    const srArr = (sr.arrivalIcao || '').toUpperCase().trim();
+
+    // Route must start from our recorded departure and not already be at the final arrival
+    if (srDep !== dep || srArr === cur) continue;
+
+    let intermediates: string[] = [];
+    try {
+      intermediates = JSON.parse(sr.intermediateIcaos || '[]');
+    } catch {
+      intermediates = [];
+    }
+    const normIntermediates = intermediates.map((i) => i.toUpperCase().trim());
+
+    let sectorArrivals: string[] = [];
+    if (sr.sectorsJson) {
+      try {
+        const parsedSectors: any[] = JSON.parse(sr.sectorsJson);
+        sectorArrivals = parsedSectors.map((s: any) => s.arrival?.icao?.toUpperCase().trim()).filter(Boolean);
+      } catch {}
+    }
+
+    const intermediateIdx = normIntermediates.indexOf(cur);
+    if (intermediateIdx !== -1) {
+      const nextIcao = normIntermediates[intermediateIdx + 1] || srArr;
+      return { route: sr, nextSectorArrivalIcao: nextIcao };
+    }
+
+    const sectorIdx = sectorArrivals.indexOf(cur);
+    if (sectorIdx !== -1 && sectorIdx < sectorArrivals.length - 1) {
+      const nextIcao = sectorArrivals[sectorIdx + 1] || srArr;
+      return { route: sr, nextSectorArrivalIcao: nextIcao };
+    }
+  }
+
+  return null;
+}
+
 export const useFlightStore = create<FlightState>()(
   persist(
     (set, get) => ({
@@ -627,6 +730,8 @@ export const useFlightStore = create<FlightState>()(
       visitedAirports: [],
       visitedCountries: [],
       savedRoutes: [],
+      recycleBin: [],
+      isSidebarCollapsed: false,
       currentGeneratedRoute: null,
       selectedFlightId: null,
       scrubbedTelemetryIndex: null,
@@ -646,6 +751,7 @@ export const useFlightStore = create<FlightState>()(
         return 'light';
       })(),
       dbInitialized: false,
+      pageSize: 50,
       airportsCount: 75,
       isSyncingAirports: false,
       syncProgress: null,
@@ -653,6 +759,7 @@ export const useFlightStore = create<FlightState>()(
       closeToTray: false,
       autoStartRecording: true,
       showEndFlightPrompt: false,
+      detectedMultiSectorRoute: null,
       nearestAirport: null,
       isLoadingFlightDetails: false,
 
@@ -693,10 +800,16 @@ export const useFlightStore = create<FlightState>()(
 
       setShowEndFlightPrompt: (show: boolean) => {
         if (!show) {
-          // Reset stopped timer so prompt doesn't instantly retrigger
+          // If a multi-sector intermediate stop was prompted and dismissed, stay in turnaround mode
+          if (get().detectedMultiSectorRoute) {
+            isTurnaroundStay = true;
+          }
           stoppedSinceTimestamp = null;
         }
-        set({ showEndFlightPrompt: show });
+        set({
+          showEndFlightPrompt: show,
+          detectedMultiSectorRoute: show ? get().detectedMultiSectorRoute : null,
+        });
       },
 
       syncOurAirports: async () => {
@@ -787,14 +900,30 @@ export const useFlightStore = create<FlightState>()(
             if (typeof dbSettings.autoStartRecording === 'string') {
               set({ autoStartRecording: dbSettings.autoStartRecording === 'true' });
             }
+            if (typeof dbSettings.pageSize === 'string') {
+              const ps = parseInt(dbSettings.pageSize, 10);
+              if ([25, 50, 100].includes(ps)) {
+                set({ pageSize: ps });
+              }
+            }
+            if (typeof dbSettings.recycle_bin_flights === 'string') {
+              try {
+                const parsed = JSON.parse(dbSettings.recycle_bin_flights);
+                if (Array.isArray(parsed)) {
+                  set({ recycleBin: parsed });
+                }
+              } catch {}
+            }
           } else {
             // Seed existing preferences into logbook.db user_settings table on initial migration
             const currentTheme = get().theme;
             const currentCloseToTray = get().closeToTray;
             const currentAutoStart = get().autoStartRecording;
+            const currentPageSize = get().pageSize || 50;
             await safeInvoke('set_user_setting', { key: 'theme', value: currentTheme });
             await safeInvoke('set_user_setting', { key: 'closeToTray', value: String(currentCloseToTray) });
             await safeInvoke('set_user_setting', { key: 'autoStartRecording', value: String(currentAutoStart) });
+            await safeInvoke('set_user_setting', { key: 'pageSize', value: String(currentPageSize) });
           }
 
           if (dbFlights && Array.isArray(dbFlights) && dbFlights.length > 0) {
@@ -819,6 +948,7 @@ export const useFlightStore = create<FlightState>()(
             });
           }
           await get().fetchSavedRoutes();
+          await get().purgeExpiredRecycleBinItems();
           set({ dbInitialized: true });
         } catch (err) {
           console.warn('[flightStore] Could not load from SQLite backend, using local store:', err);
@@ -962,6 +1092,29 @@ export const useFlightStore = create<FlightState>()(
         }));
       },
 
+      setPageSize: async (size: number) => {
+        const validSize = [25, 50, 100].includes(size) ? size : 50;
+        set({ pageSize: validSize });
+        try {
+          await safeInvoke('set_user_setting', { key: 'pageSize', value: String(validSize) });
+        } catch (err) {
+          console.warn('[flightStore] Failed to save pageSize user setting:', err);
+        }
+      },
+
+      updateSavedRoute: async (id: string, updates: Partial<SavedRoute>) => {
+        const existing = get().savedRoutes.find((r) => r.id === id);
+        if (!existing) return null;
+        const merged: Partial<SavedRoute> & { departureIcao: string; arrivalIcao: string } = {
+          ...existing,
+          ...updates,
+          id,
+          departureIcao: updates.departureIcao || existing.departureIcao,
+          arrivalIcao: updates.arrivalIcao || existing.arrivalIcao,
+        };
+        return await get().saveRoute(merged);
+      },
+
       loadFlightDetails: async (id: string) => {
         if (!id) return null;
         const currentFlights = get().flights;
@@ -1057,11 +1210,77 @@ export const useFlightStore = create<FlightState>()(
       setScrubbedTelemetryIndex: (index) => set({ scrubbedTelemetryIndex: index }),
 
       updateTelemetry: async (newData) => {
+        // 1. FSUIPC Disconnect: Clean all telemetry display & nearest aerodrome
+        if (newData.simConnected === false) {
+          lastFlightLoadCount = null;
+          isTurnaroundStay = false;
+          stoppedSinceTimestamp = null;
+          set({
+            currentTelemetry: { ...DEFAULT_TELEMETRY, simConnected: false },
+            nearestAirport: null,
+            flightStage: get().activeFlight ? get().flightStage : 'BOARDING',
+          });
+          return;
+        }
+
+        // 2. MSFS Main Menu / Loading Screen: Clean telemetry display & halt recording data
+        if (newData.isInMenu) {
+          set({
+            currentTelemetry: {
+              ...DEFAULT_TELEMETRY,
+              simConnected: true,
+              isInMenu: true,
+              aircraftTitle: 'MSFS Main Menu / Loading',
+            },
+            nearestAirport: null,
+            flightStage: get().activeFlight ? get().flightStage : 'BOARDING',
+          });
+          return;
+        }
+
         const prev = get().currentTelemetry;
         const current: TelemetryData = { ...prev, ...newData, timestamp: new Date().toISOString() };
         let active = get().activeFlight;
         let flights = get().flights;
         let currentStage = get().flightStage;
+
+        // 3. Simulator Flight Restart Detection:
+        // When an active flight is recording, detect reload counter change or sudden teleportation
+        if (active && active.status === 'RECORDING') {
+          const loadCounterChanged =
+            typeof newData.flightLoadCount === 'number' &&
+            lastFlightLoadCount !== null &&
+            newData.flightLoadCount !== lastFlightLoadCount;
+
+          let isTeleported = false;
+          if (prev.latitude !== 0 && prev.longitude !== 0 && current.latitude !== 0 && current.longitude !== 0) {
+            const jumpDistNm = calculateDistanceNm(prev.latitude, prev.longitude, current.latitude, current.longitude);
+            if (jumpDistNm > 10.0 && prev.groundSpeed < 450) {
+              isTeleported = true;
+            }
+          }
+
+          if (loadCounterChanged || isTeleported) {
+            console.warn('[Apollo Flight] Simulator restart detected. Halting active flight recording to prevent corrupted telemetry.');
+            stoppedSinceTimestamp = null;
+            isTurnaroundStay = false;
+            flushTelemetryBuffer();
+            set({
+              activeFlight: null,
+              flightStage: 'BOARDING',
+              showEndFlightPrompt: false,
+              detectedMultiSectorRoute: null,
+            });
+            if (typeof newData.flightLoadCount === 'number') {
+              lastFlightLoadCount = newData.flightLoadCount;
+            }
+            return;
+          }
+        }
+
+        if (typeof newData.flightLoadCount === 'number') {
+          lastFlightLoadCount = newData.flightLoadCount;
+        }
 
         // Auto-fetch nearest airport when position shifts or not set
         const lastApt = get().nearestAirport;
@@ -1073,7 +1292,7 @@ export const useFlightStore = create<FlightState>()(
         // Auto-flight start triggers (Item 4 in FIXES.md):
         // 1. Moving faster than 20kt
         // 2. Engine started (combustion 0 -> 1)
-        if (!active && current.simConnected && get().autoStartRecording && !get().isSyncingAirports) {
+        if (!active && current.simConnected && !current.isInMenu && get().autoStartRecording && !get().isSyncingAirports) {
           const engineStarted = !prev.isEngineRunning && current.isEngineRunning;
           const speedOver20 = current.groundSpeed > 20;
 
@@ -1256,40 +1475,61 @@ export const useFlightStore = create<FlightState>()(
             }
           }
 
-          // Auto-stop triggers (Item 4 in FIXES.md):
+          // Auto-stop triggers (Item 4 in FIXES.md & Phase 9.1):
           // Aircraft stopped for 30s AND one or more engines turned off
           const isAircraftStopped = current.isOnGround && current.groundSpeed < 2.0;
           if (isAircraftStopped) {
-            if (stoppedSinceTimestamp === null) {
+            if (stoppedSinceTimestamp === null && !isTurnaroundStay) {
               stoppedSinceTimestamp = Date.now();
             }
           } else {
             stoppedSinceTimestamp = null;
+            if (current.groundSpeed > 5.0) {
+              isTurnaroundStay = false;
+            }
           }
 
           const stoppedDurationSeconds = stoppedSinceTimestamp ? (Date.now() - stoppedSinceTimestamp) / 1000 : 0;
           const isEngineOff = !current.isEngineRunning;
 
-          if (stoppedDurationSeconds >= 30 && isEngineOff) {
-            // Safeguard for manual start: prompt user instead of automatically ending
-            if (active.isManualFlight) {
+          if (stoppedDurationSeconds >= 30 && isEngineOff && !isTurnaroundStay) {
+            let arrIcao = 'ZZZZ';
+            const arrLookup = await safeInvoke<any>('search_airports_near', {
+              lat: current.latitude,
+              lon: current.longitude,
+              radiusNm: 5.0,
+            });
+            const arrApt = arrLookup || get().nearestAirport;
+            if (arrApt) {
+              arrIcao = arrApt.icao.toUpperCase().trim();
+            }
+
+            // Phase 9.1: Verify if aircraft is stopped at an intermediate airport of a multi-sector saved route
+            const matchingRouteInfo = arrIcao && arrIcao !== 'ZZZZ'
+              ? findMatchingMultiSectorSavedRoute(active.departureIcao, arrIcao, get().savedRoutes)
+              : null;
+
+            if (matchingRouteInfo) {
+              // Multi-sector intermediate landing: do NOT auto-stop, prompt the user!
               if (!get().showEndFlightPrompt) {
-                set({ showEndFlightPrompt: true });
+                set({
+                  showEndFlightPrompt: true,
+                  detectedMultiSectorRoute: {
+                    route: matchingRouteInfo.route,
+                    currentAirportIcao: arrIcao,
+                    nextSectorArrivalIcao: matchingRouteInfo.nextSectorArrivalIcao,
+                  },
+                });
+              }
+            } else if (active.isManualFlight) {
+              // Safeguard for manual start: prompt user instead of automatically ending
+              if (!get().showEndFlightPrompt) {
+                set({ showEndFlightPrompt: true, detectedMultiSectorRoute: null });
               }
             } else {
               // Auto-started flight: complete recording
               stoppedSinceTimestamp = null;
-
-              let arrIcao = 'ZZZZ';
-              const arrLookup = await safeInvoke<any>('search_airports_near', {
-                lat: current.latitude,
-                lon: current.longitude,
-                radiusNm: 5.0,
-              });
-              const arrApt = arrLookup || get().nearestAirport;
-              if (arrApt) {
-                arrIcao = arrApt.icao;
-              }
+              isTurnaroundStay = false;
 
               const [depApt, resolvedArrApt] = await Promise.all([
                 resolveAirport(active.departureIcao),
@@ -1351,6 +1591,7 @@ export const useFlightStore = create<FlightState>()(
                 selectedFlightId: completedFlight.id,
                 currentTelemetry: current,
                 showEndFlightPrompt: false,
+                detectedMultiSectorRoute: null,
                 visitedCountries: computeVisitedCountries(updatedFlights, get().visitedAirports),
               });
               checkAndMarkFlownSavedRoutes(completedFlight, get().savedRoutes, get().updateRouteStatus);
@@ -1399,7 +1640,8 @@ export const useFlightStore = create<FlightState>()(
         };
         safeInvoke('save_flight', { flight: newFlight });
         stoppedSinceTimestamp = null;
-        set({ activeFlight: newFlight, flightStage: 'TAKEOFF_CLIMB', showEndFlightPrompt: false });
+        isTurnaroundStay = false;
+        set({ activeFlight: newFlight, flightStage: 'TAKEOFF_CLIMB', showEndFlightPrompt: false, detectedMultiSectorRoute: null });
       },
 
       endActiveFlight: async () => {
@@ -1443,6 +1685,7 @@ export const useFlightStore = create<FlightState>()(
         flushTelemetryBuffer();
         safeInvoke('save_flight', { flight: completedFlight });
         stoppedSinceTimestamp = null;
+        isTurnaroundStay = false;
 
         // Record unique airports visited on this flight
         const uniqueAirportIcaos = new Set<string>();
@@ -1476,19 +1719,328 @@ export const useFlightStore = create<FlightState>()(
           selectedFlightId: completedFlight.id,
           flightStage: 'ARRIVED',
           showEndFlightPrompt: false,
+          detectedMultiSectorRoute: null,
           visitedCountries: computeVisitedCountries(updatedFlights, visitedAirports),
         });
         checkAndMarkFlownSavedRoutes(completedFlight, get().savedRoutes, get().updateRouteStatus);
       },
 
       deleteFlight: async (id) => {
+        await get().moveToRecycleBin(id);
+      },
+
+      toggleSidebar: () => {
+        set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed }));
+      },
+
+      moveToRecycleBin: async (id: string) => {
+        let fullFlight = await get().loadFlightDetails(id);
+        if (!fullFlight) {
+          fullFlight = get().flights.find((f) => f.id === id) || null;
+        }
+        if (!fullFlight) return;
+
+        const deletedFlight: DeletedFlightRecord = {
+          ...fullFlight,
+          deletedAt: new Date().toISOString(),
+        };
+
         await safeInvoke('delete_flight', { id });
-        const updated = get().flights.filter((f) => f.id !== id);
+
+        const updatedActive = get().flights.filter((f) => f.id !== id);
+        const updatedRecycle = [deletedFlight, ...get().recycleBin.filter((f) => f.id !== id)];
+
         set({
-          flights: updated,
-          selectedFlightId: get().selectedFlightId === id ? updated[0]?.id || null : get().selectedFlightId,
-          visitedCountries: computeVisitedCountries(updated, get().visitedAirports),
+          flights: updatedActive,
+          recycleBin: updatedRecycle,
+          selectedFlightId: get().selectedFlightId === id ? updatedActive[0]?.id || null : get().selectedFlightId,
+          visitedCountries: computeVisitedCountries(updatedActive, get().visitedAirports),
         });
+
+        try {
+          await safeInvoke('set_user_setting', {
+            key: 'recycle_bin_flights',
+            value: JSON.stringify(updatedRecycle),
+          });
+        } catch (err) {
+          console.warn('[flightStore] Failed to persist recycle bin:', err);
+        }
+      },
+
+      restoreFlightFromRecycleBin: async (id: string) => {
+        const item = get().recycleBin.find((f) => f.id === id);
+        if (!item) return;
+
+        try {
+          await safeInvoke('save_flight', { flight: item });
+          if (item.telemetryPoints && item.telemetryPoints.length > 0) {
+            const rawPoints = item.telemetryPoints.map((tp) => ({
+              flightId: item.id,
+              timestamp: tp.timestamp,
+              latitude: tp.latitude,
+              longitude: tp.longitude,
+              altitudeMsl: tp.altitudeMsl,
+              altitudeAgl: tp.altitudeAgl,
+              indicatedAirspeed: tp.indicatedAirspeed,
+              groundSpeed: tp.groundSpeed,
+              heading: tp.heading,
+              pitch: tp.pitch,
+              bank: tp.bank,
+              verticalSpeed: tp.verticalSpeed,
+              isOnGround: tp.isOnGround,
+            }));
+            await safeInvoke('save_telemetry_batch', { points: rawPoints });
+          }
+        } catch (err) {
+          console.warn('[flightStore] Error restoring flight to SQLite:', err);
+        }
+
+        const updatedFlights = [item, ...get().flights.filter((f) => f.id !== id)];
+        const updatedRecycle = get().recycleBin.filter((f) => f.id !== id);
+
+        set({
+          flights: updatedFlights,
+          recycleBin: updatedRecycle,
+          visitedCountries: computeVisitedCountries(updatedFlights, get().visitedAirports),
+        });
+
+        try {
+          await safeInvoke('set_user_setting', {
+            key: 'recycle_bin_flights',
+            value: JSON.stringify(updatedRecycle),
+          });
+        } catch {}
+      },
+
+      permanentlyDeleteFromRecycleBin: async (id: string) => {
+        const updatedRecycle = get().recycleBin.filter((f) => f.id !== id);
+        set({ recycleBin: updatedRecycle });
+        try {
+          await safeInvoke('delete_flight', { id });
+          await safeInvoke('set_user_setting', {
+            key: 'recycle_bin_flights',
+            value: JSON.stringify(updatedRecycle),
+          });
+        } catch (err) {
+          console.warn('[flightStore] Error permanently deleting:', err);
+        }
+      },
+
+      emptyRecycleBin: async () => {
+        const ids = get().recycleBin.map((f) => f.id);
+        set({ recycleBin: [] });
+        for (const id of ids) {
+          await safeInvoke('delete_flight', { id });
+        }
+        try {
+          await safeInvoke('set_user_setting', {
+            key: 'recycle_bin_flights',
+            value: JSON.stringify([]),
+          });
+        } catch {}
+      },
+
+      purgeExpiredRecycleBinItems: async () => {
+        const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        const currentBin = get().recycleBin;
+        const kept: DeletedFlightRecord[] = [];
+        const expiredIds: string[] = [];
+
+        for (const item of currentBin) {
+          const deletedTime = new Date(item.deletedAt).getTime();
+          if (now - deletedTime >= THIRTY_DAYS_MS) {
+            expiredIds.push(item.id);
+          } else {
+            kept.push(item);
+          }
+        }
+
+        if (expiredIds.length > 0) {
+          for (const id of expiredIds) {
+            await safeInvoke('delete_flight', { id });
+          }
+          set({ recycleBin: kept });
+          try {
+            await safeInvoke('set_user_setting', {
+              key: 'recycle_bin_flights',
+              value: JSON.stringify(kept),
+            });
+          } catch {}
+        }
+      },
+
+      exportDataBundle: async (scope: ApolloExportScope, includeTelemetry = true) => {
+        const now = new Date().toISOString();
+        const bundle: ApolloExportBundle = {
+          format: 'apollo-flight-bundle',
+          version: '1.0',
+          exportedAt: now,
+          scope,
+          metadata: {
+            appVersion: '0.0.3',
+            hasTelemetry: includeTelemetry,
+          },
+        };
+
+        if (scope === 'full' || scope === 'settings') {
+          const dbSettings = await safeInvoke<Record<string, string>>('get_all_user_settings');
+          bundle.userSettings = dbSettings || {
+            theme: get().theme,
+            closeToTray: String(get().closeToTray),
+            autoStartRecording: String(get().autoStartRecording),
+            pageSize: String(get().pageSize),
+          };
+        }
+
+        if (scope === 'full' || scope === 'logbook') {
+          let flightsToExport = get().flights;
+          if (includeTelemetry) {
+            flightsToExport = await Promise.all(
+              get().flights.map(async (f) => {
+                if (f.telemetryPoints && f.telemetryPoints.length > 0) return f;
+                const detailed = await get().loadFlightDetails(f.id);
+                return detailed || f;
+              })
+            );
+          } else {
+            flightsToExport = get().flights.map((f) => ({
+              ...f,
+              telemetryPoints: [],
+            }));
+          }
+          bundle.flights = flightsToExport;
+          bundle.metadata.flightCount = flightsToExport.length;
+          bundle.visitedAirports = get().visitedAirports;
+          bundle.visitedCountries = get().visitedCountries;
+        }
+
+        if (scope === 'full' || scope === 'routes') {
+          bundle.savedRoutes = get().savedRoutes;
+          bundle.metadata.routeCount = get().savedRoutes.length;
+        }
+
+        const jsonStr = JSON.stringify(bundle, null, 2);
+        const dateTag = now.slice(0, 10);
+        const filename = `apollo_flight_${scope}_${dateTag}.json`;
+
+        if (typeof document !== 'undefined') {
+          await triggerFileSave(jsonStr, filename, 'json', 'application/json');
+        }
+
+        return jsonStr;
+      },
+
+      importDataBundle: async (bundle, strategy, settingsChoices) => {
+        if (!bundle || bundle.format !== 'apollo-flight-bundle') {
+          throw new Error('Invalid Apollo Flight backup bundle format.');
+        }
+
+        let importedFlightsCount = 0;
+        let importedRoutesCount = 0;
+
+        // 1. Settings
+        if (bundle.userSettings) {
+          for (const [key, val] of Object.entries(bundle.userSettings)) {
+            const choice = settingsChoices?.[key] ?? 'imported';
+            if (choice === 'imported') {
+              if (key === 'theme' && (val === 'light' || val === 'dark')) {
+                get().setTheme(val);
+              }
+              if (key === 'closeToTray') {
+                get().setCloseToTray(val === 'true');
+              }
+              if (key === 'autoStartRecording') {
+                get().setAutoStartRecording(val === 'true');
+              }
+              if (key === 'pageSize') {
+                const ps = parseInt(val, 10);
+                if ([25, 50, 100].includes(ps)) get().setPageSize(ps);
+              }
+              await safeInvoke('set_user_setting', { key, value: String(val) });
+            }
+          }
+        }
+
+        // 2. Flights
+        if (bundle.flights && Array.isArray(bundle.flights)) {
+          const currentFlights = get().flights;
+          const currentIds = new Set(currentFlights.map((f) => f.id));
+          const toAdd: FlightRecord[] = [];
+
+          for (const f of bundle.flights) {
+            let flightToSave = { ...f };
+            if (currentIds.has(flightToSave.id)) {
+              if (strategy === 'skip') {
+                continue;
+              } else if (strategy === 'keep_both') {
+                flightToSave.id = `flight-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+              }
+            }
+
+            if (!Array.isArray(flightToSave.telemetryPoints)) {
+              flightToSave.telemetryPoints = [];
+            }
+
+            await safeInvoke('save_flight', { flight: flightToSave });
+            if (flightToSave.telemetryPoints.length > 0) {
+              const rawPoints = flightToSave.telemetryPoints.map((tp) => ({
+                flightId: flightToSave.id,
+                timestamp: tp.timestamp,
+                latitude: tp.latitude,
+                longitude: tp.longitude,
+                altitudeMsl: tp.altitudeMsl,
+                altitudeAgl: tp.altitudeAgl,
+                indicatedAirspeed: tp.indicatedAirspeed,
+                groundSpeed: tp.groundSpeed,
+                heading: tp.heading,
+                pitch: tp.pitch,
+                bank: tp.bank,
+                verticalSpeed: tp.verticalSpeed,
+                isOnGround: tp.isOnGround,
+              }));
+              await safeInvoke('save_telemetry_batch', { points: rawPoints });
+            }
+
+            toAdd.push(flightToSave);
+            importedFlightsCount++;
+          }
+
+          if (toAdd.length > 0) {
+            const merged = strategy === 'overwrite'
+              ? [...toAdd, ...currentFlights.filter((cf) => !toAdd.some((ta) => ta.id === cf.id))]
+              : [...toAdd, ...currentFlights];
+            set({
+              flights: merged,
+              visitedCountries: computeVisitedCountries(merged, get().visitedAirports),
+            });
+          }
+        }
+
+        // 3. Saved Routes
+        if (bundle.savedRoutes && Array.isArray(bundle.savedRoutes)) {
+          const currentRoutes = get().savedRoutes;
+          const currentIds = new Set(currentRoutes.map((r) => r.id));
+
+          for (const r of bundle.savedRoutes) {
+            let routeToSave = { ...r };
+            if (currentIds.has(routeToSave.id)) {
+              if (strategy === 'skip') {
+                continue;
+              } else if (strategy === 'keep_both') {
+                routeToSave.id = `route-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+              }
+            }
+            await get().saveRoute(routeToSave);
+            importedRoutesCount++;
+          }
+        }
+
+        return {
+          importedFlights: importedFlightsCount,
+          importedRoutes: importedRoutesCount,
+          message: `Imported ${importedFlightsCount} flight(s) and ${importedRoutesCount} route(s) successfully.`,
+        };
       },
 
       exportFlight: async (id, format) => {
@@ -1597,7 +2149,9 @@ export const useFlightStore = create<FlightState>()(
         theme: state.theme,
         closeToTray: state.closeToTray,
         autoStartRecording: state.autoStartRecording,
+        pageSize: state.pageSize,
         savedRoutes: state.savedRoutes,
+        recycleBin: state.recycleBin,
       }),
       onRehydrateStorage: () => (state) => {
         if (state && typeof document !== 'undefined') {

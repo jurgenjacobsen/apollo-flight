@@ -124,8 +124,8 @@ The repository includes a GitHub Actions workflow (`.github/workflows/release.ym
 To trigger an automated multi-platform release build, commit your changes and push a version tag:
 
 ```powershell
-git tag v0.0.3
-git push origin v0.0.3
+git tag v0.0.4
+git push origin v0.0.4
 ```
 
 The workflow will:
@@ -145,8 +145,6 @@ When bumping the application version, ensure the version string is updated acros
 | [`src-tauri/Cargo.toml`](src-tauri/Cargo.toml) | `version = "x.y.z"` | Rust crate package version |
 | [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) | `"version": "x.y.z"` | Tauri desktop application & native installer bundle metadata |
 | [`SECURITY.md`](SECURITY.md) | Supported versions table | Minimum supported security patch version |
-| [`.github/ISSUE_TEMPLATE/*.yml`](.github/ISSUE_TEMPLATE/) | Form placeholder versions | Issue forms (`bug_report.yml`, `general_feedback.yml`) |
-| [`README.md`](README.md) | Release commands & examples | Documentation and release instructions |
 
 > [!NOTE]
 > The Rust session logger in `src-tauri/src/lib.rs` automatically tracks `src-tauri/Cargo.toml` via `env!("CARGO_PKG_VERSION")`.
