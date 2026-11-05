@@ -28,10 +28,12 @@ pub struct TelemetryPacket {
     pub is_on_ground: bool,
     pub is_engine_running: bool,
     pub nav1_obs: u16,
+    pub nav1_radial: f64,
     pub nav1_relative_bearing: f64,
     pub nav1_dme_distance: f64,
     pub nav1_dme_speed: u16,
     pub nav2_obs: u16,
+    pub nav2_radial: f64,
     pub nav2_relative_bearing: f64,
     pub nav2_dme_distance: f64,
     pub nav2_dme_speed: u16,
@@ -60,10 +62,12 @@ impl Default for TelemetryPacket {
             is_on_ground: true,
             is_engine_running: false,
             nav1_obs: 0,
+            nav1_radial: 0.0,
             nav1_relative_bearing: 0.0,
             nav1_dme_distance: 0.0,
             nav1_dme_speed: 0,
             nav2_obs: 0,
+            nav2_radial: 0.0,
             nav2_relative_bearing: 0.0,
             nav2_dme_distance: 0.0,
             nav2_dme_speed: 0,
@@ -123,6 +127,14 @@ pub mod win {
         pub fn parse_nav1_relative_bearing(raw: i16) -> f64 {
             raw as f64 * 360.0 / 65536.0
         }
+
+        pub fn parse_radial(raw: u16) -> f64 {
+            (raw as f64 * 360.0 / 65536.0 + 360.0) % 360.0
+        }
+
+        pub fn parse_relative_bearing(raw: i16) -> f64 {
+            raw as f64 * 360.0 / 65536.0
+        }
     }
 
     /// Read all required telemetry offsets in a single batch IPC transaction
@@ -145,10 +157,12 @@ pub mod win {
         let mut raw_eng1_comb: i32 = 0;
         let mut raw_eng2_comb: i32 = 0;
         let mut raw_nav1_obs: u16 = 0;
+        let mut raw_nav1_radial: u16 = 0;
         let mut raw_nav1_rel_brg: i16 = 0;
         let mut raw_nav1_dme_dist: u16 = 0;
         let mut raw_nav1_dme_spd: u16 = 0;
         let mut raw_nav2_obs: u16 = 0;
+        let mut raw_nav2_radial: u16 = 0;
         let mut raw_nav2_rel_brg: i16 = 0;
         let mut raw_nav2_dme_dist: u16 = 0;
         let mut raw_nav2_dme_spd: u16 = 0;
@@ -175,11 +189,13 @@ pub mod win {
             session.read(0x0894, &mut raw_eng1_comb)?;
             session.read(0x092C, &mut raw_eng2_comb)?;
             session.read(0x0C4E, &mut raw_nav1_obs)?;
-            session.read(0x0C54, &mut raw_nav1_rel_brg)?;
+            session.read(0x0C50, &mut raw_nav1_radial)?;
+            session.read(0x0C56, &mut raw_nav1_rel_brg)?;
             session.read(0x0300, &mut raw_nav1_dme_dist)?;
             session.read(0x0302, &mut raw_nav1_dme_spd)?;
             session.read(0x0C5E, &mut raw_nav2_obs)?;
-            session.read(0x0C64, &mut raw_nav2_rel_brg)?;
+            session.read(0x0C60, &mut raw_nav2_radial)?;
+            session.read(0x0C62, &mut raw_nav2_rel_brg)?;
             session.read(0x0306, &mut raw_nav2_dme_dist)?;
             session.read(0x0308, &mut raw_nav2_dme_spd)?;
             session.read(0x02C0, &mut raw_adf1_rel_brg)?;
@@ -249,14 +265,16 @@ pub mod win {
             is_on_ground: raw_on_ground != 0,
             is_engine_running,
             nav1_obs: raw_nav1_obs % 360,
-            nav1_relative_bearing: (FsuipcConversions::parse_nav1_relative_bearing(raw_nav1_rel_brg) * 10.0).round() / 10.0,
+            nav1_radial: (FsuipcConversions::parse_radial(raw_nav1_radial) * 10.0).round() / 10.0,
+            nav1_relative_bearing: (FsuipcConversions::parse_relative_bearing(raw_nav1_rel_brg) * 10.0).round() / 10.0,
             nav1_dme_distance: (dme_dist * 10.0).round() / 10.0,
             nav1_dme_speed: dme_spd,
             nav2_obs: raw_nav2_obs % 360,
-            nav2_relative_bearing: (FsuipcConversions::parse_nav1_relative_bearing(raw_nav2_rel_brg) * 10.0).round() / 10.0,
+            nav2_radial: (FsuipcConversions::parse_radial(raw_nav2_radial) * 10.0).round() / 10.0,
+            nav2_relative_bearing: (FsuipcConversions::parse_relative_bearing(raw_nav2_rel_brg) * 10.0).round() / 10.0,
             nav2_dme_distance: (dme2_dist * 10.0).round() / 10.0,
             nav2_dme_speed: dme2_spd,
-            adf1_relative_bearing: (FsuipcConversions::parse_nav1_relative_bearing(raw_adf1_rel_brg) * 10.0).round() / 10.0,
+            adf1_relative_bearing: (FsuipcConversions::parse_relative_bearing(raw_adf1_rel_brg) * 10.0).round() / 10.0,
             timestamp: Utc::now().to_rfc3339(),
         })
     }

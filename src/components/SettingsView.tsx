@@ -34,6 +34,8 @@ export const SettingsView: React.FC = () => {
     setCloseToTray, 
     autoStartRecording,
     setAutoStartRecording,
+    autoCheckUpdates,
+    setAutoCheckUpdates,
     theme, 
     setTheme,
     toggleTheme,
@@ -47,15 +49,17 @@ export const SettingsView: React.FC = () => {
     setPageSize,
     exportDataBundle,
     recycleBin,
-    setActiveView
+    setActiveView,
+    availableUpdate,
+    isCheckingUpdate,
+    isInstallingUpdate,
+    downloadProgress,
+    updateMessage,
+    checkForUpdates,
+    installUpdate,
   } = useFlightStore();
 
   const [savedSuccess, setSavedSuccess] = useState(false);
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
-  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
-  const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
-  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [includeTelemetryExport, setIncludeTelemetryExport] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
@@ -96,65 +100,17 @@ export const SettingsView: React.FC = () => {
     notifySaved();
   };
 
+  const handleToggleAutoCheckUpdates = () => {
+    setAutoCheckUpdates(!autoCheckUpdates);
+    notifySaved();
+  };
+
   const handleCheckForUpdates = async () => {
-    setIsCheckingUpdate(true);
-    setUpdateMessage(null);
-    setAvailableUpdate(null);
-    setDownloadProgress(null);
-    try {
-      if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
-        const { check } = await import('@tauri-apps/plugin-updater');
-        const update = await check();
-        if (update) {
-          setAvailableUpdate(update);
-          setUpdateMessage(`Update v${update.version} is available!`);
-        } else {
-          setUpdateMessage(`Apollo Flight is up to date (v${packageJson.version})`);
-        }
-      } else {
-        setUpdateMessage('Updater configured for signed release builds');
-      }
-    } catch {
-      setUpdateMessage(`Already running latest version`);
-    } finally {
-      setIsCheckingUpdate(false);
-    }
+    await checkForUpdates(false);
   };
 
   const handleInstallUpdate = async () => {
-    if (!availableUpdate) return;
-    setIsInstallingUpdate(true);
-    setDownloadProgress(0);
-    setUpdateMessage('Starting download...');
-    try {
-      let totalBytes = 0;
-      let downloadedBytes = 0;
-
-      await availableUpdate.downloadAndInstall((event) => {
-        if (event.event === 'Started') {
-          totalBytes = event.data?.contentLength ?? 0;
-          setDownloadProgress(0);
-          setUpdateMessage('Downloading update...');
-        } else if (event.event === 'Progress') {
-          downloadedBytes += event.data.chunkLength;
-          if (totalBytes > 0) {
-            const pct = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100));
-            setDownloadProgress(pct);
-            setUpdateMessage(`Downloading update: ${pct}%`);
-          } else {
-            const mb = (downloadedBytes / (1024 * 1024)).toFixed(1);
-            setUpdateMessage(`Downloading update: ${mb} MB`);
-          }
-        } else if (event.event === 'Finished') {
-          setDownloadProgress(100);
-          setUpdateMessage('Installing update and restarting...');
-        }
-      });
-    } catch (err: unknown) {
-      setIsInstallingUpdate(false);
-      const errMsg = err instanceof Error ? err.message : String(err);
-      setUpdateMessage(`Update failed: ${errMsg}`);
-    }
+    await installUpdate();
   };
 
   return (
@@ -688,6 +644,40 @@ export const SettingsView: React.FC = () => {
                 <span className="px-2.5 py-1 rounded-sm text-xs font-medium bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline text-neutral-900 dark:text-white tabular-nums">
                   v{packageJson.version}
                 </span>
+              </div>
+            </div>
+
+            {/* Preference: Auto Check for Updates on Startup */}
+            <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1 max-w-xl">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
+                    Check for Updates on Startup
+                  </h3>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
+                  Automatically check for newer Apollo Flight releases from GitHub when the application starts, and notify you when an update is available.
+                </p>
+              </div>
+
+              <div className="shrink-0 flex items-center">
+                <button
+                  type="button"
+                  onClick={handleToggleAutoCheckUpdates}
+                  role="switch"
+                  aria-checked={autoCheckUpdates}
+                  aria-label="Toggle auto check for updates on startup"
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 ${
+                    autoCheckUpdates ? 'bg-neutral-900 dark:bg-white' : 'bg-neutral-300 dark:bg-[#333333]'
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white dark:bg-black shadow-xs ring-0 transition duration-200 ease-in-out ${
+                      autoCheckUpdates ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
 

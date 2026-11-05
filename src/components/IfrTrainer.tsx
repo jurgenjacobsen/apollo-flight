@@ -8,7 +8,9 @@ import {
   Sparkles,
   Radio,
   PlaneTakeoff,
-  Lock
+  Lock,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
 
 interface InterceptChallenge {
@@ -21,12 +23,15 @@ interface InterceptChallenge {
   active: boolean;
 }
 
+export type ZoomRange = 'AUTO' | number;
+
 export const IfrTrainer: React.FC = () => {
   const { currentTelemetry, activeFlight, theme } = useFlightStore();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [mode, setMode] = useState<'LIVE' | 'PRACTICE'>(() => activeFlight ? 'LIVE' : 'PRACTICE');
   const [navSource, setNavSource] = useState<NavSource>('NAV1');
+  const [selectedRange, setSelectedRange] = useState<ZoomRange>('AUTO');
 
   const [challenge, setChallenge] = useState<InterceptChallenge | null>({
     stationType: 'VOR',
@@ -40,7 +45,7 @@ export const IfrTrainer: React.FC = () => {
 
   // Aircraft Heading: orientation/direction the nose is pointing (0° - 359°)
   const [simHdg, setSimHdg] = useState<number>(() => Math.round(currentTelemetry.heading) || 80);
-  // Aircraft Current Radial: position on the compass rose relative to the station (0° - 359°)
+  // Aircraft Current Radial: position on the compass rose relative to the station (1° - 360°)
   const [simRadial, setSimRadial] = useState<number>(90);
   // DME / Simulated Distance from station
   const [simDme, setSimDme] = useState<number>(currentTelemetry.nav1DmeDistance || 8.5);
@@ -55,6 +60,18 @@ export const IfrTrainer: React.FC = () => {
     prevActiveFlightIdRef.current = currentFlightId;
   }, [activeFlight?.id]);
 
+  // Scalable canvas zoom calculation:
+  // When within 5 NM -> 5 NM (zoomed in at maximum detail)
+  // As aircraft distances itself past 5 NM -> canvas smoothly zooms out up to 25 NM
+  const autoRange: number = (() => {
+    if (simDme <= 5) return 5;
+    // Scale dynamically so aircraft stays comfortably within the plot radius (~85%), up to 25 NM
+    const scaled = Math.min(25, Number((simDme * 1.15).toFixed(1)));
+    return Math.max(5, scaled);
+  })();
+
+  const activeRange: number = selectedRange === 'AUTO' ? autoRange : Number(selectedRange);
+
   // When in LIVE mode, automatically track live sim telemetry based on chosen NAV source
   useEffect(() => {
     if (mode === 'LIVE' && currentTelemetry.simConnected) {
@@ -62,15 +79,27 @@ export const IfrTrainer: React.FC = () => {
       setSimHdg(liveHdg);
 
       if (navSource === 'NAV1') {
-        const liveRadial = Math.round((liveHdg + currentTelemetry.nav1RelativeBearing + 180 + 360) % 360);
+        // True VOR Radial from station (0x0C50); fallback to relative bearing if radial offset unpopulated
+        let liveRadial = 0;
+        if (typeof currentTelemetry.nav1Radial === 'number' && currentTelemetry.simConnected) {
+          liveRadial = Math.round(currentTelemetry.nav1Radial) % 360 || 360;
+        } else {
+          liveRadial = Math.round(liveHdg + currentTelemetry.nav1RelativeBearing + 180 + 360) % 360 || 360;
+        }
         setSimRadial(liveRadial);
         setSimDme(Number(currentTelemetry.nav1DmeDistance.toFixed(1)) || 0.1);
       } else if (navSource === 'NAV2') {
-        const liveRadial = Math.round((liveHdg + (currentTelemetry.nav2RelativeBearing ?? 0) + 180 + 360) % 360);
+        let liveRadial = 0;
+        if (typeof currentTelemetry.nav2Radial === 'number' && currentTelemetry.simConnected) {
+          liveRadial = Math.round(currentTelemetry.nav2Radial) % 360 || 360;
+        } else {
+          liveRadial = Math.round(liveHdg + (currentTelemetry.nav2RelativeBearing ?? 0) + 180 + 360) % 360 || 360;
+        }
         setSimRadial(liveRadial);
         setSimDme(Number((currentTelemetry.nav2DmeDistance ?? 0).toFixed(1)) || 0.1);
       } else if (navSource === 'ADF') {
-        const liveRadial = Math.round((liveHdg + currentTelemetry.adf1RelativeBearing + 180 + 360) % 360);
+        // NDB: Track from station (QDR) = Heading + ADF Relative Bearing + 180°
+        const liveRadial = Math.round(liveHdg + currentTelemetry.adf1RelativeBearing + 180 + 360) % 360 || 360;
         setSimRadial(liveRadial);
         // NDBs do not have DME; maintain current or default rendering distance
         setSimDme((prev) => (prev > 0 ? prev : 6.0));
@@ -108,8 +137,22 @@ export const IfrTrainer: React.FC = () => {
     generateNewChallenge(source);
   };
 
-  // Aircraft current radial position matches simRadial
-  const currentAircraftRadial = simRadial;
+  const handleCanvasWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const cur = selectedRange === 'AUTO' ? activeRange : selectedRange;
+    if (e.deltaY < 0) {
+      // Zoom in (decrease range down to 5 NM)
+      const next = Math.max(5, cur - 2.5);
+      setSelectedRange(Math.round(next * 2) / 2);
+    } else {
+      // Zoom out (increase range up to 25 NM)
+      const next = Math.min(25, cur + 2.5);
+      setSelectedRange(Math.round(next * 2) / 2);
+    }
+  };
+
+  // Aircraft current radial position matches simRadial (normalized 1° - 360°)
+  const currentAircraftRadial = simRadial % 360 || 360;
   const deviation = challenge ? Math.abs((currentAircraftRadial - challenge.targetRadial + 540) % 360 - 180) : 0;
   const isTargetCaptured = challenge?.active && deviation <= (challenge?.toleranceDeg ?? 2);
 
@@ -182,6 +225,58 @@ export const IfrTrainer: React.FC = () => {
       }
     }
 
+    // 2b. Draw Scalable Range Rings (zoomed in at 5 NM, zooming out up to 25 NM)
+    const maxPlotRadius = radius - 35;
+    const ringDistances: number[] = [];
+    if (activeRange <= 6) {
+      // High-precision zoom: 1, 2, 3, 4, 5 NM
+      [1, 2, 3, 4, 5].forEach((d) => {
+        if (d <= activeRange) ringDistances.push(d);
+      });
+    } else if (activeRange <= 12) {
+      // Mid zoom: 2.5, 5, 7.5, 10 NM
+      [2.5, 5, 7.5, 10].forEach((d) => {
+        if (d <= activeRange) ringDistances.push(d);
+      });
+    } else {
+      // Zoomed out up to 25 NM: 5, 10, 15, 20, 25 NM
+      [5, 10, 15, 20, 25].forEach((d) => {
+        if (d <= activeRange) ringDistances.push(d);
+      });
+    }
+
+    ringDistances.forEach((dist) => {
+      const ringR = (dist / activeRange) * maxPlotRadius;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, ringR, 0, 2 * Math.PI);
+      ctx.strokeStyle = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Ring distance label along 45° angle (North-East)
+      const angle = -Math.PI / 4;
+      const lx = centerX + ringR * Math.cos(angle);
+      const ly = centerY + ringR * Math.sin(angle);
+      ctx.fillStyle = theme === 'dark' ? 'rgba(255, 255, 255, 0.45)' : 'rgba(0, 0, 0, 0.5)';
+      ctx.font = '8px Geist, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${dist} NM`, lx, ly);
+    });
+
+    // Range Scale watermark at bottom of instrument face
+    ctx.fillStyle = theme === 'dark' ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.45)';
+    ctx.font = 'bold 8.5px Geist, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      `RANGE: ${activeRange.toFixed(1)} NM ${selectedRange === 'AUTO' ? '(AUTO)' : ''}`,
+      centerX,
+      centerY + radius - 12
+    );
+
     // 3. Draw Target Radial line if challenge exists
     if (challenge) {
       const radialRad = ((challenge.targetRadial - 90) * Math.PI) / 180;
@@ -234,9 +329,10 @@ export const IfrTrainer: React.FC = () => {
     }
 
     // 5. Draw Aircraft Vector & Position relative to NAVAID
-    // Position depends strictly on simRadial and distance, NOT heading
-    const aircraftDistPx = Math.min(radius - 35, (simDme / 15) * (radius - 40));
-    const radialRad = ((simRadial - 90) * Math.PI) / 180;
+    // Position depends strictly on simRadial and scalable distance, NOT heading
+    const clampedDme = Math.min(simDme, activeRange);
+    const aircraftDistPx = Math.max(12, (clampedDme / activeRange) * maxPlotRadius);
+    const radialRad = (((simRadial % 360) - 90) * Math.PI) / 180;
     const planeX = centerX + aircraftDistPx * Math.cos(radialRad);
     const planeY = centerY + aircraftDistPx * Math.sin(radialRad);
 
@@ -255,6 +351,23 @@ export const IfrTrainer: React.FC = () => {
     ctx.translate(planeX, planeY);
     ctx.rotate((simHdg * Math.PI) / 180);
 
+    // Forward projected heading vector line
+    ctx.beginPath();
+    ctx.moveTo(0, -12);
+    ctx.lineTo(0, -28);
+    ctx.strokeStyle = isTargetCaptured ? '#10b981' : '#3b82f6';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Arrowhead on heading vector
+    ctx.beginPath();
+    ctx.moveTo(-3, -23);
+    ctx.lineTo(0, -28);
+    ctx.lineTo(3, -23);
+    ctx.strokeStyle = isTargetCaptured ? '#10b981' : '#3b82f6';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
     ctx.beginPath();
     ctx.moveTo(0, -12);
     ctx.lineTo(8, 8);
@@ -268,7 +381,7 @@ export const IfrTrainer: React.FC = () => {
     ctx.stroke();
 
     ctx.restore();
-  }, [simHdg, simRadial, simDme, challenge, navSource, theme, isTargetCaptured]);
+  }, [simHdg, simRadial, simDme, challenge, navSource, theme, isTargetCaptured, activeRange, selectedRange]);
 
   return (
     <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans">
@@ -375,13 +488,13 @@ export const IfrTrainer: React.FC = () => {
             {currentTelemetry.simConnected ? (
               <span className="text-emerald-600 dark:text-emerald-400 font-medium">
                 {navSource === 'NAV1' && (
-                  `Heading ${Math.round(currentTelemetry.heading)}° · Radial ${simRadial}° · Rel ${currentTelemetry.nav1RelativeBearing.toFixed(1)}° · DME ${currentTelemetry.nav1DmeDistance > 0 ? `${currentTelemetry.nav1DmeDistance.toFixed(1)} NM` : 'No Signal'} · OBS ${currentTelemetry.nav1Obs}°`
+                  `Heading ${Math.round(currentTelemetry.heading)}° · Radial ${simRadial % 360 || 360}° · Rel ${currentTelemetry.nav1RelativeBearing.toFixed(1)}° · DME ${currentTelemetry.nav1DmeDistance > 0 ? `${currentTelemetry.nav1DmeDistance.toFixed(1)} NM` : 'No Signal'} · OBS ${currentTelemetry.nav1Obs}°`
                 )}
                 {navSource === 'NAV2' && (
-                  `Heading ${Math.round(currentTelemetry.heading)}° · Radial ${simRadial}° · Rel ${(currentTelemetry.nav2RelativeBearing ?? 0).toFixed(1)}° · DME ${(currentTelemetry.nav2DmeDistance ?? 0) > 0 ? `${currentTelemetry.nav2DmeDistance.toFixed(1)} NM` : 'No Signal'} · OBS ${currentTelemetry.nav2Obs || 0}°`
+                  `Heading ${Math.round(currentTelemetry.heading)}° · Radial ${simRadial % 360 || 360}° · Rel ${(currentTelemetry.nav2RelativeBearing ?? 0).toFixed(1)}° · DME ${(currentTelemetry.nav2DmeDistance ?? 0) > 0 ? `${currentTelemetry.nav2DmeDistance.toFixed(1)} NM` : 'No Signal'} · OBS ${currentTelemetry.nav2Obs || 0}°`
                 )}
                 {navSource === 'ADF' && (
-                  `Heading ${Math.round(currentTelemetry.heading)}° · ADF Relative ${currentTelemetry.adf1RelativeBearing.toFixed(1)}° · QDR (Radial) ${simRadial}° · QDM (To NDB) ${bearingToStation}°`
+                  `Heading ${Math.round(currentTelemetry.heading)}° · ADF Relative ${currentTelemetry.adf1RelativeBearing.toFixed(1)}° · QDR (Radial) ${simRadial % 360 || 360}° · QDM (To NDB) ${bearingToStation}°`
                 )}
               </span>
             ) : (
@@ -406,24 +519,117 @@ export const IfrTrainer: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Canvas Visualizer */}
         <div className="lg:col-span-2 bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 flex flex-col items-center justify-center shadow-sm">
-          <div className="w-full flex items-center justify-between text-xs text-neutral-500 dark:text-geist-muted mb-2">
+          <div className="w-full flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500 dark:text-geist-muted mb-2">
             <span>
               Station: {challenge?.stationId || (navSource === 'NAV1' ? 'NAV1 VOR' : navSource === 'NAV2' ? 'NAV2 VOR' : 'ADF NDB')}
             </span>
+
+            {/* Scalable Canvas Zoom Selector */}
+            <div className="inline-flex items-center gap-1 bg-neutral-100 dark:bg-[#181818] p-0.5 rounded-sm border border-neutral-200 dark:border-geist-hairline">
+              <span className="text-[10px] uppercase font-semibold text-neutral-400 dark:text-neutral-500 px-1.5">Range</span>
+              <button
+                type="button"
+                onClick={() => setSelectedRange('AUTO')}
+                title={`Auto zoom: scales from 5 NM when close up to 25 NM as distance increases (currently ${activeRange.toFixed(1)} NM)`}
+                className={`px-1.5 py-0.5 text-[10px] font-mono rounded-xs transition-colors ${
+                  selectedRange === 'AUTO'
+                    ? 'bg-white dark:bg-[#282828] text-neutral-900 dark:text-white font-semibold shadow-xs'
+                    : 'text-neutral-500 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                }`}
+              >
+                Auto ({activeRange.toFixed(1)} NM)
+              </button>
+              {([5, 10, 15, 20, 25] as const).map((rng) => (
+                <button
+                  key={rng}
+                  type="button"
+                  onClick={() => setSelectedRange(rng)}
+                  title={`Fix zoom to ${rng} NM`}
+                  className={`px-1.5 py-0.5 text-[10px] font-mono rounded-xs transition-colors ${
+                    selectedRange === rng
+                      ? 'bg-white dark:bg-[#282828] text-neutral-900 dark:text-white font-semibold shadow-xs'
+                      : 'text-neutral-500 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                  }`}
+                >
+                  {rng} NM
+                </button>
+              ))}
+              <div className="h-3 w-[1px] bg-neutral-200 dark:bg-neutral-800 mx-0.5" />
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = selectedRange === 'AUTO' ? activeRange : selectedRange;
+                  const next = Math.max(5, cur - 2.5);
+                  setSelectedRange(Math.round(next * 2) / 2);
+                }}
+                disabled={activeRange <= 5}
+                title="Zoom in (closer to station, min 5 NM)"
+                className="p-1 rounded-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white disabled:opacity-30 transition-colors"
+              >
+                <ZoomIn className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = selectedRange === 'AUTO' ? activeRange : selectedRange;
+                  const next = Math.min(25, cur + 2.5);
+                  setSelectedRange(Math.round(next * 2) / 2);
+                }}
+                disabled={activeRange >= 25}
+                title="Zoom out (further from station, max 25 NM)"
+                className="p-1 rounded-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white disabled:opacity-30 transition-colors"
+              >
+                <ZoomOut className="w-3 h-3" />
+              </button>
+            </div>
+
             <span className="font-mono tabular-nums">
               {navSource === 'ADF'
-                ? `QDR: ${simRadial}° · Heading: ${simHdg}° · Rel: ${relativeBearing > 0 ? `+${relativeBearing}` : relativeBearing}°`
-                : `Radial: ${simRadial}° · Heading: ${simHdg}° · DME: ${simDme > 0 ? `${simDme} NM` : 'No Signal'}`
+                ? `QDR: ${simRadial % 360 || 360}° · Heading: ${simHdg}° · Rel: ${relativeBearing > 0 ? `+${relativeBearing}` : relativeBearing}°`
+                : `Radial: ${simRadial % 360 || 360}° · Heading: ${simHdg}° · DME: ${simDme > 0 ? `${simDme} NM` : 'No Signal'}`
               }
             </span>
           </div>
 
-          <canvas
-            ref={canvasRef}
-            width={400}
-            height={400}
-            className="w-full max-w-[400px] aspect-square rounded-full border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] shadow-xs"
-          />
+          <div className="relative group/canvas flex items-center justify-center">
+            <canvas
+              ref={canvasRef}
+              width={400}
+              height={400}
+              onWheel={handleCanvasWheel}
+              className="w-full max-w-[400px] aspect-square rounded-full border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] shadow-xs cursor-crosshair"
+              title="Use mouse scroll or range buttons to zoom in / out (5 NM - 25 NM)"
+            />
+            {/* Quick floating zoom overlay */}
+            <div className="absolute top-2 right-2 opacity-0 group-hover/canvas:opacity-100 transition-opacity flex items-center gap-1 bg-white/90 dark:bg-black/90 backdrop-blur-xs border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = selectedRange === 'AUTO' ? activeRange : selectedRange;
+                  const next = Math.max(5, cur - 2.5);
+                  setSelectedRange(Math.round(next * 2) / 2);
+                }}
+                disabled={activeRange <= 5}
+                title="Zoom in (5 NM)"
+                className="p-1 text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white disabled:opacity-30"
+              >
+                <ZoomIn className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = selectedRange === 'AUTO' ? activeRange : selectedRange;
+                  const next = Math.min(25, cur + 2.5);
+                  setSelectedRange(Math.round(next * 2) / 2);
+                }}
+                disabled={activeRange >= 25}
+                title="Zoom out (25 NM)"
+                className="p-1 text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white disabled:opacity-30"
+              >
+                <ZoomOut className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Challenge Panel & Flight Controls */}
@@ -521,15 +727,18 @@ export const IfrTrainer: React.FC = () => {
               <div>
                 <div className="flex justify-between text-neutral-500 dark:text-geist-muted mb-1 text-xs">
                   <span>Aircraft Current Radial</span>
-                  <span className="text-neutral-900 dark:text-white font-semibold tabular-nums">{simRadial}°</span>
+                  <span className="text-neutral-900 dark:text-white font-semibold tabular-nums">{simRadial % 360 || 360}°</span>
                 </div>
                 <input
                   type="range"
                   min="0"
                   max="359"
                   disabled={mode === 'LIVE'}
-                  value={simRadial}
-                  onChange={(e) => setSimRadial(Number(e.target.value))}
+                  value={simRadial % 360}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setSimRadial(val === 0 ? 360 : val);
+                  }}
                   className={`w-full accent-neutral-900 dark:accent-white h-1.5 bg-neutral-200 dark:bg-[#262626] rounded-sm ${
                     mode === 'LIVE' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                   }`}

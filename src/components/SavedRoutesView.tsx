@@ -29,7 +29,23 @@ import {
   Layers,
   Pencil,
   Plus,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
+
+export type RouteSortField =
+  | 'favorite'
+  | 'route'
+  | 'category'
+  | 'distance'
+  | 'airborne'
+  | 'blockTime'
+  | 'altitude'
+  | 'status'
+  | 'saved';
+
+export type SortDirection = 'asc' | 'desc';
 
 export const SavedRoutesView: React.FC = () => {
   const {
@@ -51,12 +67,38 @@ export const SavedRoutesView: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'all' | 'favorites' | 'draft' | 'flown'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortField, setSortField] = useState<RouteSortField>('saved');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [expandedRouteIds, setExpandedRouteIds] = useState<Set<string>>(new Set());
   const [copiedRouteId, setCopiedRouteId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [routeToEdit, setRouteToEdit] = useState<SavedRoute | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
+
+  const handleSort = (field: RouteSortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      if (['distance', 'airborne', 'blockTime', 'altitude', 'saved', 'favorite'].includes(field)) {
+        setSortDirection('desc');
+      } else {
+        setSortDirection('asc');
+      }
+    }
+  };
+
+  const renderSortIcon = (field: RouteSortField) => {
+    if (sortField === field) {
+      return sortDirection === 'asc' ? (
+        <ArrowUp className="w-3 h-3 text-neutral-900 dark:text-white shrink-0" />
+      ) : (
+        <ArrowDown className="w-3 h-3 text-neutral-900 dark:text-white shrink-0" />
+      );
+    }
+    return <ArrowUpDown className="w-3 h-3 text-neutral-400 opacity-0 group-hover/sort:opacity-100 transition-opacity shrink-0" />;
+  };
 
   // Reset page when filter tab or search query changes
   useEffect(() => {
@@ -168,10 +210,71 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
     }
   }, [currentPage, totalPages]);
 
+  const sortedRoutes = useMemo(() => {
+    const getRouteAltitude = (route: SavedRoute): number => {
+      if (route.sectors && route.sectors.length > 0) {
+        return route.sectors[0].cruiseAltitudeFt || 0;
+      }
+      try {
+        const parsed = JSON.parse(route.sectorsJson || '[]');
+        if (parsed.length > 0) return parsed[0].cruiseAltitudeFt || 0;
+      } catch {}
+      return 0;
+    };
+
+    return [...filteredRoutes].sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case 'favorite':
+          comparison = (a.isFavorite === b.isFavorite) ? 0 : a.isFavorite ? 1 : -1;
+          break;
+        case 'route': {
+          const strA = `${a.departureIcao} ${a.arrivalIcao} ${a.name}`.toLowerCase();
+          const strB = `${b.departureIcao} ${b.arrivalIcao} ${b.name}`.toLowerCase();
+          comparison = strA.localeCompare(strB);
+          break;
+        }
+        case 'category': {
+          const catA = (a.aircraftCategory || '').toLowerCase();
+          const catB = (b.aircraftCategory || '').toLowerCase();
+          comparison = catA.localeCompare(catB);
+          break;
+        }
+        case 'distance':
+          comparison = (a.totalDistanceNm || 0) - (b.totalDistanceNm || 0);
+          break;
+        case 'airborne':
+          comparison = (a.totalAirborneMinutes || 0) - (b.totalAirborneMinutes || 0);
+          break;
+        case 'blockTime':
+          comparison = (a.totalDurationMinutes || 0) - (b.totalDurationMinutes || 0);
+          break;
+        case 'altitude':
+          comparison = getRouteAltitude(a) - getRouteAltitude(b);
+          break;
+        case 'status': {
+          const statA = (a.status || '').toLowerCase();
+          const statB = (b.status || '').toLowerCase();
+          comparison = statA.localeCompare(statB);
+          break;
+        }
+        case 'saved': {
+          const tA = new Date(a.createdAt || 0).getTime();
+          const tB = new Date(b.createdAt || 0).getTime();
+          comparison = tA - tB;
+          break;
+        }
+        default:
+          comparison = 0;
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [filteredRoutes, sortField, sortDirection]);
+
   const paginatedRoutes = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filteredRoutes.slice(start, start + pageSize);
-  }, [filteredRoutes, currentPage, pageSize]);
+    return sortedRoutes.slice(start, start + pageSize);
+  }, [sortedRoutes, currentPage, pageSize]);
 
   return (
     <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
@@ -364,52 +467,101 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-neutral-100/70 dark:bg-[#0e0e0e] border-b border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-400 select-none">
-                  <th className="py-2.5 px-3 font-medium w-10 text-center">
-                    <Heart className="w-3.5 h-3.5 mx-auto text-neutral-400" />
+                  <th
+                    onClick={() => handleSort('favorite')}
+                    title="Sort by favorite"
+                    className="py-2.5 px-3 font-medium w-10 text-center cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <Heart className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-rose-500 transition-colors" />
+                      {renderSortIcon('favorite')}
+                    </div>
                   </th>
-                  <th className="py-2.5 px-3 font-medium">
+                  <th
+                    onClick={() => handleSort('route')}
+                    title="Sort by route"
+                    className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                  >
                     <div className="flex items-center gap-1.5">
                       <Plane className="w-3.5 h-3.5 text-neutral-400" />
                       <span>Route</span>
+                      {renderSortIcon('route')}
                     </div>
                   </th>
-                  <th className="py-2.5 px-3 font-medium">
+                  <th
+                    onClick={() => handleSort('category')}
+                    title="Sort by aircraft category"
+                    className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                  >
                     <div className="flex items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5 text-neutral-400" />
                       <span>Category</span>
+                      {renderSortIcon('category')}
                     </div>
                   </th>
-                  <th className="py-2.5 px-3 font-medium">
+                  <th
+                    onClick={() => handleSort('distance')}
+                    title="Sort by distance"
+                    className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                  >
                     <div className="flex items-center gap-1.5">
                       <Milestone className="w-3.5 h-3.5 text-neutral-400" />
                       <span>Distance</span>
+                      {renderSortIcon('distance')}
                     </div>
                   </th>
-                  <th className="py-2.5 px-3 font-medium">
+                  <th
+                    onClick={() => handleSort('airborne')}
+                    title="Sort by airborne duration"
+                    className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                  >
                     <div className="flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-neutral-400" />
                       <span>Airborne</span>
+                      {renderSortIcon('airborne')}
                     </div>
                   </th>
-                  <th className="py-2.5 px-3 font-medium">
+                  <th
+                    onClick={() => handleSort('blockTime')}
+                    title="Sort by block time"
+                    className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                  >
                     <div className="flex items-center gap-1.5">
                       <Gauge className="w-3.5 h-3.5 text-neutral-400" />
                       <span>Block Time</span>
+                      {renderSortIcon('blockTime')}
                     </div>
                   </th>
-                  <th className="py-2.5 px-3 font-medium">
+                  <th
+                    onClick={() => handleSort('altitude')}
+                    title="Sort by cruise altitude"
+                    className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                  >
                     <div className="flex items-center gap-1.5">
                       <Mountain className="w-3.5 h-3.5 text-neutral-400" />
                       <span>Altitude</span>
+                      {renderSortIcon('altitude')}
                     </div>
                   </th>
-                  <th className="py-2.5 px-3 font-medium">
-                    <span>Status</span>
+                  <th
+                    onClick={() => handleSort('status')}
+                    title="Sort by status"
+                    className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Status</span>
+                      {renderSortIcon('status')}
+                    </div>
                   </th>
-                  <th className="py-2.5 px-3 font-medium">
+                  <th
+                    onClick={() => handleSort('saved')}
+                    title="Sort by saved date"
+                    className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                  >
                     <div className="flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5 text-neutral-400" />
                       <span>Saved</span>
+                      {renderSortIcon('saved')}
                     </div>
                   </th>
                   <th className="py-2.5 px-3 font-medium text-right pr-4">

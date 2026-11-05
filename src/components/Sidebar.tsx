@@ -16,10 +16,21 @@ import {
   Route,
   LifeBuoy,
   Bookmark,
-  Trash2,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
+
+interface NavItem {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: number;
+}
+
+interface NavSection {
+  label: string;
+  items: NavItem[];
+}
 
 export const Sidebar: React.FC = () => {
   const { 
@@ -30,12 +41,11 @@ export const Sidebar: React.FC = () => {
     endActiveFlight,
     startManualFlight,
     isSyncingAirports,
-    recycleBin,
     isSidebarCollapsed,
     toggleSidebar,
   } = useFlightStore();
 
-  const navSections = [
+  const navSections: NavSection[] = [
     {
       label: 'Operations',
       items: [
@@ -58,7 +68,6 @@ export const Sidebar: React.FC = () => {
       label: 'Control',
       items: [
         { id: 'settings', label: 'Settings', icon: Settings },
-        { id: 'recycle-bin', label: 'Recycle Bin', icon: Trash2, badge: recycleBin.length },
         { id: 'feedback', label: 'Help & Feedback', icon: LifeBuoy },
       ]
     }
@@ -141,7 +150,7 @@ export const Sidebar: React.FC = () => {
             <div className="space-y-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = activeView === item.id;
+                const isActive = activeView === item.id || (activeView === 'recycle-bin' && item.id === 'logbook');
 
                 return (
                   <button

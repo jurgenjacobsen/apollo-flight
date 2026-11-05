@@ -24,8 +24,24 @@ import {
   Globe,
   Navigation,
   FileSpreadsheet,
-  FileJson
+  FileJson,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
+
+export type LogbookSortField =
+  | 'route'
+  | 'aircraft'
+  | 'date'
+  | 'duration'
+  | 'distance'
+  | 'maxAlt'
+  | 'peakGs'
+  | 'touchdown'
+  | 'status';
+
+export type LogbookSortDirection = 'asc' | 'desc';
 
 interface ExportMenuState {
   flightId: string;
@@ -48,8 +64,11 @@ export const LogbookView: React.FC = () => {
     loadFlightDetails,
     pageSize,
     setPageSize,
+    recycleBin,
   } = useFlightStore();
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<LogbookSortField>('date');
+  const [sortDirection, setSortDirection] = useState<LogbookSortDirection>('desc');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [exportMenu, setExportMenu] = useState<ExportMenuState | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -60,6 +79,30 @@ export const LogbookView: React.FC = () => {
   const menuRef = useRef<HTMLDivElement>(null);
   const logbookMenuRef = useRef<HTMLDivElement>(null);
   const attemptedHealingRef = useRef<Set<string>>(new Set());
+
+  const handleSort = (field: LogbookSortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      if (['date', 'duration', 'distance', 'maxAlt', 'peakGs', 'touchdown'].includes(field)) {
+        setSortDirection('desc');
+      } else {
+        setSortDirection('asc');
+      }
+    }
+  };
+
+  const renderSortIcon = (field: LogbookSortField) => {
+    if (sortField === field) {
+      return sortDirection === 'asc' ? (
+        <ArrowUp className="w-3 h-3 text-neutral-900 dark:text-white shrink-0" />
+      ) : (
+        <ArrowDown className="w-3 h-3 text-neutral-900 dark:text-white shrink-0" />
+      );
+    }
+    return <ArrowUpDown className="w-3 h-3 text-neutral-400 opacity-0 group-hover/sort:opacity-100 transition-opacity shrink-0" />;
+  };
 
   // Reset page when search term changes
   useEffect(() => {
@@ -82,6 +125,68 @@ export const LogbookView: React.FC = () => {
     f.aircraftType.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const sortedFlights = useMemo(() => {
+    const list = [...filteredFlights];
+    list.sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case 'route': {
+          const routeA = `${a.departureIcao}-${a.arrivalIcao}`.toLowerCase();
+          const routeB = `${b.departureIcao}-${b.arrivalIcao}`.toLowerCase();
+          comparison = routeA.localeCompare(routeB);
+          break;
+        }
+        case 'aircraft': {
+          comparison = (a.aircraftType || '').localeCompare(b.aircraftType || '');
+          break;
+        }
+        case 'date': {
+          const timeA = new Date(a.startTime).getTime() || 0;
+          const timeB = new Date(b.startTime).getTime() || 0;
+          comparison = timeA - timeB;
+          break;
+        }
+        case 'duration': {
+          comparison = (a.flightTimeSeconds || 0) - (b.flightTimeSeconds || 0);
+          break;
+        }
+        case 'distance': {
+          comparison = (a.distanceFlownNm || 0) - (b.distanceFlownNm || 0);
+          break;
+        }
+        case 'maxAlt': {
+          comparison = (a.maxAltitude || 0) - (b.maxAltitude || 0);
+          break;
+        }
+        case 'peakGs': {
+          comparison = (a.maxGroundSpeed || 0) - (b.maxGroundSpeed || 0);
+          break;
+        }
+        case 'touchdown': {
+          const getTd = (f: FlightRecord) => {
+            if (f.touchdowns && f.touchdowns.length > 0 && f.touchdowns[0].verticalSpeedFpm !== undefined) {
+              return Math.abs(f.touchdowns[0].verticalSpeedFpm);
+            }
+            if (f.landingRateFpm !== undefined && f.landingRateFpm !== null) {
+              return Math.abs(f.landingRateFpm);
+            }
+            return 9999;
+          };
+          comparison = getTd(a) - getTd(b);
+          break;
+        }
+        case 'status': {
+          comparison = (a.status || '').localeCompare(b.status || '');
+          break;
+        }
+        default:
+          comparison = 0;
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+    return list;
+  }, [filteredFlights, sortField, sortDirection]);
+
   const totalPages = Math.max(1, Math.ceil(filteredFlights.length / pageSize));
 
   // Clamp current page if total pages drops below current page
@@ -93,8 +198,8 @@ export const LogbookView: React.FC = () => {
 
   const paginatedFlights = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filteredFlights.slice(start, start + pageSize);
-  }, [filteredFlights, currentPage, pageSize]);
+    return sortedFlights.slice(start, start + pageSize);
+  }, [sortedFlights, currentPage, pageSize]);
 
   const totalTimeSeconds = flights.reduce((acc, f) => acc + f.flightTimeSeconds, 0);
   const totalHours = (totalTimeSeconds / 3600).toFixed(1);
@@ -412,6 +517,22 @@ export const LogbookView: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Recycle Bin Button */}
+          <button
+            type="button"
+            onClick={() => setActiveView('recycle-bin')}
+            title="Open Recycle Bin (deleted flights retained for 30 days)"
+            className="h-8 inline-flex items-center gap-1.5 px-2.5 text-xs font-medium rounded-sm border border-neutral-200 dark:border-geist-hairline bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-700 dark:text-neutral-300 transition-colors shadow-xs shrink-0 select-none"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
+            <span>Recycle Bin</span>
+            {recycleBin.length > 0 && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 tabular-nums">
+                {recycleBin.length}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -479,58 +600,103 @@ export const LogbookView: React.FC = () => {
             <thead>
               <tr className="bg-neutral-100/70 dark:bg-[#0e0e0e] border-b border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-400 select-none">
                 <th className="py-2.5 px-4 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    <Plane className="w-3.5 h-3.5 text-neutral-400" />
+                  <button
+                    type="button"
+                    onClick={() => handleSort('route')}
+                    className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                  >
+                    <Plane className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
                     <span>Route</span>
-                  </div>
+                    {renderSortIcon('route')}
+                  </button>
                 </th>
                 <th className="py-2.5 px-4 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-neutral-400" />
+                  <button
+                    type="button"
+                    onClick={() => handleSort('aircraft')}
+                    className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
                     <span>Aircraft</span>
-                  </div>
+                    {renderSortIcon('aircraft')}
+                  </button>
                 </th>
                 <th className="py-2.5 px-4 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-neutral-400" />
+                  <button
+                    type="button"
+                    onClick={() => handleSort('date')}
+                    className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
                     <span>Date & Time</span>
-                  </div>
+                    {renderSortIcon('date')}
+                  </button>
                 </th>
                 <th className="py-2.5 px-4 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                  <button
+                    type="button"
+                    onClick={() => handleSort('duration')}
+                    className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                  >
+                    <Clock className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
                     <span>Duration</span>
-                  </div>
+                    {renderSortIcon('duration')}
+                  </button>
                 </th>
                 <th className="py-2.5 px-4 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    <Compass className="w-3.5 h-3.5 text-neutral-400" />
+                  <button
+                    type="button"
+                    onClick={() => handleSort('distance')}
+                    className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                  >
+                    <Compass className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
                     <span>Distance</span>
-                  </div>
+                    {renderSortIcon('distance')}
+                  </button>
                 </th>
                 <th className="py-2.5 px-4 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    <Gauge className="w-3.5 h-3.5 text-neutral-400" />
+                  <button
+                    type="button"
+                    onClick={() => handleSort('maxAlt')}
+                    className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                  >
+                    <Gauge className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
                     <span>Max Alt</span>
-                  </div>
+                    {renderSortIcon('maxAlt')}
+                  </button>
                 </th>
                 <th className="py-2.5 px-4 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    <Wind className="w-3.5 h-3.5 text-neutral-400" />
+                  <button
+                    type="button"
+                    onClick={() => handleSort('peakGs')}
+                    className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                  >
+                    <Wind className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
                     <span>Peak GS</span>
-                  </div>
+                    {renderSortIcon('peakGs')}
+                  </button>
                 </th>
                 <th className="py-2.5 px-4 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    <TrendingDown className="w-3.5 h-3.5 text-neutral-400" />
+                  <button
+                    type="button"
+                    onClick={() => handleSort('touchdown')}
+                    className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                  >
+                    <TrendingDown className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
                     <span>Touchdown</span>
-                  </div>
+                    {renderSortIcon('touchdown')}
+                  </button>
                 </th>
                 <th className="py-2.5 px-4 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-neutral-400" />
+                  <button
+                    type="button"
+                    onClick={() => handleSort('status')}
+                    className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                  >
+                    <Activity className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
                     <span>Status</span>
-                  </div>
+                    {renderSortIcon('status')}
+                  </button>
                 </th>
                 <th className="py-2.5 px-4 font-medium text-right">
                   <div className="flex items-center justify-end gap-1.5">

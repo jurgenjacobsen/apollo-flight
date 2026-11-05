@@ -9,6 +9,7 @@ import {
   Clock,
   Plane,
   ArrowRight,
+  ArrowLeft,
   TrendingDown,
   Layers,
   Search,
@@ -29,6 +30,7 @@ export const RecycleBinView: React.FC = () => {
     purgeExpiredRecycleBinItems,
     pageSize,
     setPageSize,
+    setActiveView,
   } = useFlightStore();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -122,9 +124,18 @@ export const RecycleBinView: React.FC = () => {
           </div>
         </div>
 
-        {recycleBin.length > 0 && (
-          <div className="flex items-center gap-2">
-            {confirmEmpty ? (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveView('logbook')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium bg-white hover:bg-neutral-100 dark:bg-[#181818] dark:hover:bg-[#222] border border-neutral-200 dark:border-geist-hairline text-neutral-800 dark:text-neutral-200 transition-colors shadow-2xs"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Logbook</span>
+          </button>
+
+          {recycleBin.length > 0 && (
+            confirmEmpty ? (
               <div className="flex items-center gap-1.5 animate-in fade-in duration-100">
                 <button
                   type="button"
@@ -153,9 +164,9 @@ export const RecycleBinView: React.FC = () => {
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Empty Recycle Bin</span>
               </button>
-            )}
-          </div>
-        )}
+            )
+          )}
+        </div>
       </div>
 
       {/* Summary Cards */}

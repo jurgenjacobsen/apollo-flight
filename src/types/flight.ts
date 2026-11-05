@@ -19,10 +19,12 @@ export interface TelemetryData {
   isOnGround: boolean;
   isEngineRunning: boolean;
   nav1Obs: number;
+  nav1Radial?: number;
   nav1RelativeBearing: number;
   nav1DmeDistance: number;
   nav1DmeSpeed: number;
   nav2Obs: number;
+  nav2Radial?: number;
   nav2RelativeBearing: number;
   nav2DmeDistance: number;
   nav2DmeSpeed: number;

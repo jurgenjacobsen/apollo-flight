@@ -253,10 +253,12 @@ export const DashboardView: React.FC = () => {
                   <Radio className="w-3.5 h-3.5 text-neutral-400" />
                 </div>
                 <div className="text-lg font-bold font-mono text-neutral-900 dark:text-white tabular-nums">
-                  {String(currentTelemetry.nav1Obs).padStart(3, '0')}°
+                  {currentTelemetry.simConnected && typeof currentTelemetry.nav1Radial === 'number'
+                    ? `R-${String(Math.round(currentTelemetry.nav1Radial) % 360 || 360).padStart(3, '0')}°`
+                    : `${String(currentTelemetry.nav1Obs).padStart(3, '0')}°`}
                 </div>
                 <div className="text-[10px] text-neutral-500 dark:text-geist-muted mt-0.5">
-                  Relative: {currentTelemetry.nav1RelativeBearing.toFixed(1)}°
+                  OBS: {String(currentTelemetry.nav1Obs).padStart(3, '0')}° · Rel: {currentTelemetry.nav1RelativeBearing.toFixed(1)}°
                 </div>
               </div>
 

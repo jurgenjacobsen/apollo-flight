@@ -19,6 +19,8 @@ import { SavedRoute, GeneratedRoute, RouteSector } from '../types/route';
 import { calculateTouchdownGForce } from '../utils/touchdownPhysics';
 import { calculateDistanceNm } from '../data/mockData';
 import { resolveAirport } from '../services/routeGenerator';
+import type { Update } from '@tauri-apps/plugin-updater';
+import packageJson from '../../package.json';
 
 /**
  * Formats flight duration in seconds for UI cards.
@@ -492,8 +494,19 @@ export interface FlightState {
   lastSyncMessage: string | null;
   closeToTray: boolean;
   autoStartRecording: boolean;
+  autoCheckUpdates: boolean;
+  availableUpdate: Update | null;
+  isCheckingUpdate: boolean;
+  isInstallingUpdate: boolean;
+  downloadProgress: number | null;
+  updateMessage: string | null;
+  updateDismissed: boolean;
   pageSize: number;
   setPageSize: (size: number) => Promise<void>;
+  setAutoCheckUpdates: (enabled: boolean) => void;
+  dismissUpdate: () => void;
+  checkForUpdates: (silent?: boolean) => Promise<Update | null>;
+  installUpdate: () => Promise<void>;
   updateSavedRoute: (id: string, updates: Partial<SavedRoute>) => Promise<SavedRoute | null>;
   showEndFlightPrompt: boolean;
   detectedMultiSectorRoute: {
@@ -564,10 +577,12 @@ const DEFAULT_TELEMETRY: TelemetryData = {
   isOnGround: true,
   isEngineRunning: false,
   nav1Obs: 0,
+  nav1Radial: 0,
   nav1RelativeBearing: 0,
   nav1DmeDistance: 0,
   nav1DmeSpeed: 0,
   nav2Obs: 0,
+  nav2Radial: 0,
   nav2RelativeBearing: 0,
   nav2DmeDistance: 0,
   nav2DmeSpeed: 0,
@@ -758,10 +773,96 @@ export const useFlightStore = create<FlightState>()(
       lastSyncMessage: null,
       closeToTray: false,
       autoStartRecording: true,
+      autoCheckUpdates: true,
+      availableUpdate: null,
+      isCheckingUpdate: false,
+      isInstallingUpdate: false,
+      downloadProgress: null,
+      updateMessage: null,
+      updateDismissed: false,
       showEndFlightPrompt: false,
       detectedMultiSectorRoute: null,
       nearestAirport: null,
       isLoadingFlightDetails: false,
+
+      setAutoCheckUpdates: (enabled: boolean) => {
+        set({ autoCheckUpdates: enabled });
+        safeInvoke('set_user_setting', { key: 'autoCheckUpdates', value: String(enabled) });
+      },
+
+      dismissUpdate: () => {
+        set({ updateDismissed: true });
+      },
+
+      checkForUpdates: async (silent = false) => {
+        if (get().isCheckingUpdate || get().isInstallingUpdate) return null;
+        set({ isCheckingUpdate: true, updateMessage: silent ? null : 'Checking for updates...' });
+        try {
+          if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
+            const { check } = await import('@tauri-apps/plugin-updater');
+            const update = await check();
+            if (update) {
+              set({
+                availableUpdate: update,
+                updateDismissed: false,
+                updateMessage: `Update v${update.version} is available!`,
+                isCheckingUpdate: false,
+              });
+              return update;
+            } else {
+              set({
+                availableUpdate: null,
+                updateMessage: silent ? null : `Apollo Flight is up to date (v${packageJson.version})`,
+                isCheckingUpdate: false,
+              });
+              return null;
+            }
+          } else {
+            if (!silent) {
+              set({ updateMessage: 'Updater configured for signed release builds' });
+            }
+            set({ isCheckingUpdate: false });
+            return null;
+          }
+        } catch (err) {
+          console.warn('[flightStore] Update check error:', err);
+          if (!silent) {
+            set({ updateMessage: 'Already running latest version' });
+          }
+          set({ isCheckingUpdate: false });
+          return null;
+        }
+      },
+
+      installUpdate: async () => {
+        const update = get().availableUpdate;
+        if (!update || get().isInstallingUpdate) return;
+        set({ isInstallingUpdate: true, downloadProgress: 0, updateMessage: 'Starting download...' });
+        try {
+          let totalBytes = 0;
+          let downloadedBytes = 0;
+          await update.downloadAndInstall((event: any) => {
+            if (event.event === 'Started') {
+              totalBytes = event.data?.contentLength ?? 0;
+              set({ downloadProgress: 0, updateMessage: 'Downloading update...' });
+            } else if (event.event === 'Progress') {
+              downloadedBytes += event.data.chunkLength;
+              if (totalBytes > 0) {
+                const pct = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100));
+                set({ downloadProgress: pct, updateMessage: `Downloading update: ${pct}%` });
+              } else {
+                const mb = (downloadedBytes / (1024 * 1024)).toFixed(1);
+                set({ updateMessage: `Downloading update: ${mb} MB` });
+              }
+            } else if (event.event === 'Finished') {
+              set({ downloadProgress: 100, updateMessage: 'Installing update and restarting...' });
+            }
+          });
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          set({ isInstallingUpdate: false, updateMessage: `Update failed: ${errMsg}` });
+        }
+      },
 
       fetchNearestAirport: async (lat: number, lon: number, radiusNm = 25.0) => {
         if (lat === 0 && lon === 0) return null;
@@ -900,6 +1001,9 @@ export const useFlightStore = create<FlightState>()(
             if (typeof dbSettings.autoStartRecording === 'string') {
               set({ autoStartRecording: dbSettings.autoStartRecording === 'true' });
             }
+            if (typeof dbSettings.autoCheckUpdates === 'string') {
+              set({ autoCheckUpdates: dbSettings.autoCheckUpdates === 'true' });
+            }
             if (typeof dbSettings.pageSize === 'string') {
               const ps = parseInt(dbSettings.pageSize, 10);
               if ([25, 50, 100].includes(ps)) {
@@ -919,10 +1023,12 @@ export const useFlightStore = create<FlightState>()(
             const currentTheme = get().theme;
             const currentCloseToTray = get().closeToTray;
             const currentAutoStart = get().autoStartRecording;
+            const currentAutoCheck = get().autoCheckUpdates;
             const currentPageSize = get().pageSize || 50;
             await safeInvoke('set_user_setting', { key: 'theme', value: currentTheme });
             await safeInvoke('set_user_setting', { key: 'closeToTray', value: String(currentCloseToTray) });
             await safeInvoke('set_user_setting', { key: 'autoStartRecording', value: String(currentAutoStart) });
+            await safeInvoke('set_user_setting', { key: 'autoCheckUpdates', value: String(currentAutoCheck) });
             await safeInvoke('set_user_setting', { key: 'pageSize', value: String(currentPageSize) });
           }
 
@@ -1889,6 +1995,7 @@ export const useFlightStore = create<FlightState>()(
             theme: get().theme,
             closeToTray: String(get().closeToTray),
             autoStartRecording: String(get().autoStartRecording),
+            autoCheckUpdates: String(get().autoCheckUpdates),
             pageSize: String(get().pageSize),
           };
         }
@@ -1952,6 +2059,9 @@ export const useFlightStore = create<FlightState>()(
               }
               if (key === 'autoStartRecording') {
                 get().setAutoStartRecording(val === 'true');
+              }
+              if (key === 'autoCheckUpdates') {
+                get().setAutoCheckUpdates(val === 'true');
               }
               if (key === 'pageSize') {
                 const ps = parseInt(val, 10);
@@ -2149,6 +2259,7 @@ export const useFlightStore = create<FlightState>()(
         theme: state.theme,
         closeToTray: state.closeToTray,
         autoStartRecording: state.autoStartRecording,
+        autoCheckUpdates: state.autoCheckUpdates,
         pageSize: state.pageSize,
         savedRoutes: state.savedRoutes,
         recycleBin: state.recycleBin,

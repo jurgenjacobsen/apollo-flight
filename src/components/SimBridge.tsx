@@ -18,6 +18,22 @@ export const SimBridge: React.FC = () => {
     initFromDatabase();
   }, [initFromDatabase]);
 
+  // Check for software updates automatically on app startup if enabled
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      const state = useFlightStore.getState();
+      if (state.autoCheckUpdates) {
+        try {
+          await state.checkForUpdates(true); // silent check
+        } catch (err) {
+          console.warn('[SimBridge] Startup update check failed:', err);
+        }
+      }
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   // Sync close-to-tray setting with Tauri backend on launch
   useEffect(() => {
     async function syncTraySetting() {
