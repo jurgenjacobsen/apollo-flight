@@ -377,14 +377,11 @@ export const SettingsView: React.FC = () => {
                   </h3>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                  Extracts and records full environmental information per telemetry sample from FSUIPC7 (ambient wind speed and direction, static OAT, ram TAT, and visibility). Disabled by default to save storage space. Summary weather totals are always calculated.
+                  Extracts and records full environmental information per telemetry sample (ambient wind speed and direction, static OAT, ram TAT, and visibility). Disabled by default to save storage space. Summary weather totals are always calculated.
                 </p>
               </div>
 
               <div className="shrink-0 flex items-center gap-3">
-                <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
-                  {recordDetailedTelemetry ? 'Enabled' : 'Disabled (Default)'}
-                </span>
                 <button
                   type="button"
                   onClick={handleToggleDetailedTelemetry}
@@ -623,8 +620,8 @@ export const SettingsView: React.FC = () => {
               <div className="shrink-0 flex items-center">
                 <button
                   type="button"
-                  onClick={() => setIsImportModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-sm border border-blue-600 bg-blue-600/25 hover:bg-blue-600/75 text-neutral-800 dark:text-white transition-colors"
+                  onClick={() => setActiveView('recycle-bin')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 hover:bg-neutral-200 dark:bg-[#202020] dark:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors"
                 >
                   <Upload className="w-3.5 h-3.5" />
                   <span>Import Data File</span>
