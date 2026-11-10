@@ -5,39 +5,104 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+fn default_flight_id() -> String {
+    format!("flight-{}", uuid::Uuid::new_v4())
+}
+
+fn default_aircraft_type() -> String {
+    "Unknown".to_string()
+}
+
+fn default_start_time() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+fn default_flight_status() -> String {
+    "COMPLETED".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlightRecord {
+    #[serde(default = "default_flight_id")]
     pub id: String,
+    #[serde(alias = "aircraft_type", default = "default_aircraft_type")]
     pub aircraft_type: String,
+    #[serde(alias = "departure_icao", default)]
     pub departure_icao: Option<String>,
+    #[serde(alias = "arrival_icao", default)]
     pub arrival_icao: Option<String>,
+    #[serde(alias = "start_time", default = "default_start_time")]
     pub start_time: String,
+    #[serde(alias = "end_time", default)]
     pub end_time: Option<String>,
+    #[serde(alias = "flight_time_seconds", default)]
     pub flight_time_seconds: i64,
+    #[serde(alias = "max_altitude", default)]
     pub max_altitude: i64,
+    #[serde(alias = "max_ground_speed", default)]
     pub max_ground_speed: i64,
+    #[serde(alias = "distance_flown_nm", default)]
     pub distance_flown_nm: f64,
+    #[serde(alias = "landing_rate_fpm", default)]
     pub landing_rate_fpm: Option<f64>,
+    #[serde(default = "default_flight_status")]
     pub status: String,
+    #[serde(alias = "min_oat", default)]
+    pub min_oat: Option<f64>,
+    #[serde(alias = "max_oat", default)]
+    pub max_oat: Option<f64>,
+    #[serde(alias = "min_visibility", default)]
+    pub min_visibility: Option<f64>,
+    #[serde(alias = "avg_cruise_wind_speed", default)]
+    pub avg_cruise_wind_speed: Option<f64>,
+    #[serde(alias = "avg_cruise_wind_direction", default)]
+    pub avg_cruise_wind_direction: Option<f64>,
+    #[serde(alias = "max_wind_speed", default)]
+    pub max_wind_speed: Option<f64>,
+    #[serde(alias = "max_wind_direction", default)]
+    pub max_wind_direction: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TelemetryPointRecord {
+    #[serde(alias = "flight_id", default)]
     pub flight_id: String,
+    #[serde(alias = "time", default)]
     pub timestamp: String,
+    #[serde(alias = "lat", default)]
     pub latitude: f64,
+    #[serde(alias = "lon", alias = "lng", default)]
     pub longitude: f64,
+    #[serde(alias = "altitude_msl", alias = "alt", alias = "altitude", default)]
     pub altitude_msl: f64,
+    #[serde(alias = "altitude_agl", alias = "agl", default)]
     pub altitude_agl: Option<f64>,
+    #[serde(alias = "indicated_airspeed", alias = "ias", alias = "airspeed", default)]
     pub indicated_airspeed: f64,
+    #[serde(alias = "ground_speed", alias = "gs", default)]
     pub ground_speed: f64,
+    #[serde(alias = "hdg", default)]
     pub heading: f64,
+    #[serde(default)]
     pub pitch: Option<f64>,
+    #[serde(default)]
     pub bank: Option<f64>,
+    #[serde(alias = "vertical_speed", alias = "vs", default)]
     pub vertical_speed: Option<f64>,
+    #[serde(alias = "is_on_ground", alias = "onGround", alias = "on_ground", default)]
     pub is_on_ground: bool,
+    #[serde(alias = "wind_speed", default)]
+    pub wind_speed: Option<f64>,
+    #[serde(alias = "wind_direction", default)]
+    pub wind_direction: Option<f64>,
+    #[serde(default)]
+    pub oat: Option<f64>,
+    #[serde(default)]
+    pub tat: Option<f64>,
+    #[serde(default)]
+    pub visibility: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -265,7 +330,14 @@ pub fn init_databases(
             max_ground_speed INTEGER DEFAULT 0,
             distance_flown_nm REAL DEFAULT 0.0,
             landing_rate_fpm REAL,
-            status TEXT CHECK(status IN ('RECORDING', 'COMPLETED', 'DISCARDED')) DEFAULT 'RECORDING'
+            status TEXT CHECK(status IN ('RECORDING', 'COMPLETED', 'DISCARDED')) DEFAULT 'RECORDING',
+            min_oat REAL,
+            max_oat REAL,
+            min_visibility REAL,
+            avg_cruise_wind_speed REAL,
+            avg_cruise_wind_direction REAL,
+            max_wind_speed REAL,
+            max_wind_direction REAL
         );
 
         CREATE TABLE IF NOT EXISTS flight_telemetry (
@@ -283,6 +355,11 @@ pub fn init_databases(
             bank REAL,
             vertical_speed REAL,
             is_on_ground BOOLEAN NOT NULL,
+            wind_speed REAL,
+            wind_direction REAL,
+            oat REAL,
+            tat REAL,
+            visibility REAL,
             FOREIGN KEY (flight_id) REFERENCES flights(id) ON DELETE CASCADE
         );
 
@@ -354,6 +431,8 @@ pub fn init_databases(
     let _ = logbook_conn.execute("CREATE TEMP VIEW IF NOT EXISTS airports AS SELECT * FROM navdata.airports", []);
     let _ = logbook_conn.execute("CREATE TEMP VIEW IF NOT EXISTS runways AS SELECT * FROM navdata.runways", []);
 
+    apply_telemetry_migrations(&logbook_conn);
+
     Ok((logbook_conn, navdata_conn))
 }
 
@@ -417,7 +496,14 @@ pub fn init_database_with_resources(db_path: &Path, resource_dirs: &[std::path::
             max_ground_speed INTEGER DEFAULT 0,
             distance_flown_nm REAL DEFAULT 0.0,
             landing_rate_fpm REAL,
-            status TEXT CHECK(status IN ('RECORDING', 'COMPLETED', 'DISCARDED')) DEFAULT 'RECORDING'
+            status TEXT CHECK(status IN ('RECORDING', 'COMPLETED', 'DISCARDED')) DEFAULT 'RECORDING',
+            min_oat REAL,
+            max_oat REAL,
+            min_visibility REAL,
+            avg_cruise_wind_speed REAL,
+            avg_cruise_wind_direction REAL,
+            max_wind_speed REAL,
+            max_wind_direction REAL
         );
 
         CREATE TABLE IF NOT EXISTS flight_telemetry (
@@ -435,6 +521,11 @@ pub fn init_database_with_resources(db_path: &Path, resource_dirs: &[std::path::
             bank REAL,
             vertical_speed REAL,
             is_on_ground BOOLEAN NOT NULL,
+            wind_speed REAL,
+            wind_direction REAL,
+            oat REAL,
+            tat REAL,
+            visibility REAL,
             FOREIGN KEY (flight_id) REFERENCES flights(id) ON DELETE CASCADE
         );
 
@@ -645,7 +736,26 @@ pub fn init_database_with_resources(db_path: &Path, resource_dirs: &[std::path::
         }
     }
 
+    // Ensure telemetry and atmospheric columns exist on legacy tables
+    apply_telemetry_migrations(&conn);
+
     Ok(conn)
+}
+
+pub fn apply_telemetry_migrations(conn: &Connection) {
+    let _ = conn.execute("ALTER TABLE flight_telemetry ADD COLUMN wind_speed REAL", []);
+    let _ = conn.execute("ALTER TABLE flight_telemetry ADD COLUMN wind_direction REAL", []);
+    let _ = conn.execute("ALTER TABLE flight_telemetry ADD COLUMN oat REAL", []);
+    let _ = conn.execute("ALTER TABLE flight_telemetry ADD COLUMN tat REAL", []);
+    let _ = conn.execute("ALTER TABLE flight_telemetry ADD COLUMN visibility REAL", []);
+
+    let _ = conn.execute("ALTER TABLE flights ADD COLUMN min_oat REAL", []);
+    let _ = conn.execute("ALTER TABLE flights ADD COLUMN max_oat REAL", []);
+    let _ = conn.execute("ALTER TABLE flights ADD COLUMN min_visibility REAL", []);
+    let _ = conn.execute("ALTER TABLE flights ADD COLUMN avg_cruise_wind_speed REAL", []);
+    let _ = conn.execute("ALTER TABLE flights ADD COLUMN avg_cruise_wind_direction REAL", []);
+    let _ = conn.execute("ALTER TABLE flights ADD COLUMN max_wind_speed REAL", []);
+    let _ = conn.execute("ALTER TABLE flights ADD COLUMN max_wind_direction REAL", []);
 }
 
 fn seed_or_import_airports(conn: &mut Connection, resource_dirs: &[std::path::PathBuf]) -> Result<()> {
@@ -1338,7 +1448,8 @@ pub fn get_flights(conn: &Connection) -> Result<Vec<FlightRecord>> {
     let mut stmt = conn.prepare(
         "SELECT id, aircraft_type, departure_icao, arrival_icao, start_time, end_time,
                 flight_time_seconds, max_altitude, max_ground_speed, distance_flown_nm,
-                landing_rate_fpm, status
+                landing_rate_fpm, status, min_oat, max_oat, min_visibility,
+                avg_cruise_wind_speed, avg_cruise_wind_direction, max_wind_speed, max_wind_direction
          FROM flights
          ORDER BY start_time DESC",
     )?;
@@ -1357,6 +1468,13 @@ pub fn get_flights(conn: &Connection) -> Result<Vec<FlightRecord>> {
             distance_flown_nm: row.get(9)?,
             landing_rate_fpm: row.get(10)?,
             status: row.get(11)?,
+            min_oat: row.get(12)?,
+            max_oat: row.get(13)?,
+            min_visibility: row.get(14)?,
+            avg_cruise_wind_speed: row.get(15)?,
+            avg_cruise_wind_direction: row.get(16)?,
+            max_wind_speed: row.get(17)?,
+            max_wind_direction: row.get(18)?,
         })
     })?;
 
@@ -1392,7 +1510,8 @@ pub fn get_flight_details(conn: &Connection, id: &str) -> Result<Option<FlightDe
     let mut flight_stmt = conn.prepare(
         "SELECT id, aircraft_type, departure_icao, arrival_icao, start_time, end_time,
                 flight_time_seconds, max_altitude, max_ground_speed, distance_flown_nm,
-                landing_rate_fpm, status
+                landing_rate_fpm, status, min_oat, max_oat, min_visibility,
+                avg_cruise_wind_speed, avg_cruise_wind_direction, max_wind_speed, max_wind_direction
          FROM flights WHERE id = ?1",
     )?;
 
@@ -1410,6 +1529,13 @@ pub fn get_flight_details(conn: &Connection, id: &str) -> Result<Option<FlightDe
             distance_flown_nm: row.get(9)?,
             landing_rate_fpm: row.get(10)?,
             status: row.get(11)?,
+            min_oat: row.get(12)?,
+            max_oat: row.get(13)?,
+            min_visibility: row.get(14)?,
+            avg_cruise_wind_speed: row.get(15)?,
+            avg_cruise_wind_direction: row.get(16)?,
+            max_wind_speed: row.get(17)?,
+            max_wind_direction: row.get(18)?,
         })
     })?;
 
@@ -1439,7 +1565,8 @@ pub fn get_flight_details(conn: &Connection, id: &str) -> Result<Option<FlightDe
 
     let mut telem_stmt = conn.prepare(
         "SELECT flight_id, timestamp, latitude, longitude, altitude_msl, altitude_agl,
-                indicated_airspeed, ground_speed, heading, pitch, bank, vertical_speed, is_on_ground
+                indicated_airspeed, ground_speed, heading, pitch, bank, vertical_speed, is_on_ground,
+                wind_speed, wind_direction, oat, tat, visibility
          FROM flight_telemetry
          WHERE flight_id = ?1
          ORDER BY id ASC",
@@ -1460,6 +1587,11 @@ pub fn get_flight_details(conn: &Connection, id: &str) -> Result<Option<FlightDe
             bank: row.get(10)?,
             vertical_speed: row.get(11)?,
             is_on_ground: row.get(12)?,
+            wind_speed: row.get(13)?,
+            wind_direction: row.get(14)?,
+            oat: row.get(15)?,
+            tat: row.get(16)?,
+            visibility: row.get(17)?,
         })
     })?;
 
@@ -1562,13 +1694,20 @@ pub fn save_flight(conn: &Connection, flight: &FlightRecord) -> Result<()> {
         }
     }
 
+    let normalized_status = match flight.status.to_uppercase().as_str() {
+        "RECORDING" => "RECORDING",
+        "DISCARDED" => "DISCARDED",
+        _ => "COMPLETED",
+    };
+
     conn.execute(
         r#"
         INSERT INTO flights (
             id, aircraft_type, departure_icao, arrival_icao, start_time, end_time,
             flight_time_seconds, max_altitude, max_ground_speed, distance_flown_nm,
-            landing_rate_fpm, status
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            landing_rate_fpm, status, min_oat, max_oat, min_visibility,
+            avg_cruise_wind_speed, avg_cruise_wind_direction, max_wind_speed, max_wind_direction
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
         ON CONFLICT(id) DO UPDATE SET
             aircraft_type = excluded.aircraft_type,
             departure_icao = excluded.departure_icao,
@@ -1580,7 +1719,14 @@ pub fn save_flight(conn: &Connection, flight: &FlightRecord) -> Result<()> {
             max_ground_speed = excluded.max_ground_speed,
             distance_flown_nm = excluded.distance_flown_nm,
             landing_rate_fpm = excluded.landing_rate_fpm,
-            status = excluded.status
+            status = excluded.status,
+            min_oat = excluded.min_oat,
+            max_oat = excluded.max_oat,
+            min_visibility = excluded.min_visibility,
+            avg_cruise_wind_speed = excluded.avg_cruise_wind_speed,
+            avg_cruise_wind_direction = excluded.avg_cruise_wind_direction,
+            max_wind_speed = excluded.max_wind_speed,
+            max_wind_direction = excluded.max_wind_direction
         "#,
         params![
             flight.id,
@@ -1594,7 +1740,14 @@ pub fn save_flight(conn: &Connection, flight: &FlightRecord) -> Result<()> {
             flight.max_ground_speed,
             distance,
             flight.landing_rate_fpm,
-            flight.status,
+            normalized_status,
+            flight.min_oat,
+            flight.max_oat,
+            flight.min_visibility,
+            flight.avg_cruise_wind_speed,
+            flight.avg_cruise_wind_direction,
+            flight.max_wind_speed,
+            flight.max_wind_direction,
         ],
     )?;
 
@@ -1611,32 +1764,42 @@ pub fn save_telemetry_batch(conn: &Connection, points: &[TelemetryPointRecord]) 
         return Ok(());
     }
 
-    let mut stmt = conn.prepare(
-        r#"
-        INSERT INTO flight_telemetry (
-            flight_id, timestamp, latitude, longitude, altitude_msl, altitude_agl,
-            indicated_airspeed, ground_speed, heading, pitch, bank, vertical_speed, is_on_ground
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
-        "#,
-    )?;
+    let tx = conn.unchecked_transaction()?;
+    {
+        let mut stmt = tx.prepare(
+            r#"
+            INSERT INTO flight_telemetry (
+                flight_id, timestamp, latitude, longitude, altitude_msl, altitude_agl,
+                indicated_airspeed, ground_speed, heading, pitch, bank, vertical_speed, is_on_ground,
+                wind_speed, wind_direction, oat, tat, visibility
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+            "#,
+        )?;
 
-    for p in points {
-        stmt.execute(params![
-            p.flight_id,
-            p.timestamp,
-            p.latitude,
-            p.longitude,
-            p.altitude_msl,
-            p.altitude_agl,
-            p.indicated_airspeed,
-            p.ground_speed,
-            p.heading,
-            p.pitch,
-            p.bank,
-            p.vertical_speed,
-            p.is_on_ground,
-        ])?;
+        for p in points {
+            stmt.execute(params![
+                p.flight_id,
+                p.timestamp,
+                p.latitude,
+                p.longitude,
+                p.altitude_msl,
+                p.altitude_agl,
+                p.indicated_airspeed,
+                p.ground_speed,
+                p.heading,
+                p.pitch,
+                p.bank,
+                p.vertical_speed,
+                p.is_on_ground,
+                p.wind_speed,
+                p.wind_direction,
+                p.oat,
+                p.tat,
+                p.visibility,
+            ])?;
+        }
     }
+    tx.commit()?;
 
     Ok(())
 }
@@ -2364,7 +2527,14 @@ pub fn export_flight_format(conn: &Connection, id: &str, format: &str) -> Result
                             "distanceNm": f.distance_flown_nm,
                             "maxAltitudeFt": f.max_altitude,
                             "maxGroundSpeedKt": f.max_ground_speed,
-                            "landingRateFpm": f.landing_rate_fpm
+                            "landingRateFpm": f.landing_rate_fpm,
+                            "minOat": f.min_oat,
+                            "maxOat": f.max_oat,
+                            "minVisibility": f.min_visibility,
+                            "avgCruiseWindSpeed": f.avg_cruise_wind_speed,
+                            "avgCruiseWindDirection": f.avg_cruise_wind_direction,
+                            "maxWindSpeed": f.max_wind_speed,
+                            "maxWindDirection": f.max_wind_direction
                         },
                         "geometry": {
                             "type": "LineString",
@@ -2377,10 +2547,10 @@ pub fn export_flight_format(conn: &Connection, id: &str, format: &str) -> Result
         }
         "csv" => {
             let mut out = String::new();
-            out.push_str("flight_id,timestamp,latitude,longitude,altitude_msl,altitude_agl,indicated_airspeed,ground_speed,heading,vertical_speed,is_on_ground\n");
+            out.push_str("flight_id,timestamp,latitude,longitude,altitude_msl,altitude_agl,indicated_airspeed,ground_speed,heading,vertical_speed,is_on_ground,wind_speed,wind_direction,oat,tat,visibility\n");
             for p in pts {
                 out.push_str(&format!(
-                    "{},{},{:.6},{:.6},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{}\n",
+                    "{},{},{:.6},{:.6},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{},{},{},{},{},{}\n",
                     p.flight_id,
                     p.timestamp,
                     p.latitude,
@@ -2391,7 +2561,12 @@ pub fn export_flight_format(conn: &Connection, id: &str, format: &str) -> Result
                     p.ground_speed,
                     p.heading,
                     p.vertical_speed.unwrap_or(0.0),
-                    p.is_on_ground
+                    p.is_on_ground,
+                    p.wind_speed.map(|v| format!("{:.1}", v)).unwrap_or_default(),
+                    p.wind_direction.map(|v| format!("{:.1}", v)).unwrap_or_default(),
+                    p.oat.map(|v| format!("{:.1}", v)).unwrap_or_default(),
+                    p.tat.map(|v| format!("{:.1}", v)).unwrap_or_default(),
+                    p.visibility.map(|v| format!("{:.1}", v)).unwrap_or_default()
                 ));
             }
             Ok(out)
@@ -2686,6 +2861,13 @@ mod tests {
             distance_flown_nm: 220.5,
             landing_rate_fpm: Some(-150.0),
             status: "COMPLETED".to_string(),
+            min_oat: None,
+            max_oat: None,
+            min_visibility: None,
+            avg_cruise_wind_speed: None,
+            avg_cruise_wind_direction: None,
+            max_wind_speed: None,
+            max_wind_direction: None,
         };
 
         save_flight(&conn, &flight).expect("save flight");
@@ -2753,6 +2935,11 @@ mod tests {
                 bank: None,
                 vertical_speed: None,
                 is_on_ground: false,
+                wind_speed: None,
+                wind_direction: None,
+                oat: None,
+                tat: None,
+                visibility: None,
             },
             TelemetryPointRecord {
                 flight_id: "fl-dist-1".to_string(),
@@ -2768,6 +2955,11 @@ mod tests {
                 bank: None,
                 vertical_speed: None,
                 is_on_ground: false,
+                wind_speed: None,
+                wind_direction: None,
+                oat: None,
+                tat: None,
+                visibility: None,
             },
         ];
         save_telemetry_batch(&conn, &pts).expect("save telemetry");
@@ -2844,6 +3036,13 @@ mod tests {
             distance_flown_nm: 60.0,
             landing_rate_fpm: Some(-150.0),
             status: "COMPLETED".to_string(),
+            min_oat: None,
+            max_oat: None,
+            min_visibility: None,
+            avg_cruise_wind_speed: None,
+            avg_cruise_wind_direction: None,
+            max_wind_speed: None,
+            max_wind_direction: None,
         };
         save_flight(&conn, &mock_flight).expect("save flight");
 

@@ -64,7 +64,7 @@ export const STRUT_PRESETS: StrutPreset[] = [
 
 export interface GForceEvaluation {
   gForce: number;
-  severity: 'butter' | 'normal' | 'firm' | 'hard' | 'severe';
+  severity: 'soft' | 'normal' | 'firm' | 'hard' | 'severe';
   title: string;
   badgeBg: string;
   badgeText: string;
@@ -107,8 +107,8 @@ export function evaluateTouchdownGForce(
   if (g <= 1.15) {
     return {
       gForce: g,
-      severity: 'butter',
-      title: 'Butter Landing',
+      severity: 'soft',
+      title: 'Soft Landing',
       badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40',
       badgeText: 'text-emerald-700 dark:text-emerald-300',
       badgeBorder: 'border-emerald-200 dark:border-emerald-800',

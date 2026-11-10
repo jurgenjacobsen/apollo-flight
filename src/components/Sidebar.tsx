@@ -1,5 +1,6 @@
 import React from 'react';
 import { useFlightStore } from '../store/flightStore';
+import { StatusPill } from './ui';
 import { 
   Plane, 
   Activity, 
@@ -110,30 +111,21 @@ export const Sidebar: React.FC = () => {
           </button>
         </div>
 
-        {/* Real FSUIPC Connection Indicator */}
+        {/* System & Connection Status */}
         <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-geist-hairline">
           {isSidebarCollapsed ? (
-            <div className="flex justify-center" title={currentTelemetry.simConnected ? 'MSFS Connected' : 'Waiting for MSFS'}>
-              <span className={`w-2.5 h-2.5 rounded-full ${currentTelemetry.simConnected ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400'}`} />
+            <div className="flex justify-center">
+              <StatusPill compact />
             </div>
           ) : (
-            <>
-              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-sm text-xs bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
-                <div className="flex items-center gap-2">
-                  <span className={`w-1.5 h-1.5 rounded-full ${currentTelemetry.simConnected ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400'}`} />
-                  <span className="text-neutral-700 dark:text-[#d4d4d4] font-medium text-xs">
-                    {currentTelemetry.simConnected ? 'MSFS Connected' : 'Waiting for MSFS'}
-                  </span>
-                </div>
-                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono">
-                  FSUIPC7
-                </span>
-              </div>
-
-              <p className="text-xs text-neutral-500 dark:text-geist-muted truncate mt-2 px-0.5" title={currentTelemetry.aircraftTitle}>
-                {currentTelemetry.aircraftTitle || 'Awaiting simulator connection...'}
-              </p>
-            </>
+            <div className="space-y-1.5">
+              <StatusPill className="w-full justify-between" />
+              {currentTelemetry.simConnected && currentTelemetry.aircraftTitle && currentTelemetry.aircraftTitle !== 'Standby (Waiting for MSFS)' ? (
+                <p className="text-[11px] text-neutral-500 dark:text-geist-muted truncate px-0.5" title={currentTelemetry.aircraftTitle}>
+                  {currentTelemetry.aircraftTitle}
+                </p>
+              ) : null}
+            </div>
           )}
         </div>
       </div>

@@ -3,7 +3,7 @@ import { useFlightStore } from '../store/flightStore';
 import { SavedRoute, RouteSector } from '../types/route';
 import { formatDurationHoursMinutes, formatFlightLevelOrAltitude } from '../data/aircraftCategories';
 import { calculateDistanceNm } from '../data/mockData';
-import { PaginationBar } from './ui';
+import { PaginationBar, ConfirmDeleteButton } from './ui';
 import { RouteEditModal } from './RouteEditModal';
 import {
   Bookmark,
@@ -72,7 +72,6 @@ export const SavedRoutesView: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [expandedRouteIds, setExpandedRouteIds] = useState<Set<string>>(new Set());
   const [copiedRouteId, setCopiedRouteId] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [routeToEdit, setRouteToEdit] = useState<SavedRoute | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
 
@@ -104,30 +103,6 @@ export const SavedRoutesView: React.FC = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, searchQuery]);
-
-  // Auto-dismiss delete confirmation on click outside or after 30 seconds of inactivity
-  useEffect(() => {
-    if (!deleteConfirmId) return;
-
-    const handleDocumentClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && target.closest('[data-delete-route-btn]')) {
-        return;
-      }
-      setDeleteConfirmId(null);
-    };
-
-    const timer = setTimeout(() => {
-      setDeleteConfirmId(null);
-    }, 30000);
-
-    document.addEventListener('click', handleDocumentClick);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('click', handleDocumentClick);
-    };
-  }, [deleteConfirmId]);
 
   const toggleExpanded = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -639,14 +614,17 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                         {/* Route / Sectors Cell */}
                         <td className="py-3 px-3 align-middle">
                           <div className="flex items-center gap-2">
-                            {isMultiSector && (
+                            {isMultiSector ? (
                               <button
                                 type="button"
                                 onClick={(e) => toggleExpanded(route.id, e)}
-                                className="p-0.5 text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                className="w-5 h-5 flex items-center justify-center text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors shrink-0 rounded-xs"
+                                title={isExpanded ? 'Collapse legs' : 'Expand legs'}
                               >
                                 {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                               </button>
+                            ) : (
+                              <span className="w-5 h-5 shrink-0" aria-hidden="true" />
                             )}
 
                             <div>
@@ -833,36 +811,10 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                             </button>
 
                             {/* Expanding Delete Confirmation Button */}
-                            <button
-                              type="button"
-                              data-delete-route-btn={route.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (deleteConfirmId === route.id) {
-                                  deleteSavedRoute(route.id);
-                                  setDeleteConfirmId(null);
-                                } else {
-                                  setDeleteConfirmId(route.id);
-                                }
-                              }}
-                              className={`h-7 rounded-sm flex items-center justify-center transition-all duration-200 ease-in-out border text-xs cursor-pointer ${
-                                deleteConfirmId === route.id
-                                  ? 'px-2.5 bg-red-600 hover:bg-red-500 text-white border-red-600 shadow-2xs'
-                                  : 'px-1.5 border-neutral-200 dark:border-geist-hairline text-neutral-400 hover:text-red-600 hover:border-red-200 dark:hover:border-red-900/40 hover:bg-red-50 dark:hover:bg-red-950/20'
-                              }`}
-                              title={deleteConfirmId === route.id ? 'Click to confirm deletion' : 'Delete route'}
-                            >
-                              <span
-                                className={`overflow-hidden transition-all duration-200 ease-in-out text-[11px] font-semibold whitespace-nowrap select-none inline-block ${
-                                  deleteConfirmId === route.id
-                                    ? 'max-w-[50px] opacity-100 mr-1.5 translate-x-0'
-                                    : 'max-w-0 opacity-0 mr-0 -translate-x-1 pointer-events-none'
-                                }`}
-                              >
-                                Really?
-                              </span>
-                              <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                            </button>
+                            <ConfirmDeleteButton
+                              onConfirm={() => deleteSavedRoute(route.id)}
+                              title="Delete route"
+                            />
                           </div>
                         </td>
                       </tr>

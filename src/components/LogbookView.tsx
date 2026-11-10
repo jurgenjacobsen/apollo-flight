@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useFlightStore } from '../store/flightStore';
+import { useFlightStore, formatLogbookDuration } from '../store/flightStore';
 import { ExportFormat, FlightRecord, LogbookExportFormat } from '../types/flight';
-import { PaginationBar } from './ui';
+import { PaginationBar, ConfirmDeleteButton } from './ui';
 import { 
   BookOpen, 
   Search, 
@@ -75,7 +75,6 @@ export const LogbookView: React.FC = () => {
   const [isLogbookExportOpen, setIsLogbookExportOpen] = useState(false);
   const [logbookExportSuccess, setLogbookExportSuccess] = useState<string | null>(null);
   const [exportScope, setExportScope] = useState<'all' | 'filtered'>('all');
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const logbookMenuRef = useRef<HTMLDivElement>(null);
   const attemptedHealingRef = useRef<Set<string>>(new Set());
@@ -331,38 +330,6 @@ export const LogbookView: React.FC = () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [exportMenu]);
-
-  // Auto-dismiss delete confirmation on click outside, Escape, or after 30 seconds of inactivity
-  useEffect(() => {
-    if (!deleteConfirmId) return;
-
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && target.closest('[data-delete-flight-btn]')) {
-        return;
-      }
-      setDeleteConfirmId(null);
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setDeleteConfirmId(null);
-      }
-    };
-
-    const timer = setTimeout(() => {
-      setDeleteConfirmId(null);
-    }, 30000);
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [deleteConfirmId]);
 
   return (
     <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans">
@@ -747,7 +714,7 @@ export const LogbookView: React.FC = () => {
 
                     {/* Duration */}
                     <td className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
-                      {durationMins}m
+                      {formatLogbookDuration(flight.flightTimeSeconds)}
                     </td>
 
                     {/* Distance */}
@@ -825,36 +792,10 @@ export const LogbookView: React.FC = () => {
                         </button>
 
                         {/* Expanding Delete Confirmation Button */}
-                        <button
-                          type="button"
-                          data-delete-flight-btn={flight.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (deleteConfirmId === flight.id) {
-                              deleteFlight(flight.id);
-                              setDeleteConfirmId(null);
-                            } else {
-                              setDeleteConfirmId(flight.id);
-                            }
-                          }}
-                          className={`h-7 rounded-sm flex items-center justify-center transition-all duration-200 ease-in-out border text-xs cursor-pointer ${
-                            deleteConfirmId === flight.id
-                              ? 'px-2.5 bg-red-600 hover:bg-red-500 text-white border-red-600 shadow-2xs'
-                              : 'px-1.5 border-neutral-200 dark:border-geist-hairline text-neutral-400 hover:text-red-600 hover:border-red-200 dark:hover:border-red-900/40 hover:bg-red-50 dark:hover:bg-red-950/20'
-                          }`}
-                          title={deleteConfirmId === flight.id ? 'Click to confirm deletion' : 'Delete flight log'}
-                        >
-                          <span
-                            className={`overflow-hidden transition-all duration-200 ease-in-out text-[11px] font-semibold whitespace-nowrap select-none inline-block ${
-                              deleteConfirmId === flight.id
-                                ? 'max-w-[50px] opacity-100 mr-1.5 translate-x-0'
-                                : 'max-w-0 opacity-0 mr-0 -translate-x-1 pointer-events-none'
-                            }`}
-                          >
-                            Really?
-                          </span>
-                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                        </button>
+                        <ConfirmDeleteButton
+                          onConfirm={() => deleteFlight(flight.id)}
+                          title="Delete flight log"
+                        />
                       </div>
                     </td>
                   </tr>

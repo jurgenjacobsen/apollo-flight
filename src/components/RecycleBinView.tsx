@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFlightStore } from '../store/flightStore';
 import { DeletedFlightRecord } from '../types/flight';
-import { PaginationBar } from './ui';
+import { PaginationBar, ConfirmDeleteButton } from './ui';
 import {
   Trash2,
   RotateCcw,
@@ -35,15 +35,6 @@ export const RecycleBinView: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [confirmEmpty, setConfirmEmpty] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-
-  // Auto-dismiss single-item delete confirmation after 30 seconds
-  useEffect(() => {
-    if (!deleteConfirmId) return;
-    const timer = setTimeout(() => setDeleteConfirmId(null), 30000);
-    return () => clearTimeout(timer);
-  }, [deleteConfirmId]);
 
   // Purge expired items on mount and on unmount
   useEffect(() => {
@@ -135,36 +126,12 @@ export const RecycleBinView: React.FC = () => {
           </button>
 
           {recycleBin.length > 0 && (
-            confirmEmpty ? (
-              <div className="flex items-center gap-1.5 animate-in fade-in duration-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    emptyRecycleBin();
-                    setConfirmEmpty(false);
-                  }}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-sm bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors"
-                >
-                  Confirm Empty All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmEmpty(false)}
-                  className="px-2.5 py-1.5 text-xs font-medium rounded-sm text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmEmpty(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-white dark:bg-[#181818] border border-neutral-300 dark:border-geist-hairline text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors shadow-2xs"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Empty Recycle Bin</span>
-              </button>
-            )
+            <ConfirmDeleteButton
+              onConfirm={emptyRecycleBin}
+              label="Empty Recycle Bin"
+              title="Empty Recycle Bin"
+              confirmTitle="Click again to confirm permanent deletion of all items"
+            />
           )}
         </div>
       </div>
@@ -352,28 +319,11 @@ export const RecycleBinView: React.FC = () => {
                             </button>
 
                             {/* Permanently Delete Button */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (deleteConfirmId === flight.id) {
-                                  permanentlyDeleteFromRecycleBin(flight.id);
-                                  setDeleteConfirmId(null);
-                                } else {
-                                  setDeleteConfirmId(flight.id);
-                                }
-                              }}
-                              className={`p-1.5 rounded-sm border transition-colors flex items-center ${
-                                deleteConfirmId === flight.id
-                                  ? 'bg-rose-600 text-white border-rose-600'
-                                  : 'border-neutral-200 dark:border-geist-hairline text-neutral-400 hover:text-rose-600 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                              }`}
-                              title={deleteConfirmId === flight.id ? 'Click to confirm permanent deletion' : 'Delete permanently'}
-                            >
-                              {deleteConfirmId === flight.id && (
-                                <span className="text-[10px] font-bold mr-1">Really?</span>
-                              )}
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <ConfirmDeleteButton
+                              onConfirm={() => permanentlyDeleteFromRecycleBin(flight.id)}
+                              title="Delete permanently"
+                              confirmTitle="Click to confirm permanent deletion"
+                            />
                           </div>
                         </td>
                       </tr>

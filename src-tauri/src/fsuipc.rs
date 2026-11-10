@@ -38,6 +38,11 @@ pub struct TelemetryPacket {
     pub nav2_dme_distance: f64,
     pub nav2_dme_speed: u16,
     pub adf1_relative_bearing: f64,
+    pub wind_speed: f64,
+    pub wind_direction: f64,
+    pub oat: f64,
+    pub tat: f64,
+    pub visibility: f64,
     pub timestamp: String,
 }
 
@@ -72,6 +77,11 @@ impl Default for TelemetryPacket {
             nav2_dme_distance: 0.0,
             nav2_dme_speed: 0,
             adf1_relative_bearing: 0.0,
+            wind_speed: 0.0,
+            wind_direction: 0.0,
+            oat: 15.0,
+            tat: 15.0,
+            visibility: 10.0,
             timestamp: Utc::now().to_rfc3339(),
         }
     }
@@ -167,6 +177,11 @@ pub mod win {
         let mut raw_nav2_dme_dist: u16 = 0;
         let mut raw_nav2_dme_spd: u16 = 0;
         let mut raw_adf1_rel_brg: i16 = 0;
+        let mut raw_oat: i16 = 0;
+        let mut raw_tat: i16 = 0;
+        let mut raw_wind_spd: u16 = 0;
+        let mut raw_wind_dir: u16 = 0;
+        let mut raw_vis: u16 = 0;
         let mut raw_aircraft_title = [0u8; 256];
 
         {
@@ -199,6 +214,11 @@ pub mod win {
             session.read(0x0306, &mut raw_nav2_dme_dist)?;
             session.read(0x0308, &mut raw_nav2_dme_spd)?;
             session.read(0x02C0, &mut raw_adf1_rel_brg)?;
+            session.read(0x0E8C, &mut raw_oat)?;
+            session.read(0x11D0, &mut raw_tat)?;
+            session.read(0x0E90, &mut raw_wind_spd)?;
+            session.read(0x0E92, &mut raw_wind_dir)?;
+            session.read(0x0E8A, &mut raw_vis)?;
             session.read_bytes(0x3D00, raw_aircraft_title.as_mut_ptr(), 256)?;
             session.process()?;
         }
@@ -275,6 +295,11 @@ pub mod win {
             nav2_dme_distance: (dme2_dist * 10.0).round() / 10.0,
             nav2_dme_speed: dme2_spd,
             adf1_relative_bearing: (FsuipcConversions::parse_relative_bearing(raw_adf1_rel_brg) * 10.0).round() / 10.0,
+            wind_speed: raw_wind_spd as f64,
+            wind_direction: (((raw_wind_dir as f64 * 360.0 / 65536.0 + 360.0) % 360.0) * 10.0).round() / 10.0,
+            oat: ((raw_oat as f64 / 256.0) * 10.0).round() / 10.0,
+            tat: ((raw_tat as f64 / 256.0) * 10.0).round() / 10.0,
+            visibility: ((raw_vis as f64 / 100.0) * 10.0).round() / 10.0,
             timestamp: Utc::now().to_rfc3339(),
         })
     }

@@ -19,6 +19,7 @@ import { SavedRoute, GeneratedRoute, RouteSector } from '../types/route';
 import { calculateTouchdownGForce } from '../utils/touchdownPhysics';
 import { calculateDistanceNm } from '../data/mockData';
 import { resolveAirport } from '../services/routeGenerator';
+import { saveFlightTelemetry, getFlightTelemetry, deleteFlightTelemetry } from '../utils/telemetryStorage';
 import type { Update } from '@tauri-apps/plugin-updater';
 import packageJson from '../../package.json';
 
@@ -42,6 +43,25 @@ export function formatFlightDuration(totalSeconds: number): string {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
+/**
+ * Formats flight duration for logbook tables and detail views.
+ * When flight duration reaches 60 minutes (>= 3600 seconds or totalMins >= 60),
+ * formats as '0h 00min' (e.g. '1h 05min', '2h 00min').
+ * Otherwise formats as '0min' (e.g. '45min').
+ */
+export function formatLogbookDuration(totalSeconds: number): string {
+  if (isNaN(totalSeconds) || totalSeconds <= 0) return '0min';
+  const totalMins = Math.round(totalSeconds / 60);
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${String(mins).padStart(2, '0')}min`;
+  }
+
+  return `${mins}min`;
+}
+
 // Dynamic safe invoke helper for Tauri v2 / browser compatibility
 export async function safeInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T | null> {
   if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
@@ -54,6 +74,122 @@ export async function safeInvoke<T>(cmd: string, args: Record<string, any> = {})
     }
   }
   return null;
+}
+
+export function sanitizeFlightRecord(raw: any): FlightRecord {
+  const id = String(raw.id || raw.flightId || `flight-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+  const aircraftType = String(raw.aircraftType || raw.aircraft_type || raw.aircraft || raw.aircraftName || 'Unknown');
+  const departureIcao = String(raw.departureIcao || raw.departure_icao || raw.dep || '').toUpperCase();
+  const arrivalIcao = String(raw.arrivalIcao || raw.arrival_icao || raw.arr || '').toUpperCase();
+  const startTime = raw.startTime || raw.start_time || raw.date || new Date().toISOString();
+  const endTime = raw.endTime || raw.end_time || undefined;
+  const flightTimeSeconds = Math.round(Number(raw.flightTimeSeconds ?? raw.flight_time_seconds ?? 0)) || 0;
+  const maxAltitude = Math.round(Number(raw.maxAltitude ?? raw.max_altitude ?? 0)) || 0;
+  const maxGroundSpeed = Math.round(Number(raw.maxGroundSpeed ?? raw.max_ground_speed ?? 0)) || 0;
+  const distanceFlownNm = Number((Number(raw.distanceFlownNm ?? raw.distance_flown_nm ?? 0)).toFixed(1)) || 0;
+
+  let landingRateFpm: number | undefined = undefined;
+  if (raw.landingRateFpm !== undefined && raw.landingRateFpm !== null && !isNaN(Number(raw.landingRateFpm))) {
+    landingRateFpm = Math.round(Number(raw.landingRateFpm));
+  } else if (raw.landing_rate_fpm !== undefined && raw.landing_rate_fpm !== null && !isNaN(Number(raw.landing_rate_fpm))) {
+    landingRateFpm = Math.round(Number(raw.landing_rate_fpm));
+  }
+
+  let status: 'RECORDING' | 'COMPLETED' | 'DISCARDED' = 'COMPLETED';
+  const rawStatus = String(raw.status || '').toUpperCase();
+  if (rawStatus === 'RECORDING' || rawStatus === 'COMPLETED' || rawStatus === 'DISCARDED') {
+    status = rawStatus;
+  }
+
+  const touchdowns: TouchdownEvent[] | undefined = Array.isArray(raw.touchdowns)
+    ? raw.touchdowns.map((td: any) => ({
+        timestamp: td.timestamp || startTime,
+        verticalSpeedFpm: Math.round(Number(td.verticalSpeedFpm ?? td.vertical_speed_fpm ?? td.vs ?? 0)),
+        groundSpeedKt: td.groundSpeedKt !== undefined && td.groundSpeedKt !== null
+          ? Math.round(Number(td.groundSpeedKt))
+          : (td.ground_speed_kt !== undefined && td.ground_speed_kt !== null ? Math.round(Number(td.ground_speed_kt)) : undefined),
+        pitchDeg: td.pitchDeg !== undefined && td.pitchDeg !== null
+          ? Number(td.pitchDeg)
+          : (td.pitch_deg !== undefined && td.pitch_deg !== null ? Number(td.pitch_deg) : undefined),
+        bankDeg: td.bankDeg !== undefined && td.bankDeg !== null
+          ? Number(td.bankDeg)
+          : (td.bank_deg !== undefined && td.bank_deg !== null ? Number(td.bank_deg) : undefined),
+        latitude: Number(td.latitude ?? td.lat) || 0,
+        longitude: Number(td.longitude ?? td.lon ?? td.lng) || 0,
+        altitudeMsl: td.altitudeMsl !== undefined && td.altitudeMsl !== null
+          ? Math.round(Number(td.altitudeMsl))
+          : (td.altitude_msl !== undefined && td.altitude_msl !== null ? Math.round(Number(td.altitude_msl)) : undefined),
+        gForce: td.gForce !== undefined && td.gForce !== null
+          ? Number(td.gForce)
+          : (td.g_force !== undefined && td.g_force !== null ? Number(td.g_force) : undefined),
+        airportIcao: td.airportIcao || td.airport_icao || td.airport || undefined,
+        airportName: td.airportName || td.airport_name || undefined,
+      }))
+    : undefined;
+  const rawTelemetry =
+    raw.telemetryPoints ||
+    raw.telemetry_points ||
+    raw.telemetry ||
+    raw.points ||
+    raw.track ||
+    raw.tracks ||
+    [];
+
+  const telemetryPoints: TelemetryPoint[] = Array.isArray(rawTelemetry)
+    ? rawTelemetry.map((tp: any) => ({
+        flightId: id,
+        timestamp: tp.timestamp || tp.time || tp.ts || startTime,
+        latitude: Number(tp.latitude ?? tp.lat) || 0,
+        longitude: Number(tp.longitude ?? tp.lon ?? tp.lng) || 0,
+        altitudeMsl: Math.round(Number(tp.altitudeMsl ?? tp.altitude_msl ?? tp.alt ?? tp.altitude) || 0),
+        altitudeAgl: tp.altitudeAgl !== undefined && tp.altitudeAgl !== null
+          ? Math.round(Number(tp.altitudeAgl))
+          : (tp.altitude_agl !== undefined && tp.altitude_agl !== null
+            ? Math.round(Number(tp.altitude_agl))
+            : (tp.agl !== undefined && tp.agl !== null ? Math.round(Number(tp.agl)) : undefined)),
+        indicatedAirspeed: Math.round(Number(tp.indicatedAirspeed ?? tp.indicated_airspeed ?? tp.ias ?? tp.airspeed) || 0),
+        groundSpeed: Math.round(Number(tp.groundSpeed ?? tp.ground_speed ?? tp.gs) || 0),
+        heading: Math.round(Number(tp.heading ?? tp.hdg) || 0),
+        pitch: tp.pitch !== undefined && tp.pitch !== null ? Number(tp.pitch) : undefined,
+        bank: tp.bank !== undefined && tp.bank !== null ? Number(tp.bank) : undefined,
+        verticalSpeed: tp.verticalSpeed !== undefined && tp.verticalSpeed !== null
+          ? Number(tp.verticalSpeed)
+          : (tp.vertical_speed !== undefined && tp.vertical_speed !== null
+            ? Number(tp.vertical_speed)
+            : (tp.vs !== undefined && tp.vs !== null ? Number(tp.vs) : undefined)),
+        isOnGround: Boolean(tp.isOnGround ?? tp.is_on_ground ?? tp.onGround ?? tp.on_ground),
+        windSpeed: tp.windSpeed !== undefined && tp.windSpeed !== null ? Number(tp.windSpeed) : (tp.wind_speed !== undefined && tp.wind_speed !== null ? Number(tp.wind_speed) : undefined),
+        windDirection: tp.windDirection !== undefined && tp.windDirection !== null ? Number(tp.windDirection) : (tp.wind_direction !== undefined && tp.wind_direction !== null ? Number(tp.wind_direction) : undefined),
+        oat: tp.oat !== undefined && tp.oat !== null ? Number(tp.oat) : undefined,
+        tat: tp.tat !== undefined && tp.tat !== null ? Number(tp.tat) : undefined,
+        visibility: tp.visibility !== undefined && tp.visibility !== null ? Number(tp.visibility) : undefined,
+      }))
+    : [];
+
+  return {
+    id,
+    aircraftType,
+    departureIcao,
+    arrivalIcao,
+    startTime,
+    endTime,
+    flightTimeSeconds,
+    maxAltitude,
+    maxGroundSpeed,
+    distanceFlownNm,
+    landingRateFpm,
+    touchdowns,
+    status,
+    isManualFlight: Boolean(raw.isManualFlight),
+    minOat: raw.minOat !== undefined && raw.minOat !== null ? Number(raw.minOat) : (raw.min_oat !== undefined && raw.min_oat !== null ? Number(raw.min_oat) : undefined),
+    maxOat: raw.maxOat !== undefined && raw.maxOat !== null ? Number(raw.maxOat) : (raw.max_oat !== undefined && raw.max_oat !== null ? Number(raw.max_oat) : undefined),
+    minVisibility: raw.minVisibility !== undefined && raw.minVisibility !== null ? Number(raw.minVisibility) : (raw.min_visibility !== undefined && raw.min_visibility !== null ? Number(raw.min_visibility) : undefined),
+    avgCruiseWindSpeed: raw.avgCruiseWindSpeed !== undefined && raw.avgCruiseWindSpeed !== null ? Number(raw.avgCruiseWindSpeed) : (raw.avg_cruise_wind_speed !== undefined && raw.avg_cruise_wind_speed !== null ? Number(raw.avg_cruise_wind_speed) : undefined),
+    avgCruiseWindDirection: raw.avgCruiseWindDirection !== undefined && raw.avgCruiseWindDirection !== null ? Number(raw.avgCruiseWindDirection) : (raw.avg_cruise_wind_direction !== undefined && raw.avg_cruise_wind_direction !== null ? Number(raw.avg_cruise_wind_direction) : undefined),
+    maxWindSpeed: raw.maxWindSpeed !== undefined && raw.maxWindSpeed !== null ? Number(raw.maxWindSpeed) : (raw.max_wind_speed !== undefined && raw.max_wind_speed !== null ? Number(raw.max_wind_speed) : undefined),
+    maxWindDirection: raw.maxWindDirection !== undefined && raw.maxWindDirection !== null ? Number(raw.maxWindDirection) : (raw.max_wind_direction !== undefined && raw.max_wind_direction !== null ? Number(raw.max_wind_direction) : undefined),
+    telemetryPoints,
+  };
 }
 
 function computeAverageTouchdownRate(touchdowns: TouchdownEvent[] | undefined, fallbackVs: number): number {
@@ -308,6 +444,13 @@ export function generateFlightExport(flight: FlightRecord, format: ExportFormat)
                 maxAltitudeFt: flight.maxAltitude,
                 maxGroundSpeedKt: flight.maxGroundSpeed,
                 landingRateFpm: flight.landingRateFpm,
+                minOat: flight.minOat,
+                maxOat: flight.maxOat,
+                minVisibility: flight.minVisibility,
+                avgCruiseWindSpeed: flight.avgCruiseWindSpeed,
+                avgCruiseWindDirection: flight.avgCruiseWindDirection,
+                maxWindSpeed: flight.maxWindSpeed,
+                maxWindDirection: flight.maxWindDirection,
               },
               geometry: {
                 type: 'LineString',
@@ -321,9 +464,14 @@ export function generateFlightExport(flight: FlightRecord, format: ExportFormat)
       );
     }
     case 'csv': {
-      let out = 'flight_id,timestamp,latitude,longitude,altitude_msl,altitude_agl,indicated_airspeed,ground_speed,heading,vertical_speed,is_on_ground\n';
+      let out = 'flight_id,timestamp,latitude,longitude,altitude_msl,altitude_agl,indicated_airspeed,ground_speed,heading,vertical_speed,is_on_ground,wind_speed,wind_direction,oat,tat,visibility\n';
       for (const p of pts) {
-        out += `${p.flightId || flight.id},${p.timestamp},${p.latitude.toFixed(6)},${p.longitude.toFixed(6)},${p.altitudeMsl.toFixed(1)},${(p.altitudeAgl ?? 0).toFixed(1)},${p.indicatedAirspeed.toFixed(1)},${p.groundSpeed.toFixed(1)},${p.heading.toFixed(1)},${(p.verticalSpeed ?? 0).toFixed(1)},${p.isOnGround ? 1 : 0}\n`;
+        const wSpd = p.windSpeed !== undefined ? p.windSpeed.toFixed(1) : '';
+        const wDir = p.windDirection !== undefined ? p.windDirection.toFixed(1) : '';
+        const oatStr = p.oat !== undefined ? p.oat.toFixed(1) : '';
+        const tatStr = p.tat !== undefined ? p.tat.toFixed(1) : '';
+        const visStr = p.visibility !== undefined ? p.visibility.toFixed(1) : '';
+        out += `${p.flightId || flight.id},${p.timestamp},${p.latitude.toFixed(6)},${p.longitude.toFixed(6)},${p.altitudeMsl.toFixed(1)},${(p.altitudeAgl ?? 0).toFixed(1)},${p.indicatedAirspeed.toFixed(1)},${p.groundSpeed.toFixed(1)},${p.heading.toFixed(1)},${(p.verticalSpeed ?? 0).toFixed(1)},${p.isOnGround ? 1 : 0},${wSpd},${wDir},${oatStr},${tatStr},${visStr}\n`;
       }
       return out;
     }
@@ -494,6 +642,7 @@ export interface FlightState {
   lastSyncMessage: string | null;
   closeToTray: boolean;
   autoStartRecording: boolean;
+  recordDetailedTelemetry: boolean;
   autoCheckUpdates: boolean;
   availableUpdate: Update | null;
   isCheckingUpdate: boolean;
@@ -536,6 +685,7 @@ export interface FlightState {
   setScrubbedTelemetryIndex: (index: number | null) => void;
   setCloseToTray: (enabled: boolean) => Promise<void>;
   setAutoStartRecording: (enabled: boolean) => void;
+  setRecordDetailedTelemetry: (enabled: boolean) => void;
   setShowEndFlightPrompt: (show: boolean) => void;
   updateTelemetry: (telemetry: Partial<TelemetryData>) => void;
   startManualFlight: (depIcao: string, arrIcao: string, aircraft: string) => void;
@@ -596,6 +746,9 @@ let lastFlushTimestamp = Date.now();
 let stoppedSinceTimestamp: number | null = null;
 let isTurnaroundStay = false;
 let lastFlightLoadCount: number | null = null;
+let cruiseWindSumU = 0;
+let cruiseWindSumV = 0;
+let cruiseWindCount = 0;
 
 async function flushTelemetryBuffer() {
   if (telemetryBuffer.length === 0) return;
@@ -773,6 +926,7 @@ export const useFlightStore = create<FlightState>()(
       lastSyncMessage: null,
       closeToTray: false,
       autoStartRecording: true,
+      recordDetailedTelemetry: false,
       autoCheckUpdates: true,
       availableUpdate: null,
       isCheckingUpdate: false,
@@ -899,6 +1053,11 @@ export const useFlightStore = create<FlightState>()(
         safeInvoke('set_user_setting', { key: 'autoStartRecording', value: String(enabled) });
       },
 
+      setRecordDetailedTelemetry: (enabled: boolean) => {
+        set({ recordDetailedTelemetry: enabled });
+        safeInvoke('set_user_setting', { key: 'recordDetailedTelemetry', value: String(enabled) });
+      },
+
       setShowEndFlightPrompt: (show: boolean) => {
         if (!show) {
           // If a multi-sector intermediate stop was prompted and dismissed, stay in turnaround mode
@@ -1001,6 +1160,9 @@ export const useFlightStore = create<FlightState>()(
             if (typeof dbSettings.autoStartRecording === 'string') {
               set({ autoStartRecording: dbSettings.autoStartRecording === 'true' });
             }
+            if (typeof dbSettings.recordDetailedTelemetry === 'string') {
+              set({ recordDetailedTelemetry: dbSettings.recordDetailedTelemetry === 'true' });
+            }
             if (typeof dbSettings.autoCheckUpdates === 'string') {
               set({ autoCheckUpdates: dbSettings.autoCheckUpdates === 'true' });
             }
@@ -1023,11 +1185,13 @@ export const useFlightStore = create<FlightState>()(
             const currentTheme = get().theme;
             const currentCloseToTray = get().closeToTray;
             const currentAutoStart = get().autoStartRecording;
+            const currentRecordDetailed = get().recordDetailedTelemetry;
             const currentAutoCheck = get().autoCheckUpdates;
             const currentPageSize = get().pageSize || 50;
             await safeInvoke('set_user_setting', { key: 'theme', value: currentTheme });
             await safeInvoke('set_user_setting', { key: 'closeToTray', value: String(currentCloseToTray) });
             await safeInvoke('set_user_setting', { key: 'autoStartRecording', value: String(currentAutoStart) });
+            await safeInvoke('set_user_setting', { key: 'recordDetailedTelemetry', value: String(currentRecordDetailed) });
             await safeInvoke('set_user_setting', { key: 'autoCheckUpdates', value: String(currentAutoCheck) });
             await safeInvoke('set_user_setting', { key: 'pageSize', value: String(currentPageSize) });
           }
@@ -1045,12 +1209,41 @@ export const useFlightStore = create<FlightState>()(
                 get().loadFlightDetails(f.id);
               }
             }
+          } else if (get().flights.length > 0) {
+            // Retain cached flights rehydrated from localStorage across dev restarts,
+            // and sync existing cached flights to SQLite backend if running in Tauri runtime
+            for (const f of get().flights) {
+              const { telemetryPoints: _pts, touchdowns: _tds, ...dbRecord } = f;
+              await safeInvoke('save_flight', { flight: dbRecord });
+            }
+            const initialId = get().selectedFlightId || get().flights[0]?.id || null;
+            if (initialId) {
+              set({ selectedFlightId: initialId });
+              get().loadFlightDetails(initialId);
+            }
           }
 
-          if (dbStats?.visitedAirports) {
+          if (dbStats?.visitedAirports && Array.isArray(dbStats.visitedAirports) && dbStats.visitedAirports.length > 0) {
             set({
               visitedAirports: dbStats.visitedAirports,
               visitedCountries: dbStats.visitedCountries || computeVisitedCountries(get().flights, dbStats.visitedAirports),
+            });
+          } else if (get().visitedAirports.length > 0) {
+            for (const apt of get().visitedAirports) {
+              await safeInvoke('record_airport_visit', {
+                airport: {
+                  icao: apt.icao,
+                  name: apt.name,
+                  latitude: apt.latitude,
+                  longitude: apt.longitude,
+                  countryCode: apt.countryCode,
+                  countryName: apt.countryName,
+                },
+                timestamp: apt.lastVisited,
+              });
+            }
+            set({
+              visitedCountries: computeVisitedCountries(get().flights, get().visitedAirports),
             });
           }
           await get().fetchSavedRoutes();
@@ -1252,20 +1445,34 @@ export const useFlightStore = create<FlightState>()(
             telemetryPoints: TelemetryPoint[];
           }>('get_flight_details', { id });
 
-          if (details && details.flight) {
-            const pts = details.telemetryPoints || [];
-            let distance = details.flight.distanceFlownNm || 0;
-            if (distance <= 0) {
-              const depApt = await resolveAirport(details.flight.departureIcao);
-              const arrApt = await resolveAirport(details.flight.arrivalIcao);
+          let pts = details?.telemetryPoints || [];
+          if (pts.length > 0) {
+            // Cache in IndexedDB for dev mode / offline fallback
+            saveFlightTelemetry(id, pts).catch(() => {});
+          } else {
+            // Try loading from IndexedDB
+            try {
+              const cachedPts = await getFlightTelemetry(id);
+              if (cachedPts && cachedPts.length > 0) {
+                pts = cachedPts;
+              }
+            } catch {}
+          }
+
+          const baseFlight = details?.flight || existing;
+          if (baseFlight) {
+            let distance = baseFlight.distanceFlownNm || 0;
+            if (distance <= 0 && pts.length > 0) {
+              const depApt = await resolveAirport(baseFlight.departureIcao);
+              const arrApt = await resolveAirport(baseFlight.arrivalIcao);
               distance = calculateRecordedFlightDistance(pts, depApt, arrApt);
             }
 
             const updatedFlight: FlightRecord = {
-              ...details.flight,
+              ...baseFlight,
               distanceFlownNm: distance,
               telemetryPoints: pts,
-              touchdowns: details.flight.touchdowns || existing?.touchdowns,
+              touchdowns: baseFlight.touchdowns || existing?.touchdowns,
             };
 
             set((state) => ({
@@ -1274,7 +1481,7 @@ export const useFlightStore = create<FlightState>()(
               isLoadingFlightDetails: false,
             }));
 
-            if (distance > 0 && (!details.flight.distanceFlownNm || details.flight.distanceFlownNm <= 0)) {
+            if (distance > 0 && (!baseFlight.distanceFlownNm || baseFlight.distanceFlownNm <= 0)) {
               safeInvoke('save_flight', { flight: updatedFlight }).catch(() => {});
             }
 
@@ -1419,6 +1626,10 @@ export const useFlightStore = create<FlightState>()(
             }
 
             const newFlightId = `fl-${Date.now()}`;
+            cruiseWindSumU = 0;
+            cruiseWindSumV = 0;
+            cruiseWindCount = 0;
+            const isDetailed = get().recordDetailedTelemetry;
             const initialPoint: TelemetryPoint = {
               flightId: newFlightId,
               timestamp: new Date().toISOString(),
@@ -1433,6 +1644,13 @@ export const useFlightStore = create<FlightState>()(
               bank: current.bank,
               verticalSpeed: current.verticalSpeed,
               isOnGround: current.isOnGround,
+              ...(isDetailed && current.windSpeed !== undefined ? {
+                windSpeed: current.windSpeed,
+                windDirection: current.windDirection,
+                oat: current.oat,
+                tat: current.tat,
+                visibility: current.visibility,
+              } : {}),
             };
 
             const newFlight: FlightRecord = {
@@ -1449,6 +1667,11 @@ export const useFlightStore = create<FlightState>()(
               distanceFlownNm: 0,
               status: 'RECORDING',
               isManualFlight: false,
+              minOat: current.oat,
+              maxOat: current.oat,
+              minVisibility: current.visibility,
+              maxWindSpeed: current.windSpeed,
+              maxWindDirection: current.windDirection,
               touchdowns: [],
               telemetryPoints: [initialPoint],
             };
@@ -1488,6 +1711,7 @@ export const useFlightStore = create<FlightState>()(
         // Active Flight In-Progress Processing
         if (active) {
           const lastPoint = active.telemetryPoints[active.telemetryPoints.length - 1];
+          const isDetailed = get().recordDetailedTelemetry;
           const newPoint: TelemetryPoint = {
             flightId: active.id,
             timestamp: new Date().toISOString(),
@@ -1502,6 +1726,13 @@ export const useFlightStore = create<FlightState>()(
             bank: current.bank,
             verticalSpeed: current.verticalSpeed,
             isOnGround: current.isOnGround,
+            ...(isDetailed && current.windSpeed !== undefined ? {
+              windSpeed: current.windSpeed,
+              windDirection: current.windDirection,
+              oat: current.oat,
+              tat: current.tat,
+              visibility: current.visibility,
+            } : {}),
           };
 
           // Add to telemetry batch buffer
@@ -1536,6 +1767,32 @@ export const useFlightStore = create<FlightState>()(
             }
           }
 
+          // Track running atmospheric totals
+          let minOat = active.minOat;
+          let maxOat = active.maxOat;
+          if (current.oat !== undefined) {
+            minOat = minOat !== undefined ? Math.min(minOat, current.oat) : current.oat;
+            maxOat = maxOat !== undefined ? Math.max(maxOat, current.oat) : current.oat;
+          }
+          let minVisibility = active.minVisibility;
+          if (current.visibility !== undefined) {
+            minVisibility = minVisibility !== undefined ? Math.min(minVisibility, current.visibility) : current.visibility;
+          }
+          let maxWindSpeed = active.maxWindSpeed;
+          let maxWindDirection = active.maxWindDirection;
+          if (current.windSpeed !== undefined && (maxWindSpeed === undefined || current.windSpeed > maxWindSpeed)) {
+            maxWindSpeed = current.windSpeed;
+            maxWindDirection = current.windDirection;
+          }
+
+          // Cruise wind vector accumulator
+          if (currentStage === 'ENROUTE_CRUISE' && current.windSpeed !== undefined && current.windDirection !== undefined) {
+            const rad = (current.windDirection * Math.PI) / 180;
+            cruiseWindSumU += current.windSpeed * Math.sin(rad);
+            cruiseWindSumV += current.windSpeed * Math.cos(rad);
+            cruiseWindCount += 1;
+          }
+
           let currentTouchdowns = active.touchdowns ? [...active.touchdowns] : [];
 
           // TOUCHDOWN_ROLLOUT: transition from air to ground (captures each touchdown)
@@ -1557,11 +1814,17 @@ export const useFlightStore = create<FlightState>()(
                 const nearApt = await safeInvoke<Airport>('search_airports_near', {
                   lat: current.latitude,
                   lon: current.longitude,
-                  radiusNm: 3.0,
+                  radiusNm: 5.0,
                 });
                 if (nearApt) {
                   tdIcao = nearApt.icao;
                   tdName = nearApt.name;
+                } else if (get().nearestAirport) {
+                  const near = get().nearestAirport;
+                  if (near && calculateDistanceNm(current.latitude, current.longitude, near.latitude, near.longitude) <= 5.0) {
+                    tdIcao = near.icao;
+                    tdName = near.name;
+                  }
                 }
               } catch {}
 
@@ -1647,6 +1910,15 @@ export const useFlightStore = create<FlightState>()(
 
               const avgLandingRate = computeAverageTouchdownRate(currentTouchdowns, current.verticalSpeed);
 
+              let avgCruiseWindSpeed = active.avgCruiseWindSpeed;
+              let avgCruiseWindDirection = active.avgCruiseWindDirection;
+              if (cruiseWindCount > 0) {
+                const meanU = cruiseWindSumU / cruiseWindCount;
+                const meanV = cruiseWindSumV / cruiseWindCount;
+                avgCruiseWindSpeed = Math.round(Math.hypot(meanU, meanV));
+                avgCruiseWindDirection = Math.round(((Math.atan2(meanU, meanV) * 180) / Math.PI + 360) % 360);
+              }
+
               const completedFlight: FlightRecord = {
                 ...active,
                 arrivalIcao: arrIcao,
@@ -1658,6 +1930,13 @@ export const useFlightStore = create<FlightState>()(
                 maxAltitude: Math.max(active.maxAltitude, Math.round(current.altitudeMsl)),
                 maxGroundSpeed: Math.max(active.maxGroundSpeed, Math.round(current.groundSpeed)),
                 distanceFlownNm: totalDistanceNm,
+                minOat,
+                maxOat,
+                minVisibility,
+                avgCruiseWindSpeed,
+                avgCruiseWindDirection,
+                maxWindSpeed,
+                maxWindDirection,
                 telemetryPoints: allPoints,
               };
 
@@ -1707,6 +1986,11 @@ export const useFlightStore = create<FlightState>()(
 
           const updatedActive: FlightRecord = {
             ...active,
+            minOat,
+            maxOat,
+            minVisibility,
+            maxWindSpeed,
+            maxWindDirection,
             touchdowns: currentTouchdowns,
             flightTimeSeconds: active.flightTimeSeconds + 1,
             maxAltitude: Math.max(active.maxAltitude, Math.round(current.altitudeMsl)),
@@ -1728,6 +2012,9 @@ export const useFlightStore = create<FlightState>()(
           console.warn('Cannot start flight recording while OurAirports dataset sync is in progress');
           return;
         }
+        cruiseWindSumU = 0;
+        cruiseWindSumV = 0;
+        cruiseWindCount = 0;
         const newFlightId = `fl-${Date.now()}`;
         const newFlight: FlightRecord = {
           id: newFlightId,
@@ -1741,6 +2028,11 @@ export const useFlightStore = create<FlightState>()(
           distanceFlownNm: 0,
           status: 'RECORDING',
           isManualFlight: true,
+          minOat: state.currentTelemetry.oat,
+          maxOat: state.currentTelemetry.oat,
+          minVisibility: state.currentTelemetry.visibility,
+          maxWindSpeed: state.currentTelemetry.windSpeed,
+          maxWindDirection: state.currentTelemetry.windDirection,
           touchdowns: [],
           telemetryPoints: [],
         };
@@ -1778,6 +2070,15 @@ export const useFlightStore = create<FlightState>()(
         const tds = activeFlight.touchdowns || [];
         const avgLandingRate = computeAverageTouchdownRate(tds, currentTelemetry.verticalSpeed);
 
+        let avgCruiseWindSpeed = activeFlight.avgCruiseWindSpeed;
+        let avgCruiseWindDirection = activeFlight.avgCruiseWindDirection;
+        if (cruiseWindCount > 0) {
+          const meanU = cruiseWindSumU / cruiseWindCount;
+          const meanV = cruiseWindSumV / cruiseWindCount;
+          avgCruiseWindSpeed = Math.round(Math.hypot(meanU, meanV));
+          avgCruiseWindDirection = Math.round(((Math.atan2(meanU, meanV) * 180) / Math.PI + 360) % 360);
+        }
+
         const completedFlight: FlightRecord = {
           ...activeFlight,
           arrivalIcao: arrIcao,
@@ -1786,10 +2087,15 @@ export const useFlightStore = create<FlightState>()(
           landingRateFpm: avgLandingRate,
           touchdowns: tds,
           distanceFlownNm: totalDistanceNm,
+          avgCruiseWindSpeed,
+          avgCruiseWindDirection,
         };
 
         flushTelemetryBuffer();
         safeInvoke('save_flight', { flight: completedFlight });
+        if (completedFlight.telemetryPoints && completedFlight.telemetryPoints.length > 0) {
+          saveFlightTelemetry(completedFlight.id, completedFlight.telemetryPoints).catch(() => {});
+        }
         stoppedSinceTimestamp = null;
         isTurnaroundStay = false;
 
@@ -1878,8 +2184,10 @@ export const useFlightStore = create<FlightState>()(
         if (!item) return;
 
         try {
-          await safeInvoke('save_flight', { flight: item });
+          const { telemetryPoints: _pts, touchdowns: _tds, ...dbRecord } = item;
+          await safeInvoke('save_flight', { flight: dbRecord });
           if (item.telemetryPoints && item.telemetryPoints.length > 0) {
+            saveFlightTelemetry(item.id, item.telemetryPoints).catch(() => {});
             const rawPoints = item.telemetryPoints.map((tp) => ({
               flightId: item.id,
               timestamp: tp.timestamp,
@@ -1923,6 +2231,7 @@ export const useFlightStore = create<FlightState>()(
         set({ recycleBin: updatedRecycle });
         try {
           await safeInvoke('delete_flight', { id });
+          deleteFlightTelemetry(id).catch(() => {});
           await safeInvoke('set_user_setting', {
             key: 'recycle_bin_flights',
             value: JSON.stringify(updatedRecycle),
@@ -1937,6 +2246,7 @@ export const useFlightStore = create<FlightState>()(
         set({ recycleBin: [] });
         for (const id of ids) {
           await safeInvoke('delete_flight', { id });
+          deleteFlightTelemetry(id).catch(() => {});
         }
         try {
           await safeInvoke('set_user_setting', {
@@ -1965,6 +2275,7 @@ export const useFlightStore = create<FlightState>()(
         if (expiredIds.length > 0) {
           for (const id of expiredIds) {
             await safeInvoke('delete_flight', { id });
+            deleteFlightTelemetry(id).catch(() => {});
           }
           set({ recycleBin: kept });
           try {
@@ -1995,6 +2306,7 @@ export const useFlightStore = create<FlightState>()(
             theme: get().theme,
             closeToTray: String(get().closeToTray),
             autoStartRecording: String(get().autoStartRecording),
+            recordDetailedTelemetry: String(get().recordDetailedTelemetry),
             autoCheckUpdates: String(get().autoCheckUpdates),
             pageSize: String(get().pageSize),
           };
@@ -2060,6 +2372,9 @@ export const useFlightStore = create<FlightState>()(
               if (key === 'autoStartRecording') {
                 get().setAutoStartRecording(val === 'true');
               }
+              if (key === 'recordDetailedTelemetry') {
+                get().setRecordDetailedTelemetry(val === 'true');
+              }
               if (key === 'autoCheckUpdates') {
                 get().setAutoCheckUpdates(val === 'true');
               }
@@ -2078,7 +2393,8 @@ export const useFlightStore = create<FlightState>()(
           const currentIds = new Set(currentFlights.map((f) => f.id));
           const toAdd: FlightRecord[] = [];
 
-          for (const f of bundle.flights) {
+          for (const rawFlight of bundle.flights) {
+            const f = sanitizeFlightRecord(rawFlight);
             let flightToSave = { ...f };
             if (currentIds.has(flightToSave.id)) {
               if (strategy === 'skip') {
@@ -2088,28 +2404,39 @@ export const useFlightStore = create<FlightState>()(
               }
             }
 
-            if (!Array.isArray(flightToSave.telemetryPoints)) {
-              flightToSave.telemetryPoints = [];
-            }
+            // Strip telemetry points and touchdowns from dbRecord to prevent oversized payload over IPC
+            const { telemetryPoints: pts, touchdowns: _tds, ...dbRecord } = flightToSave;
+            await safeInvoke('save_flight', { flight: dbRecord });
 
-            await safeInvoke('save_flight', { flight: flightToSave });
-            if (flightToSave.telemetryPoints.length > 0) {
-              const rawPoints = flightToSave.telemetryPoints.map((tp) => ({
+            if (pts && pts.length > 0) {
+              const rawPoints = pts.map((tp: any) => ({
                 flightId: flightToSave.id,
-                timestamp: tp.timestamp,
-                latitude: tp.latitude,
-                longitude: tp.longitude,
-                altitudeMsl: tp.altitudeMsl,
-                altitudeAgl: tp.altitudeAgl,
-                indicatedAirspeed: tp.indicatedAirspeed,
-                groundSpeed: tp.groundSpeed,
-                heading: tp.heading,
-                pitch: tp.pitch,
-                bank: tp.bank,
-                verticalSpeed: tp.verticalSpeed,
-                isOnGround: tp.isOnGround,
+                timestamp: tp.timestamp || flightToSave.startTime,
+                latitude: Number(tp.latitude) || 0,
+                longitude: Number(tp.longitude) || 0,
+                altitudeMsl: Math.round(Number(tp.altitudeMsl ?? tp.altitude_msl) || 0),
+                altitudeAgl: tp.altitudeAgl !== undefined && tp.altitudeAgl !== null ? Math.round(Number(tp.altitudeAgl)) : (tp.altitude_agl !== undefined && tp.altitude_agl !== null ? Math.round(Number(tp.altitude_agl)) : null),
+                indicatedAirspeed: Math.round(Number(tp.indicatedAirspeed ?? tp.indicated_airspeed) || 0),
+                groundSpeed: Math.round(Number(tp.groundSpeed ?? tp.ground_speed) || 0),
+                heading: Math.round(Number(tp.heading) || 0),
+                pitch: tp.pitch !== undefined && tp.pitch !== null ? Number(tp.pitch) : null,
+                bank: tp.bank !== undefined && tp.bank !== null ? Number(tp.bank) : null,
+                verticalSpeed: tp.verticalSpeed !== undefined && tp.verticalSpeed !== null ? Number(tp.verticalSpeed) : (tp.vertical_speed !== undefined && tp.vertical_speed !== null ? Number(tp.vertical_speed) : null),
+                isOnGround: Boolean(tp.isOnGround ?? tp.is_on_ground),
+                windSpeed: tp.windSpeed !== undefined && tp.windSpeed !== null ? Number(tp.windSpeed) : (tp.wind_speed !== undefined && tp.wind_speed !== null ? Number(tp.wind_speed) : null),
+                windDirection: tp.windDirection !== undefined && tp.windDirection !== null ? Number(tp.windDirection) : (tp.wind_direction !== undefined && tp.wind_direction !== null ? Number(tp.wind_direction) : null),
+                oat: tp.oat !== undefined && tp.oat !== null ? Number(tp.oat) : null,
+                tat: tp.tat !== undefined && tp.tat !== null ? Number(tp.tat) : null,
+                visibility: tp.visibility !== undefined && tp.visibility !== null ? Number(tp.visibility) : null,
               }));
-              await safeInvoke('save_telemetry_batch', { points: rawPoints });
+
+              await saveFlightTelemetry(flightToSave.id, pts);
+
+              const CHUNK_SIZE = 500;
+              for (let i = 0; i < rawPoints.length; i += CHUNK_SIZE) {
+                const chunk = rawPoints.slice(i, i + CHUNK_SIZE);
+                await safeInvoke('save_telemetry_batch', { points: chunk });
+              }
             }
 
             toAdd.push(flightToSave);
@@ -2120,10 +2447,15 @@ export const useFlightStore = create<FlightState>()(
             const merged = strategy === 'overwrite'
               ? [...toAdd, ...currentFlights.filter((cf) => !toAdd.some((ta) => ta.id === cf.id))]
               : [...toAdd, ...currentFlights];
+            const initialId = merged[0]?.id || null;
             set({
               flights: merged,
+              selectedFlightId: initialId,
               visitedCountries: computeVisitedCountries(merged, get().visitedAirports),
             });
+            if (initialId) {
+              get().loadFlightDetails(initialId);
+            }
           }
         }
 
@@ -2143,6 +2475,25 @@ export const useFlightStore = create<FlightState>()(
             }
             await get().saveRoute(routeToSave);
             importedRoutesCount++;
+          }
+        }
+
+        // 4. Visited Airports
+        if (bundle.visitedAirports && Array.isArray(bundle.visitedAirports)) {
+          for (const apt of bundle.visitedAirports) {
+            if (apt && apt.icao) {
+              get().addVisitedAirport({
+                icao: apt.icao,
+                name: apt.name || apt.icao,
+                countryCode: apt.countryCode || '',
+                countryName: apt.countryName || '',
+                latitude: Number(apt.latitude) || 0,
+                longitude: Number(apt.longitude) || 0,
+                firstVisited: apt.firstVisited || new Date().toISOString(),
+                lastVisited: apt.lastVisited || new Date().toISOString(),
+                visitCount: apt.visitCount || 1,
+              });
+            }
           }
         }
 
@@ -2259,10 +2610,17 @@ export const useFlightStore = create<FlightState>()(
         theme: state.theme,
         closeToTray: state.closeToTray,
         autoStartRecording: state.autoStartRecording,
+        recordDetailedTelemetry: state.recordDetailedTelemetry,
         autoCheckUpdates: state.autoCheckUpdates,
         pageSize: state.pageSize,
         savedRoutes: state.savedRoutes,
         recycleBin: state.recycleBin,
+        flights: state.flights.map(({ telemetryPoints, ...rest }) => ({
+          ...rest,
+          telemetryPoints: [],
+        })),
+        visitedAirports: state.visitedAirports,
+        visitedCountries: state.visitedCountries,
       }),
       onRehydrateStorage: () => (state) => {
         if (state && typeof document !== 'undefined') {

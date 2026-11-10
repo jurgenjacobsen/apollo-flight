@@ -29,6 +29,11 @@ export interface TelemetryData {
   nav2DmeDistance: number;
   nav2DmeSpeed: number;
   adf1RelativeBearing: number;
+  windSpeed?: number;
+  windDirection?: number;
+  oat?: number;
+  tat?: number;
+  visibility?: number;
   timestamp: string;
 }
 
@@ -98,6 +103,13 @@ export interface FlightRecord {
   touchdowns?: TouchdownEvent[];
   status: 'RECORDING' | 'COMPLETED' | 'DISCARDED';
   isManualFlight?: boolean;
+  minOat?: number;
+  maxOat?: number;
+  minVisibility?: number;
+  avgCruiseWindSpeed?: number;
+  avgCruiseWindDirection?: number;
+  maxWindSpeed?: number;
+  maxWindDirection?: number;
   telemetryPoints: TelemetryPoint[];
 }
 
@@ -116,6 +128,11 @@ export interface TelemetryPoint {
   bank?: number;
   verticalSpeed?: number;
   isOnGround: boolean;
+  windSpeed?: number;
+  windDirection?: number;
+  oat?: number;
+  tat?: number;
+  visibility?: number;
 }
 
 export interface VisitedAirport {

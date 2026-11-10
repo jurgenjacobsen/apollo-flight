@@ -1,6 +1,7 @@
 import React from 'react';
 import { useFlightStore } from '../store/flightStore';
 import { Gauge, Wind, Compass, ArrowUpRight, Navigation, Radio, Sun, Moon, Menu } from 'lucide-react';
+import { StatusPill } from './ui';
 
 export const TopHeader: React.FC = () => {
   const { currentTelemetry, activeFlight, theme, toggleTheme, isSidebarCollapsed, toggleSidebar } = useFlightStore();
@@ -67,42 +68,9 @@ export const TopHeader: React.FC = () => {
         </div>
       </div>
 
-      {/* Flight recording status & Connection indicator & Theme toggle */}
+      {/* System Status Pill & Theme toggle */}
       <div className="flex items-center gap-2 sm:gap-3 pl-2 shrink-0">
-        {/* FSUIPC Real Connection Badge */}
-        {currentTelemetry.simConnected ? (
-          <div 
-            className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 whitespace-nowrap shadow-xs" 
-            title={`Live MSFS Telemetry: ${currentTelemetry.aircraftTitle}`}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="hidden sm:inline">MSFS LIVE</span>
-            <span className="sm:hidden">LIVE</span>
-          </div>
-        ) : (
-          <div
-            className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-[11px] font-medium text-neutral-500 dark:text-neutral-400 whitespace-nowrap"
-            title="Waiting for MSFS and FSUIPC7 to launch"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-neutral-400" />
-            <span className="hidden sm:inline">FSUIPC7 STANDBY</span>
-            <span className="sm:hidden">STANDBY</span>
-          </div>
-        )}
-
-        <div className="hidden sm:block h-3 w-[1px] bg-neutral-200 dark:border-geist-hairline" />
-
-        {activeFlight ? (
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-300 font-medium whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-            <span className="tracking-tight">{activeFlight.departureIcao} ➔ {activeFlight.arrivalIcao}</span>
-          </div>
-        ) : (
-          <span className="hidden md:flex text-xs text-neutral-400 dark:text-geist-muted items-center gap-1.5 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Standby
-          </span>
-        )}
+        <StatusPill showRoute />
 
         <div className="h-3 w-[1px] bg-neutral-200 dark:border-geist-hairline" />
 

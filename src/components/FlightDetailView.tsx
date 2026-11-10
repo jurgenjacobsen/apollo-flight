@@ -1,6 +1,8 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { useFlightStore } from '../store/flightStore';
-import { ExportFormat, TouchdownEvent } from '../types/flight';
+import { useFlightStore, safeInvoke } from '../store/flightStore';
+import { ExportFormat, TouchdownEvent, Airport, TelemetryPoint } from '../types/flight';
+import { FALLBACK_AIRPORTS } from '../data/fallbackAirports';
+import { calculateDistanceNm } from '../data/mockData';
 import { Select } from './ui/Select';
 import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -29,59 +31,15 @@ import {
   ChevronDown,
   Loader2,
   Plane,
+  Thermometer,
+  Eye,
+  RotateCcw,
 } from 'lucide-react';
 import { calculateTouchdownGForce } from '../utils/touchdownPhysics';
 
-export interface TouchdownRating {
-  rating: 'Butter' | 'Smooth' | 'Firm' | 'Hard' | 'Severe';
-  color: string;
-  badgeBg: string;
-  badgeText: string;
-}
-
-export function getTouchdownRating(fpm: number): TouchdownRating {
-  const absFpm = Math.abs(fpm);
-  if (absFpm < 120) {
-    return {
-      rating: 'Butter',
-      color: 'text-emerald-500',
-      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800',
-      badgeText: 'text-emerald-700 dark:text-emerald-300',
-    };
-  } else if (absFpm < 200) {
-    return {
-      rating: 'Smooth',
-      color: 'text-emerald-600 dark:text-emerald-400',
-      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800',
-      badgeText: 'text-emerald-600 dark:text-emerald-400',
-    };
-  } else if (absFpm < 350) {
-    return {
-      rating: 'Firm',
-      color: 'text-amber-600 dark:text-amber-400',
-      badgeBg: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800',
-      badgeText: 'text-amber-700 dark:text-amber-400',
-    };
-  } else if (absFpm < 500) {
-    return {
-      rating: 'Hard',
-      color: 'text-rose-600 dark:text-rose-400',
-      badgeBg: 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800',
-      badgeText: 'text-rose-700 dark:text-rose-400',
-    };
-  } else {
-    return {
-      rating: 'Severe',
-      color: 'text-red-700 dark:text-red-400',
-      badgeBg: 'bg-red-100 dark:bg-red-950/60 border-red-300 dark:border-red-700',
-      badgeText: 'text-red-800 dark:text-red-300',
-    };
-  }
-}
-
 export function createTouchdownIcon(index: number, rate: number) {
-  const rating = getTouchdownRating(rate);
-  const color = rating.rating === 'Butter' || rating.rating === 'Smooth' ? '#10b981' : rating.rating === 'Firm' ? '#f59e0b' : '#ef4444';
+  const absFpm = Math.abs(rate);
+  const color = absFpm < 200 ? '#10b981' : absFpm < 350 ? '#f59e0b' : '#ef4444';
   return L.divIcon({
     className: 'custom-td-marker',
     html: `<div style="padding: 2px 5px; font-size: 10px; font-weight: 700; font-family: monospace; background: ${color}; color: #ffffff; border: 1.5px solid #ffffff; border-radius: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); white-space: nowrap;">TD ${index}</div>`,
@@ -245,12 +203,44 @@ export const FlightDetailView: React.FC = () => {
 
   const points = flight?.telemetryPoints || [];
 
+  // Zoom range for the telemetry profile chart (timestamps in epoch ms)
+  const [zoomTimeRange, setZoomTimeRange] = useState<{ start: number; end: number } | null>(null);
+  const [dragSelection, setDragSelection] = useState<{
+    startX: number;
+    currentX: number;
+    startIndex: number;
+    currentIndex: number;
+  } | null>(null);
+
+  // Reset zoom whenever flight changes
+  useEffect(() => {
+    setZoomTimeRange(null);
+    setDragSelection(null);
+  }, [flight?.id]);
+
+  // Points filtered by active zoom range (if user dragged to zoom into a timestamp range)
+  const chartPoints = useMemo(() => {
+    if (!zoomTimeRange) {
+      return points.map((p, idx) => ({ ...p, originalIndex: idx }));
+    }
+    const filtered: Array<TelemetryPoint & { originalIndex: number }> = [];
+    for (let idx = 0; idx < points.length; idx++) {
+      const p = points[idx];
+      const t = new Date(p.timestamp).getTime();
+      if (t >= zoomTimeRange.start && t <= zoomTimeRange.end) {
+        filtered.push({ ...p, originalIndex: idx });
+      }
+    }
+    return filtered.length >= 2 ? filtered : points.map((p, idx) => ({ ...p, originalIndex: idx }));
+  }, [points, zoomTimeRange]);
+
   // Downsample chart data points if length is large for silky smooth Recharts Area SVG rendering
   const chartData = useMemo(() => {
-    if (points.length <= 1200) {
-      return points.map((p, idx) => ({
+    if (chartPoints.length <= 1200) {
+      return chartPoints.map((p, idx) => ({
         index: idx,
         time: new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        rawTimestamp: new Date(p.timestamp).getTime(),
         altitude: p.altitudeMsl,
         groundSpeed: p.groundSpeed,
         ias: p.indicatedAirspeed,
@@ -258,13 +248,19 @@ export const FlightDetailView: React.FC = () => {
         lon: p.longitude,
         heading: p.heading,
         vs: p.verticalSpeed ?? 0,
-        pointIndex: idx,
+        windSpeed: p.windSpeed,
+        windDirection: p.windDirection,
+        oat: p.oat,
+        tat: p.tat,
+        visibility: p.visibility,
+        pointIndex: p.originalIndex,
       }));
     }
-    const stride = Math.ceil(points.length / 1000);
+    const stride = Math.ceil(chartPoints.length / 1000);
     const sampled: Array<{
       index: number;
       time: string;
+      rawTimestamp: number;
       altitude: number;
       groundSpeed: number;
       ias: number;
@@ -272,14 +268,20 @@ export const FlightDetailView: React.FC = () => {
       lon: number;
       heading: number;
       vs: number;
+      windSpeed?: number;
+      windDirection?: number;
+      oat?: number;
+      tat?: number;
+      visibility?: number;
       pointIndex: number;
     }> = [];
 
-    for (let i = 0; i < points.length; i += stride) {
-      const p = points[i];
+    for (let i = 0; i < chartPoints.length; i += stride) {
+      const p = chartPoints[i];
       sampled.push({
         index: sampled.length,
         time: new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        rawTimestamp: new Date(p.timestamp).getTime(),
         altitude: p.altitudeMsl,
         groundSpeed: p.groundSpeed,
         ias: p.indicatedAirspeed,
@@ -287,15 +289,21 @@ export const FlightDetailView: React.FC = () => {
         lon: p.longitude,
         heading: p.heading,
         vs: p.verticalSpeed ?? 0,
-        pointIndex: i,
+        windSpeed: p.windSpeed,
+        windDirection: p.windDirection,
+        oat: p.oat,
+        tat: p.tat,
+        visibility: p.visibility,
+        pointIndex: p.originalIndex,
       });
     }
-    const lastIdx = points.length - 1;
-    const lastPt = points[lastIdx];
-    if (sampled[sampled.length - 1]?.pointIndex !== lastIdx) {
+    const lastIdx = chartPoints.length - 1;
+    const lastPt = chartPoints[lastIdx];
+    if (sampled[sampled.length - 1]?.pointIndex !== lastPt.originalIndex) {
       sampled.push({
         index: sampled.length,
         time: new Date(lastPt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        rawTimestamp: new Date(lastPt.timestamp).getTime(),
         altitude: lastPt.altitudeMsl,
         groundSpeed: lastPt.groundSpeed,
         ias: lastPt.indicatedAirspeed,
@@ -303,11 +311,51 @@ export const FlightDetailView: React.FC = () => {
         lon: lastPt.longitude,
         heading: lastPt.heading,
         vs: lastPt.verticalSpeed ?? 0,
-        pointIndex: lastIdx,
+        windSpeed: lastPt.windSpeed,
+        windDirection: lastPt.windDirection,
+        oat: lastPt.oat,
+        tat: lastPt.tat,
+        visibility: lastPt.visibility,
+        pointIndex: lastPt.originalIndex,
       });
     }
     return sampled;
-  }, [points]);
+  }, [chartPoints]);
+
+  // Keep ref to latest dragSelection and chartData for window-level mouseup handler
+  const dragSelectionRef = useRef(dragSelection);
+  const chartDataRef = useRef(chartData);
+  useEffect(() => {
+    dragSelectionRef.current = dragSelection;
+    chartDataRef.current = chartData;
+  }, [dragSelection, chartData]);
+
+  // Window-level mouseup listener so dragging and releasing anywhere updates the zoom strictly on mouse release
+  useEffect(() => {
+    if (!dragSelection) return;
+
+    const handleWindowMouseUp = () => {
+      const sel = dragSelectionRef.current;
+      const data = chartDataRef.current;
+      if (sel && Math.abs(sel.currentX - sel.startX) > 5) {
+        const minIdx = Math.min(sel.startIndex, sel.currentIndex);
+        const maxIdx = Math.max(sel.startIndex, sel.currentIndex);
+        if (maxIdx - minIdx >= 1 && data[minIdx] && data[maxIdx]) {
+          const start = data[minIdx].rawTimestamp;
+          const end = data[maxIdx].rawTimestamp;
+          if (start < end) {
+            setZoomTimeRange({ start, end });
+          }
+        }
+      }
+      setDragSelection(null);
+    };
+
+    window.addEventListener('mouseup', handleWindowMouseUp);
+    return () => {
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [Boolean(dragSelection)]);
 
   // Downsample points if trajectory has thousands of samples to keep Leaflet polyline node count smooth & responsive
   const mapPoints = useMemo(() => {
@@ -470,6 +518,133 @@ export const FlightDetailView: React.FC = () => {
     return flight?.landingRateFpm ? Math.round(flight.landingRateFpm) : null;
   }, [touchdowns, flight?.landingRateFpm]);
 
+  // Resolve airport metadata for each recorded touchdown
+  const [resolvedTouchdownAirports, setResolvedTouchdownAirports] = useState<Record<number, { icao: string; name?: string }>>({});
+
+  useEffect(() => {
+    if (!touchdowns || touchdowns.length === 0) {
+      setResolvedTouchdownAirports({});
+      return;
+    }
+
+    let isCancelled = false;
+
+    const resolveAll = async () => {
+      const airportMap: Record<number, { icao: string; name?: string }> = {};
+
+      for (let i = 0; i < touchdowns.length; i++) {
+        const td = touchdowns[i];
+        if (td.airportIcao) {
+          airportMap[i] = { icao: td.airportIcao, name: td.airportName };
+          continue;
+        }
+
+        // Try searching database for nearest airport within 5 NM of touchdown coordinates
+        if (td.latitude && td.longitude) {
+          try {
+            const near = await safeInvoke<Airport>('search_airports_near', {
+              lat: td.latitude,
+              lon: td.longitude,
+              radiusNm: 5.0,
+            });
+            if (near && near.icao) {
+              airportMap[i] = { icao: near.icao, name: near.name };
+              continue;
+            }
+          } catch {}
+
+          // Fallback to FALLBACK_AIRPORTS from fallbackAirports
+          const fallback = FALLBACK_AIRPORTS.find((a: Airport) => {
+            const d = calculateDistanceNm(td.latitude, td.longitude, a.latitude, a.longitude);
+            return d <= 5.0;
+          });
+          if (fallback) {
+            airportMap[i] = { icao: fallback.icao, name: fallback.name };
+            continue;
+          }
+        }
+
+        // If it's the last touchdown and close to arrival, or only 1 touchdown
+        if (i === touchdowns.length - 1 && flight?.arrivalIcao) {
+          airportMap[i] = { icao: flight.arrivalIcao };
+        }
+      }
+
+      if (!isCancelled) {
+        setResolvedTouchdownAirports(airportMap);
+      }
+    };
+
+    resolveAll();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [touchdowns, flight?.arrivalIcao]);
+
+  // Atmospheric and Environmental Totals (Phase 12)
+  const weatherStats = useMemo(() => {
+    let minOat = flight?.minOat;
+    let maxOat = flight?.maxOat;
+    let minVis = flight?.minVisibility;
+    let avgCruiseWindSpd = flight?.avgCruiseWindSpeed;
+    let avgCruiseWindDir = flight?.avgCruiseWindDirection;
+    let maxWindSpd = flight?.maxWindSpeed;
+    let maxWindDir = flight?.maxWindDirection;
+
+    // Fallback: derive from recorded telemetry points if not pre-calculated on flight record
+    if ((minOat === undefined || maxWindSpd === undefined || avgCruiseWindSpd === undefined) && points.length > 0) {
+      let sumU = 0;
+      let sumV = 0;
+      let cruisePts = 0;
+
+      for (const p of points) {
+        if (p.oat !== undefined) {
+          minOat = minOat !== undefined ? Math.min(minOat, p.oat) : p.oat;
+          maxOat = maxOat !== undefined ? Math.max(maxOat, p.oat) : p.oat;
+        }
+        if (p.visibility !== undefined) {
+          minVis = minVis !== undefined ? Math.min(minVis, p.visibility) : p.visibility;
+        }
+        if (p.windSpeed !== undefined) {
+          if (maxWindSpd === undefined || p.windSpeed > maxWindSpd) {
+            maxWindSpd = p.windSpeed;
+            maxWindDir = p.windDirection;
+          }
+          if (!p.isOnGround && p.altitudeMsl > 2500 && Math.abs(p.verticalSpeed ?? 0) <= 200 && p.windDirection !== undefined) {
+            const rad = (p.windDirection * Math.PI) / 180;
+            sumU += p.windSpeed * Math.sin(rad);
+            sumV += p.windSpeed * Math.cos(rad);
+            cruisePts++;
+          }
+        }
+      }
+
+      if (cruisePts > 0) {
+        avgCruiseWindSpd = Math.round(Math.hypot(sumU / cruisePts, sumV / cruisePts));
+        avgCruiseWindDir = Math.round(((Math.atan2(sumU / cruisePts, sumV / cruisePts) * 180) / Math.PI + 360) % 360);
+      }
+    }
+
+    const hasWeather =
+      minOat !== undefined ||
+      maxOat !== undefined ||
+      minVis !== undefined ||
+      avgCruiseWindSpd !== undefined ||
+      maxWindSpd !== undefined;
+
+    return {
+      hasWeather,
+      minOat,
+      maxOat,
+      minVis,
+      avgCruiseWindSpd,
+      avgCruiseWindDir,
+      maxWindSpd,
+      maxWindDir,
+    };
+  }, [flight, points]);
+
   const activeScrubPoint = useMemo(() => {
     if (scrubbedTelemetryIndex !== null && points[scrubbedTelemetryIndex]) {
       return points[scrubbedTelemetryIndex];
@@ -506,6 +681,8 @@ export const FlightDetailView: React.FC = () => {
   }
 
   const durationMins = Math.floor(flight.flightTimeSeconds / 60);
+  const durationHours = Math.floor(durationMins / 60);
+  const durationRemainingMins = durationMins % 60;
 
   return (
     <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
@@ -688,7 +865,18 @@ export const FlightDetailView: React.FC = () => {
             <span>Block Time</span>
           </div>
           <div className="text-xl font-semibold text-neutral-900 dark:text-white tabular-nums">
-            {durationMins} <span className="text-xs text-neutral-500 dark:text-geist-muted font-normal">mins</span>
+            {durationHours > 0 ? (
+              <>
+                {durationHours}
+                <span className="text-xs text-neutral-500 dark:text-geist-muted font-normal mr-1.5">h</span>
+                {String(durationRemainingMins).padStart(2, '0')}
+                <span className="text-xs text-neutral-500 dark:text-geist-muted font-normal">min</span>
+              </>
+            ) : (
+              <>
+                {durationRemainingMins} <span className="text-xs text-neutral-500 dark:text-geist-muted font-normal">mins</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -744,13 +932,6 @@ export const FlightDetailView: React.FC = () => {
                 <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
                   +{calculateTouchdownGForce(avgTouchdownRate).toFixed(2)} G
                 </span>
-                <span
-                  className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${
-                    getTouchdownRating(avgTouchdownRate).badgeBg
-                  } ${getTouchdownRating(avgTouchdownRate).badgeText}`}
-                >
-                  {getTouchdownRating(avgTouchdownRate).rating}
-                </span>
               </div>
             )}
           </div>
@@ -779,12 +960,25 @@ export const FlightDetailView: React.FC = () => {
               <span className="text-neutral-500 dark:text-neutral-400 text-[10px]">45,000+ ft</span>
             </div>
             {activeScrubPoint && (
-              <span className="flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400 tabular-nums border-l border-neutral-200 dark:border-neutral-800 pl-2">
+              <span className="flex flex-wrap items-center gap-1.5 text-neutral-500 dark:text-neutral-400 tabular-nums border-l border-neutral-200 dark:border-neutral-800 pl-2">
                 <span
                   className="w-2 h-2 rounded-full inline-block shrink-0 shadow-sm"
                   style={{ backgroundColor: getAltitudeColor(activeScrubPoint.altitudeMsl) }}
                 />
-                <span className="tabular-nums">Sample: {activeScrubPoint.altitudeMsl.toLocaleString()} ft · {String(activeScrubPoint.groundSpeed).padStart(3, '0')} kt</span>
+                <span className="tabular-nums">
+                  Sample: {activeScrubPoint.altitudeMsl.toLocaleString()} ft · {String(activeScrubPoint.groundSpeed).padStart(3, '0')} kt
+                </span>
+                {activeScrubPoint.windSpeed !== undefined && activeScrubPoint.windDirection !== undefined && (
+                  <span className="border-l border-neutral-300 dark:border-neutral-700 pl-1.5 flex items-center gap-1">
+                    <Wind className="w-3 h-3 text-sky-500 shrink-0 inline" />
+                    {activeScrubPoint.windDirection}°/{activeScrubPoint.windSpeed}kt
+                  </span>
+                )}
+                {activeScrubPoint.oat !== undefined && (
+                  <span className="border-l border-neutral-300 dark:border-neutral-700 pl-1.5">
+                    {activeScrubPoint.oat > 0 ? `+${activeScrubPoint.oat}` : activeScrubPoint.oat}°C
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -897,6 +1091,7 @@ export const FlightDetailView: React.FC = () => {
               {/* Touchdown Markers (TOC, TOD, and all Touchdowns) */}
               {touchdowns.map((td, idx) => {
                 const gVal = td.gForce ?? calculateTouchdownGForce(td.verticalSpeedFpm);
+                const airport = resolvedTouchdownAirports[idx] || (td.airportIcao ? { icao: td.airportIcao, name: td.airportName } : null);
                 return (
                   <Marker
                     key={`map-td-${idx}`}
@@ -904,12 +1099,22 @@ export const FlightDetailView: React.FC = () => {
                     icon={createTouchdownIcon(idx + 1, td.verticalSpeedFpm)}
                   >
                     <Popup>
-                      <div className="text-xs">
-                        <strong className="text-neutral-900 font-semibold">Touchdown #{idx + 1}</strong><br />
-                        Rate: <span className="font-mono font-bold">{td.verticalSpeedFpm} fpm</span> ({getTouchdownRating(td.verticalSpeedFpm).rating})<br />
-                        Load: <span className="font-mono font-bold">+{gVal.toFixed(2)} G</span><br />
-                        {td.groundSpeedKt !== undefined && <>GS: {td.groundSpeedKt} kt<br /></>}
-                        Time: {new Date(td.timestamp).toLocaleTimeString()}
+                      <div className="text-xs space-y-0.5">
+                        <div className="flex items-center gap-1.5 font-semibold text-neutral-900">
+                          <span>Touchdown #{idx + 1}</span>
+                          {airport?.icao && (
+                            <span
+                              className="text-[10px] font-mono px-1 py-0.2 rounded bg-neutral-100 text-neutral-800 border border-neutral-300"
+                              title={airport.name ? `Touchdown at ${airport.name} (${airport.icao})` : `Touchdown at ${airport.icao}`}
+                            >
+                              {airport.icao}
+                            </span>
+                          )}
+                        </div>
+                        <div>Rate: <span className="font-mono font-bold">{td.verticalSpeedFpm} fpm</span></div>
+                        <div>Load: <span className="font-mono font-bold">+{gVal.toFixed(2)} G</span></div>
+                        {td.groundSpeedKt !== undefined && <div>GS: {td.groundSpeedKt} kt</div>}
+                        <div>Time: {new Date(td.timestamp).toLocaleTimeString()}</div>
                       </div>
                     </Popup>
                   </Marker>
@@ -923,10 +1128,21 @@ export const FlightDetailView: React.FC = () => {
                   icon={planeIcon}
                 >
                   <Popup>
-                    <div className="text-xs">
-                      Alt: {activeScrubPoint.altitudeMsl} ft<br />
-                      GS: {activeScrubPoint.groundSpeed} kts<br />
-                      HDG: {activeScrubPoint.heading}°
+                    <div className="text-xs space-y-0.5">
+                      <div><strong>Alt:</strong> {activeScrubPoint.altitudeMsl.toLocaleString()} ft</div>
+                      <div><strong>GS:</strong> {activeScrubPoint.groundSpeed} kt · <strong>HDG:</strong> {activeScrubPoint.heading}°</div>
+                      {activeScrubPoint.windSpeed !== undefined && activeScrubPoint.windDirection !== undefined && (
+                        <div><strong>Wind:</strong> {activeScrubPoint.windDirection}° / {activeScrubPoint.windSpeed} kt</div>
+                      )}
+                      {(activeScrubPoint.oat !== undefined || activeScrubPoint.tat !== undefined) && (
+                        <div>
+                          <strong>Temp:</strong> OAT {activeScrubPoint.oat !== undefined ? `${activeScrubPoint.oat > 0 ? `+${activeScrubPoint.oat}` : activeScrubPoint.oat}°C` : '--'}
+                          {activeScrubPoint.tat !== undefined ? ` · TAT ${activeScrubPoint.tat > 0 ? `+${activeScrubPoint.tat}` : activeScrubPoint.tat}°C` : ''}
+                        </div>
+                      )}
+                      {activeScrubPoint.visibility !== undefined && (
+                        <div><strong>Vis:</strong> {activeScrubPoint.visibility >= 10 ? '10+ SM' : `${activeScrubPoint.visibility} SM`}</div>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
@@ -948,12 +1164,31 @@ export const FlightDetailView: React.FC = () => {
 
       {/* Synchronized Telemetry Profile Chart */}
       <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
-        <div className="flex items-center justify-between text-xs text-neutral-700 dark:text-neutral-300">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-neutral-700 dark:text-neutral-300">
           <div className="flex items-center gap-2">
             <Gauge className="w-3.5 h-3.5 text-neutral-500" />
             <span className="font-medium text-neutral-900 dark:text-white tracking-tight">Synchronized Telemetry Scrubbing</span>
           </div>
-          <span className="text-neutral-500 dark:text-geist-muted text-xs">Hover over graph to scrub aircraft position on map</span>
+          <div className="flex items-center gap-2">
+            {zoomTimeRange ? (
+              <button
+                type="button"
+                onClick={() => setZoomTimeRange(null)}
+                className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-medium rounded border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors shadow-sm"
+                title="Reset zoom to full flight (or double-click chart)"
+              >
+                <RotateCcw className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                <span>Reset Zoom</span>
+                <span className="text-[10px] font-mono opacity-80">
+                  ({new Date(zoomTimeRange.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} – {new Date(zoomTimeRange.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                </span>
+              </button>
+            ) : (
+              <span className="text-neutral-500 dark:text-geist-muted text-[11px]">
+                Click and drag an area to zoom · Double-click to reset
+              </span>
+            )}
+          </div>
         </div>
 
         {(!isHeavyReady || isLoadingFlightDetails || chartData.length === 0) ? (
@@ -987,17 +1222,63 @@ export const FlightDetailView: React.FC = () => {
             </div>
           </div>
         ) : chartData.length > 0 ? (
-          <div className="h-60 w-full">
+          <div
+            className={`h-60 w-full relative select-none ${dragSelection ? 'cursor-col-resize' : 'cursor-crosshair'}`}
+            onDoubleClick={() => setZoomTimeRange(null)}
+          >
+            {/* Visual selection box overlay showing the selected area while dragging */}
+            {dragSelection && Math.abs(dragSelection.currentX - dragSelection.startX) > 4 && (
+              <div
+                className="absolute pointer-events-none z-30 border border-blue-500 bg-blue-500/20 backdrop-blur-[0.5px]"
+                style={{
+                  left: Math.min(dragSelection.startX, dragSelection.currentX),
+                  width: Math.abs(dragSelection.currentX - dragSelection.startX),
+                  top: 5,
+                  bottom: 25,
+                }}
+              >
+                <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-mono font-medium px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap">
+                  {chartData[Math.min(dragSelection.startIndex, dragSelection.currentIndex)]?.time} –{' '}
+                  {chartData[Math.max(dragSelection.startIndex, dragSelection.currentIndex)]?.time}
+                </div>
+              </div>
+            )}
+
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={chartData}
-                onMouseMove={(e) => {
-                  if (e.activeTooltipIndex !== undefined) {
+                onMouseDown={(e: any) => {
+                  if (e && e.chartX !== undefined && e.activeTooltipIndex !== undefined) {
+                    setDragSelection({
+                      startX: e.chartX,
+                      currentX: e.chartX,
+                      startIndex: e.activeTooltipIndex,
+                      currentIndex: e.activeTooltipIndex,
+                    });
+                  }
+                }}
+                onMouseMove={(e: any) => {
+                  if (dragSelection) {
+                    if (e && e.chartX !== undefined) {
+                      setDragSelection((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              currentX: e.chartX,
+                              currentIndex:
+                                e.activeTooltipIndex !== undefined ? e.activeTooltipIndex : prev.currentIndex,
+                            }
+                          : null
+                      );
+                    }
+                  } else if (e && e.activeTooltipIndex !== undefined) {
                     const ptIdx = chartData[e.activeTooltipIndex]?.pointIndex ?? e.activeTooltipIndex;
                     setScrubbedTelemetryIndex(ptIdx);
                   }
                 }}
-                onMouseLeave={() => setScrubbedTelemetryIndex(null)}
+                onMouseLeave={() => {
+                  setScrubbedTelemetryIndex(null);
+                }}
               >
                 <defs>
                   <linearGradient id="altGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1026,13 +1307,82 @@ export const FlightDetailView: React.FC = () => {
                   unit=" kt"
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: theme === 'dark' ? '#0a0a0a' : '#ffffff',
-                    borderColor: theme === 'dark' ? '#262626' : '#e5e5e5',
-                    borderRadius: '6px',
-                    color: theme === 'dark' ? '#ededed' : '#171717',
-                    fontSize: '12px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  content={({ active: tooltipActive, payload }) => {
+                    if (!tooltipActive || !payload || payload.length === 0) return null;
+                    const data = payload[0]?.payload;
+                    if (!data) return null;
+
+                    const windComp =
+                      data.windSpeed !== undefined && data.windDirection !== undefined && data.heading !== undefined
+                        ? Math.round(data.windSpeed * Math.cos(((data.windDirection - data.heading) * Math.PI) / 180))
+                        : null;
+
+                    return (
+                      <div className="bg-white dark:bg-[#0a0a0a] border border-neutral-200 dark:border-[#262626] rounded-md p-2.5 text-xs shadow-md space-y-1.5 min-w-[170px]">
+                        <div className="font-mono font-medium text-neutral-500 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800 pb-1">
+                          {data.time}
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-sky-500 flex items-center gap-1 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-sky-500 inline-block" />
+                              Altitude:
+                            </span>
+                            <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                              {Number(data.altitude).toLocaleString()} ft
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-emerald-500 flex items-center gap-1 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                              Ground Speed:
+                            </span>
+                            <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                              {data.groundSpeed} kt
+                            </span>
+                          </div>
+                          {data.windSpeed !== undefined && data.windDirection !== undefined && (
+                            <div className="flex items-center justify-between gap-3 pt-1 border-t border-neutral-100 dark:border-neutral-800/80">
+                              <span className="text-neutral-500 dark:text-neutral-400 flex items-center gap-1 font-medium">
+                                <Wind className="w-3 h-3 text-sky-400 shrink-0" />
+                                Wind:
+                              </span>
+                              <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                {data.windDirection}° / {data.windSpeed} kt
+                                {windComp !== null && (
+                                  <span className="text-[10px] text-neutral-400 font-normal ml-1">
+                                    ({windComp >= 0 ? `+${windComp} tail` : `${windComp} head`})
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+                          {(data.oat !== undefined || data.tat !== undefined) && (
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-neutral-500 dark:text-neutral-400 flex items-center gap-1 font-medium">
+                                <Thermometer className="w-3 h-3 text-amber-500 shrink-0" />
+                                Temp (OAT/TAT):
+                              </span>
+                              <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                {data.oat !== undefined ? `${data.oat > 0 ? `+${data.oat}` : data.oat}°C` : '--'}
+                                {data.tat !== undefined ? ` / ${data.tat > 0 ? `+${data.tat}` : data.tat}°C` : ''}
+                              </span>
+                            </div>
+                          )}
+                          {data.visibility !== undefined && (
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-neutral-500 dark:text-neutral-400 flex items-center gap-1 font-medium">
+                                <Eye className="w-3 h-3 text-indigo-400 shrink-0" />
+                                Visibility:
+                              </span>
+                              <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                {data.visibility >= 10 ? '10+ SM (CAVOK)' : `${data.visibility} SM`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
                   }}
                 />
                 <Area
@@ -1066,6 +1416,78 @@ export const FlightDetailView: React.FC = () => {
         )}
       </div>
 
+      {/* Atmospheric & Weather Summary ("Totals" - Phase 12) */}
+      {weatherStats.hasWeather && (
+        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Wind className="w-4 h-4 text-sky-500" />
+            <h3 className="text-xs font-medium tracking-tight text-neutral-900 dark:text-white">
+              Atmospheric & Environmental Totals
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+            {/* OAT Range */}
+            <div className="p-3 rounded-sm bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline space-y-1">
+              <div className="flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400 text-[11px]">
+                <Thermometer className="w-3.5 h-3.5 text-amber-500" />
+                <span>OAT Range (Min / Max)</span>
+              </div>
+              <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
+                {weatherStats.minOat !== undefined ? `${weatherStats.minOat > 0 ? `+${weatherStats.minOat}` : weatherStats.minOat}°C` : '--'}
+                <span className="text-neutral-400 font-sans mx-1">/</span>
+                {weatherStats.maxOat !== undefined ? `${weatherStats.maxOat > 0 ? `+${weatherStats.maxOat}` : weatherStats.maxOat}°C` : '--'}
+              </div>
+              <p className="text-[10px] text-neutral-400 leading-tight">Lowest and highest static air temperature</p>
+            </div>
+
+            {/* Lowest Visibility */}
+            <div className="p-3 rounded-sm bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline space-y-1">
+              <div className="flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400 text-[11px]">
+                <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Lowest Visibility</span>
+              </div>
+              <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
+                {weatherStats.minVis !== undefined
+                  ? weatherStats.minVis >= 10
+                    ? '10+ SM (CAVOK)'
+                    : `${weatherStats.minVis} SM`
+                  : 'N/A'}
+              </div>
+              <p className="text-[10px] text-neutral-400 leading-tight">Minimum atmospheric visibility range</p>
+            </div>
+
+            {/* Average Wind During Cruise */}
+            <div className="p-3 rounded-sm bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline space-y-1">
+              <div className="flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400 text-[11px]">
+                <Compass className="w-3.5 h-3.5 text-sky-500" />
+                <span>Cruise Wind (Avg)</span>
+              </div>
+              <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
+                {weatherStats.avgCruiseWindSpd !== undefined && weatherStats.avgCruiseWindDir !== undefined
+                  ? `${String(weatherStats.avgCruiseWindDir).padStart(3, '0')}° @ ${weatherStats.avgCruiseWindSpd} kt`
+                  : 'N/A'}
+              </div>
+              <p className="text-[10px] text-neutral-400 leading-tight">Vector-averaged wind during cruise</p>
+            </div>
+
+            {/* Maximum Wind Speed */}
+            <div className="p-3 rounded-sm bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline space-y-1">
+              <div className="flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400 text-[11px]">
+                <Wind className="w-3.5 h-3.5 text-rose-500" />
+                <span>Max Wind Encountered</span>
+              </div>
+              <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
+                {weatherStats.maxWindSpd !== undefined
+                  ? `${weatherStats.maxWindDir !== undefined ? `${String(weatherStats.maxWindDir).padStart(3, '0')}° @ ` : ''}${weatherStats.maxWindSpd} kt`
+                  : 'N/A'}
+              </div>
+              <p className="text-[10px] text-neutral-400 leading-tight">Peak wind velocity and direction recorded</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Touchdown & Landing Analysis Panel (displays multiple ratings & individual touchdown G-force) */}
       {touchdowns.length > 0 && (
         <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
@@ -1083,17 +1505,15 @@ export const FlightDetailView: React.FC = () => {
                 <span className="font-semibold text-neutral-900 dark:text-white">
                   (+{calculateTouchdownGForce(avgTouchdownRate).toFixed(2)} G)
                 </span>
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${getTouchdownRating(avgTouchdownRate).badgeBg} ${getTouchdownRating(avgTouchdownRate).badgeText}`}>
-                  {getTouchdownRating(avgTouchdownRate).rating}
-                </span>
               </div>
             )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
             {touchdowns.map((td, idx) => {
-              const rating = getTouchdownRating(td.verticalSpeedFpm);
               const gVal = td.gForce ?? calculateTouchdownGForce(td.verticalSpeedFpm);
+              const airport = resolvedTouchdownAirports[idx] || (td.airportIcao ? { icao: td.airportIcao, name: td.airportName } : null);
+              const isDifferentFromArrival = airport?.icao && flight && airport.icao.toUpperCase() !== flight.arrivalIcao.toUpperCase();
 
               return (
                 <div
@@ -1101,17 +1521,26 @@ export const FlightDetailView: React.FC = () => {
                   className="p-3 rounded-sm bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline space-y-2"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-neutral-900 dark:text-white">
-                      Touchdown #{idx + 1}
-                    </span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs font-semibold text-neutral-900 dark:text-white whitespace-nowrap">
+                        Touchdown #{idx + 1}
+                      </span>
+                      {airport?.icao && (
+                        <span
+                          className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors ${
+                            isDifferentFromArrival
+                              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                              : 'bg-neutral-100 dark:bg-[#202020] text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700'
+                          }`}
+                          title={`Touchdown at ${airport.name ? `${airport.name} (${airport.icao})` : airport.icao}`}
+                        >
+                          {airport.icao}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700">
                         +{gVal.toFixed(2)} G
-                      </span>
-                      <span
-                        className={`text-[10px] font-medium px-2 py-0.5 rounded border ${rating.badgeBg} ${rating.badgeText}`}
-                      >
-                        {rating.rating}
                       </span>
                     </div>
                   </div>

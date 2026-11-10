@@ -20,7 +20,8 @@ import {
   Upload,
   Trash2,
   Archive,
-  FolderDown
+  FolderDown,
+  Wind
 } from 'lucide-react';
 
 import packageJson from '../../package.json'; 
@@ -34,6 +35,8 @@ export const SettingsView: React.FC = () => {
     setCloseToTray, 
     autoStartRecording,
     setAutoStartRecording,
+    recordDetailedTelemetry,
+    setRecordDetailedTelemetry,
     autoCheckUpdates,
     setAutoCheckUpdates,
     theme, 
@@ -92,6 +95,11 @@ export const SettingsView: React.FC = () => {
 
   const handleToggleAutoStart = () => {
     setAutoStartRecording(!autoStartRecording);
+    notifySaved();
+  };
+
+  const handleToggleDetailedTelemetry = () => {
+    setRecordDetailedTelemetry(!recordDetailedTelemetry);
     notifySaved();
   };
 
@@ -356,6 +364,44 @@ export const SettingsView: React.FC = () => {
                 <span className="px-2.5 py-1 rounded-sm text-xs font-medium bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline text-neutral-900 dark:text-white tabular-nums">
                   Stationary 30s + Cut
                 </span>
+              </div>
+            </div>
+
+            {/* Preference: Detailed Telemetry Option (Phase 12) */}
+            <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1 max-w-xl">
+                <div className="flex items-center gap-2">
+                  <Wind className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
+                  <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
+                    Detailed Atmospheric Telemetry
+                  </h3>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
+                  Extracts and records full environmental information per telemetry sample from FSUIPC7 (ambient wind speed and direction, static OAT, ram TAT, and visibility). Disabled by default to save storage space. Summary weather totals are always calculated.
+                </p>
+              </div>
+
+              <div className="shrink-0 flex items-center gap-3">
+                <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
+                  {recordDetailedTelemetry ? 'Enabled' : 'Disabled (Default)'}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleToggleDetailedTelemetry}
+                  role="switch"
+                  aria-checked={recordDetailedTelemetry}
+                  aria-label="Toggle detailed telemetry recording"
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 ${
+                    recordDetailedTelemetry ? 'bg-neutral-900 dark:bg-white' : 'bg-neutral-300 dark:bg-[#333333]'
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white dark:bg-black shadow-xs ring-0 transition duration-200 ease-in-out ${
+                      recordDetailedTelemetry ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
           </div>
