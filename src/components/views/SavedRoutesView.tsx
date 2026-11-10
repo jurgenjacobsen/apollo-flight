@@ -322,21 +322,21 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                     <button
                         onClick={() => {
                             setRouteToEdit(null);
                             setIsEditModalOpen(true);
                         }}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-sm text-xs font-semibold bg-white hover:bg-neutral-100 dark:bg-[#181818] dark:hover:bg-[#222] border border-neutral-300 dark:border-geist-hairline text-neutral-800 dark:text-neutral-200 transition-colors shadow-2xs shrink-0"
+                        className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-sm text-xs font-medium bg-white hover:bg-neutral-100 dark:bg-geist-surface dark:hover:bg-[#1f1f1f] border border-neutral-200 dark:border-geist-hairline text-neutral-700 dark:text-neutral-300 transition-colors duration-150 shadow-xs shrink-0 select-none"
                     >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
                         <span>Manual Route</span>
                     </button>
 
                     <button
                         onClick={() => setActiveView("new-route")}
-                        className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-sm text-xs font-semibold bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors shadow-sm shrink-0"
+                        className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-sm text-xs font-medium bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black border border-neutral-900 dark:border-neutral-200 transition-colors duration-150 shadow-xs shrink-0 select-none"
                     >
                         <Sparkles className="w-3.5 h-3.5" />
                         <span>New Route</span>
