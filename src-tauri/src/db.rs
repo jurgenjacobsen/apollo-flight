@@ -62,6 +62,8 @@ pub struct FlightRecord {
     pub max_wind_speed: Option<f64>,
     #[serde(alias = "max_wind_direction", default)]
     pub max_wind_direction: Option<f64>,
+    #[serde(alias = "total_weight", alias = "totalWeight", alias = "gross_weight", alias = "grossWeight", default)]
+    pub total_weight: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -337,7 +339,8 @@ pub fn init_databases(
             avg_cruise_wind_speed REAL,
             avg_cruise_wind_direction REAL,
             max_wind_speed REAL,
-            max_wind_direction REAL
+            max_wind_direction REAL,
+            total_weight REAL
         );
 
         CREATE TABLE IF NOT EXISTS flight_telemetry (
@@ -503,7 +506,8 @@ pub fn init_database_with_resources(db_path: &Path, resource_dirs: &[std::path::
             avg_cruise_wind_speed REAL,
             avg_cruise_wind_direction REAL,
             max_wind_speed REAL,
-            max_wind_direction REAL
+            max_wind_direction REAL,
+            total_weight REAL
         );
 
         CREATE TABLE IF NOT EXISTS flight_telemetry (
@@ -756,6 +760,8 @@ pub fn apply_telemetry_migrations(conn: &Connection) {
     let _ = conn.execute("ALTER TABLE flights ADD COLUMN avg_cruise_wind_direction REAL", []);
     let _ = conn.execute("ALTER TABLE flights ADD COLUMN max_wind_speed REAL", []);
     let _ = conn.execute("ALTER TABLE flights ADD COLUMN max_wind_direction REAL", []);
+    let _ = conn.execute("ALTER TABLE flights ADD COLUMN total_weight REAL", []);
+    let _ = conn.execute("ALTER TABLE flights ADD COLUMN gross_weight REAL", []);
 }
 
 fn seed_or_import_airports(conn: &mut Connection, resource_dirs: &[std::path::PathBuf]) -> Result<()> {
@@ -1449,7 +1455,8 @@ pub fn get_flights(conn: &Connection) -> Result<Vec<FlightRecord>> {
         "SELECT id, aircraft_type, departure_icao, arrival_icao, start_time, end_time,
                 flight_time_seconds, max_altitude, max_ground_speed, distance_flown_nm,
                 landing_rate_fpm, status, min_oat, max_oat, min_visibility,
-                avg_cruise_wind_speed, avg_cruise_wind_direction, max_wind_speed, max_wind_direction
+                avg_cruise_wind_speed, avg_cruise_wind_direction, max_wind_speed, max_wind_direction,
+                total_weight
          FROM flights
          ORDER BY start_time DESC",
     )?;
@@ -1475,6 +1482,7 @@ pub fn get_flights(conn: &Connection) -> Result<Vec<FlightRecord>> {
             avg_cruise_wind_direction: row.get(16)?,
             max_wind_speed: row.get(17)?,
             max_wind_direction: row.get(18)?,
+            total_weight: row.get(19)?,
         })
     })?;
 
@@ -1511,7 +1519,8 @@ pub fn get_flight_details(conn: &Connection, id: &str) -> Result<Option<FlightDe
         "SELECT id, aircraft_type, departure_icao, arrival_icao, start_time, end_time,
                 flight_time_seconds, max_altitude, max_ground_speed, distance_flown_nm,
                 landing_rate_fpm, status, min_oat, max_oat, min_visibility,
-                avg_cruise_wind_speed, avg_cruise_wind_direction, max_wind_speed, max_wind_direction
+                avg_cruise_wind_speed, avg_cruise_wind_direction, max_wind_speed, max_wind_direction,
+                total_weight
          FROM flights WHERE id = ?1",
     )?;
 
@@ -1536,6 +1545,7 @@ pub fn get_flight_details(conn: &Connection, id: &str) -> Result<Option<FlightDe
             avg_cruise_wind_direction: row.get(16)?,
             max_wind_speed: row.get(17)?,
             max_wind_direction: row.get(18)?,
+            total_weight: row.get(19)?,
         })
     })?;
 
@@ -1706,8 +1716,9 @@ pub fn save_flight(conn: &Connection, flight: &FlightRecord) -> Result<()> {
             id, aircraft_type, departure_icao, arrival_icao, start_time, end_time,
             flight_time_seconds, max_altitude, max_ground_speed, distance_flown_nm,
             landing_rate_fpm, status, min_oat, max_oat, min_visibility,
-            avg_cruise_wind_speed, avg_cruise_wind_direction, max_wind_speed, max_wind_direction
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+            avg_cruise_wind_speed, avg_cruise_wind_direction, max_wind_speed, max_wind_direction,
+            total_weight
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
         ON CONFLICT(id) DO UPDATE SET
             aircraft_type = excluded.aircraft_type,
             departure_icao = excluded.departure_icao,
@@ -1726,7 +1737,8 @@ pub fn save_flight(conn: &Connection, flight: &FlightRecord) -> Result<()> {
             avg_cruise_wind_speed = excluded.avg_cruise_wind_speed,
             avg_cruise_wind_direction = excluded.avg_cruise_wind_direction,
             max_wind_speed = excluded.max_wind_speed,
-            max_wind_direction = excluded.max_wind_direction
+            max_wind_direction = excluded.max_wind_direction,
+            total_weight = excluded.total_weight
         "#,
         params![
             flight.id,
@@ -1748,6 +1760,7 @@ pub fn save_flight(conn: &Connection, flight: &FlightRecord) -> Result<()> {
             flight.avg_cruise_wind_direction,
             flight.max_wind_speed,
             flight.max_wind_direction,
+            flight.total_weight,
         ],
     )?;
 
@@ -2581,7 +2594,7 @@ pub fn export_logbook_format(conn: &Connection, format: &str) -> Result<String, 
     match format.to_lowercase().as_str() {
         "csv" => {
             let mut out = String::from(
-                "Flight ID,Departure ICAO,Arrival ICAO,Aircraft Type,Start Time (UTC),End Time (UTC),Duration (Seconds),Duration,Distance (NM),Max Altitude (ft),Peak Ground Speed (kt),Landing Rate (fpm),Status\r\n",
+                "Flight ID,Departure ICAO,Arrival ICAO,Aircraft Type,Start Time (UTC),End Time (UTC),Duration (Seconds),Duration,Distance (NM),Max Altitude (ft),Peak Ground Speed (kt),Landing Rate (fpm),Gross Weight (lbs),Status\r\n",
             );
             for f in flights {
                 let mins = (f.flight_time_seconds + 30) / 60;
@@ -2598,7 +2611,7 @@ pub fn export_logbook_format(conn: &Connection, format: &str) -> Result<String, 
                 };
 
                 out.push_str(&format!(
-                    "{},{},{},{},{},{},{},{},{:.1},{},{},{},{}\r\n",
+                    "{},{},{},{},{},{},{},{},{:.1},{},{},{},{},{}\r\n",
                     escape_csv(&f.id),
                     escape_csv(f.departure_icao.as_deref().unwrap_or("")),
                     escape_csv(f.arrival_icao.as_deref().unwrap_or("")),
@@ -2612,6 +2625,9 @@ pub fn export_logbook_format(conn: &Connection, format: &str) -> Result<String, 
                     f.max_ground_speed,
                     f.landing_rate_fpm
                         .map(|lr| format!("{:.0}", lr.round()))
+                        .unwrap_or_default(),
+                    f.total_weight
+                        .map(|w| format!("{:.0}", w.round()))
                         .unwrap_or_default(),
                     escape_csv(&f.status)
                 ));
@@ -2634,6 +2650,7 @@ pub fn export_logbook_format(conn: &Connection, format: &str) -> Result<String, 
                 max_altitude_ft: i64,
                 max_ground_speed_kt: i64,
                 landing_rate_fpm: Option<f64>,
+                gross_weight_lbs: Option<f64>,
                 status: &'a str,
             }
 
@@ -2658,6 +2675,7 @@ pub fn export_logbook_format(conn: &Connection, format: &str) -> Result<String, 
                         max_altitude_ft: f.max_altitude,
                         max_ground_speed_kt: f.max_ground_speed,
                         landing_rate_fpm: f.landing_rate_fpm.map(|lr| lr.round()),
+                        gross_weight_lbs: f.total_weight.map(|w| w.round()),
                         status: &f.status,
                     }
                 })
@@ -2868,6 +2886,7 @@ mod tests {
             avg_cruise_wind_direction: None,
             max_wind_speed: None,
             max_wind_direction: None,
+            total_weight: None,
         };
 
         save_flight(&conn, &flight).expect("save flight");
@@ -3043,6 +3062,7 @@ mod tests {
             avg_cruise_wind_direction: None,
             max_wind_speed: None,
             max_wind_direction: None,
+            total_weight: None,
         };
         save_flight(&conn, &mock_flight).expect("save flight");
 

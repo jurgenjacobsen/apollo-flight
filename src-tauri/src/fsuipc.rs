@@ -43,6 +43,7 @@ pub struct TelemetryPacket {
     pub oat: f64,
     pub tat: f64,
     pub visibility: f64,
+    pub total_weight: f64,
     pub timestamp: String,
 }
 
@@ -82,6 +83,7 @@ impl Default for TelemetryPacket {
             oat: 15.0,
             tat: 15.0,
             visibility: 10.0,
+            total_weight: 0.0,
             timestamp: Utc::now().to_rfc3339(),
         }
     }
@@ -182,6 +184,7 @@ pub mod win {
         let mut raw_wind_spd: u16 = 0;
         let mut raw_wind_dir: u16 = 0;
         let mut raw_vis: u16 = 0;
+        let mut raw_gross_weight: f64 = 0.0;
         let mut raw_aircraft_title = [0u8; 256];
 
         {
@@ -219,6 +222,7 @@ pub mod win {
             session.read(0x0E90, &mut raw_wind_spd)?;
             session.read(0x0E92, &mut raw_wind_dir)?;
             session.read(0x0E8A, &mut raw_vis)?;
+            session.read(0x30C0, &mut raw_gross_weight)?;
             session.read_bytes(0x3D00, raw_aircraft_title.as_mut_ptr(), 256)?;
             session.process()?;
         }
@@ -300,6 +304,7 @@ pub mod win {
             oat: ((raw_oat as f64 / 256.0) * 10.0).round() / 10.0,
             tat: ((raw_tat as f64 / 256.0) * 10.0).round() / 10.0,
             visibility: ((raw_vis as f64 / 100.0) * 10.0).round() / 10.0,
+            total_weight: if raw_gross_weight > 0.0 { (raw_gross_weight * 10.0).round() / 10.0 } else { 0.0 },
             timestamp: Utc::now().to_rfc3339(),
         })
     }
