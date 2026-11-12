@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useFlightStore } from "../../store/flightStore";
 import { useEfbStore } from "../../store/efbStore";
 import {
@@ -37,6 +37,45 @@ import type { Update } from "@tauri-apps/plugin-updater";
 import { Select } from "../ui";
 import { QrCodeView } from "../ui/QrCodeView";
 import { ImportModal } from "../modals/ImportModal";
+
+const SETTINGS_SECTIONS = [
+    {
+        id: "settings-window",
+        label: "System Tray & Window Lifecycle",
+        shortLabel: "Window & Tray",
+        icon: AppWindow,
+    },
+    {
+        id: "settings-recording",
+        label: "Flight Recording Lifecycle Rules",
+        shortLabel: "Recording Rules",
+        icon: Sliders,
+    },
+    {
+        id: "settings-database",
+        label: "Database & Aerodrome Datasets",
+        shortLabel: "Datasets & Airports",
+        icon: Database,
+    },
+    {
+        id: "settings-efb",
+        label: "EFB Companion",
+        shortLabel: "EFB Companion",
+        icon: Tablet,
+    },
+    {
+        id: "settings-data",
+        label: "Data Management, Backup & Export",
+        shortLabel: "Backup & Export",
+        icon: Archive,
+    },
+    {
+        id: "settings-about",
+        label: "About Apollo Flight",
+        shortLabel: "About & Runtime",
+        icon: Info,
+    },
+];
 
 export const SettingsView: React.FC = () => {
     const {
@@ -209,9 +248,78 @@ export const SettingsView: React.FC = () => {
         await installUpdate();
     };
 
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [activeSection, setActiveSection] = useState<string>("settings-window");
+
+    useEffect(() => {
+        const rootEl = containerRef.current;
+        if (!rootEl) return;
+
+        const checkBottom = () => {
+            const isAtBottom =
+                rootEl.scrollHeight - rootEl.scrollTop - rootEl.clientHeight < 40;
+            if (isAtBottom) {
+                const lastSection = SETTINGS_SECTIONS[SETTINGS_SECTIONS.length - 1];
+                if (lastSection) {
+                    setActiveSection(lastSection.id);
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        const handleScroll = () => {
+            checkBottom();
+        };
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (checkBottom()) return;
+
+                const visible = entries.filter((e) => e.isIntersecting);
+                if (visible.length > 0) {
+                    visible.sort(
+                        (a, b) =>
+                            a.boundingClientRect.top -
+                            b.boundingClientRect.top,
+                    );
+                    setActiveSection(visible[0].target.id);
+                }
+            },
+            {
+                root: rootEl,
+                rootMargin: "-10% 0px -65% 0px",
+                threshold: [0, 0.2, 0.5],
+            },
+        );
+
+        rootEl.addEventListener("scroll", handleScroll, { passive: true });
+
+        SETTINGS_SECTIONS.forEach((sec) => {
+            const el = document.getElementById(sec.id);
+            if (el) observer.observe(el);
+        });
+
+        return () => {
+            rootEl.removeEventListener("scroll", handleScroll);
+            observer.disconnect();
+        };
+    }, []);
+
+    const handleScrollTo = (id: string) => {
+        setActiveSection(id);
+        const el = document.getElementById(id);
+        if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    };
+
     return (
-        <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
-            <div className="max-w-4xl mx-auto space-y-8">
+        <div
+            ref={containerRef}
+            className="flex-1 overflow-y-auto p-6 md:p-8 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150"
+        >
+            <div className="max-w-5xl xl:max-w-6xl mx-auto space-y-6">
                 {/* Page Header */}
                 <div className="flex items-center justify-between pb-5 border-b border-neutral-200 dark:border-geist-hairline">
                     <div className="flex items-center gap-3">
@@ -236,8 +344,13 @@ export const SettingsView: React.FC = () => {
                     )}
                 </div>
 
-                {/* Section 1: System Tray & Window Lifecycle */}
-                <section className="space-y-4">
+
+                {/* 2-Column Content + Sticky Sidebar */}
+                <div className="flex items-stretch gap-8 xl:gap-12">
+                    {/* Main Content Area */}
+                    <div className="flex-1 min-w-0 space-y-8 pb-32">
+                        {/* Section 1: System Tray & Window Lifecycle */}
+                        <section id="settings-window" className="space-y-4 scroll-mt-6">
                     <div className="flex items-center gap-2">
                         <AppWindow className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
                         <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
@@ -428,7 +541,7 @@ export const SettingsView: React.FC = () => {
                 <hr className="border-neutral-200 dark:border-geist-hairline" />
 
                 {/* Section 2: Flight Recording Lifecycle Rules */}
-                <section className="space-y-4">
+                <section id="settings-recording" className="space-y-4 scroll-mt-6">
                     <div className="flex items-center gap-2">
                         <Sliders className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
                         <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
@@ -593,7 +706,7 @@ export const SettingsView: React.FC = () => {
                 <hr className="border-neutral-200 dark:border-geist-hairline" />
 
                 {/* Section 3: Database & Aerodrome Datasets */}
-                <section className="space-y-4">
+                <section id="settings-database" className="space-y-4 scroll-mt-6">
                     <div className="flex items-center gap-2">
                         <Database className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
                         <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
@@ -729,7 +842,7 @@ export const SettingsView: React.FC = () => {
                 <hr className="border-neutral-200 dark:border-geist-hairline" />
 
                 {/* Section: EFB Companion */}
-                <section className="space-y-4">
+                <section id="settings-efb" className="space-y-4 scroll-mt-6">
                     <div className="flex items-center gap-2">
                         <Tablet className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
                         <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
@@ -948,7 +1061,7 @@ export const SettingsView: React.FC = () => {
                 <hr className="border-neutral-200 dark:border-geist-hairline" />
 
                 {/* Section: Data Backup, Export & Import */}
-                <section className="space-y-4">
+                <section id="settings-data" className="space-y-4 scroll-mt-6">
                     <div className="flex items-center gap-2">
                         <Archive className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
                         <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
@@ -1106,8 +1219,8 @@ export const SettingsView: React.FC = () => {
                 {/* Section Divider */}
                 <hr className="border-neutral-200 dark:border-geist-hairline" />
 
-                {/* Section 4: About Apollo Flight */}
-                <section className="space-y-4">
+                {/* Section 6: About Apollo Flight */}
+                <section id="settings-about" className="space-y-4 scroll-mt-6">
                     <div className="flex items-center gap-2">
                         <Info className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
                         <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
@@ -1333,6 +1446,45 @@ export const SettingsView: React.FC = () => {
                     </div>
                 </section>
             </div>
+
+            {/* Right Rail: Sticky Glossary Navigation */}
+            <aside className="hidden lg:block w-48 xl:w-56 shrink-0 self-stretch">
+                <div className="sticky top-6 space-y-3">
+                    <div className="flex items-center gap-2 px-2 text-[10px] font-semibold tracking-wider uppercase text-neutral-400 dark:text-neutral-500 select-none">
+                        <span>On This Page</span>
+                    </div>
+
+                    <nav className="space-y-0.5 border-l border-neutral-200 dark:border-geist-hairline">
+                        {SETTINGS_SECTIONS.map((sec) => {
+                            const Icon = sec.icon;
+                            const isActive = activeSection === sec.id;
+                            return (
+                                <button
+                                    key={sec.id}
+                                    type="button"
+                                    onClick={() => handleScrollTo(sec.id)}
+                                    className={`group -ml-[1px] w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors cursor-pointer border-l-2 select-none ${
+                                        isActive
+                                            ? "border-neutral-900 dark:border-white text-neutral-900 dark:text-white bg-neutral-100/60 dark:bg-neutral-900/60 rounded-r-xs"
+                                            : "border-transparent text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:border-neutral-300 dark:hover:border-neutral-700"
+                                    }`}
+                                >
+                                    <Icon
+                                        className={`w-3.5 h-3.5 shrink-0 transition-colors ${
+                                            isActive
+                                                ? "text-neutral-900 dark:text-white"
+                                                : "text-neutral-400 group-hover:text-neutral-700 dark:text-neutral-500 dark:group-hover:text-neutral-300"
+                                        }`}
+                                    />
+                                    <span className="truncate">{sec.shortLabel}</span>
+                                </button>
+                            );
+                        })}
+                    </nav>
+                </div>
+            </aside>
+        </div>
+    </div>
 
             <ImportModal
                 isOpen={isImportModalOpen}
