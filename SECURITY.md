@@ -11,7 +11,7 @@ Security updates are actively applied to the latest minor and patch releases:
 | Version | Supported          |
 | ------- | ------------------ |
 | 0.0.x   | :white_check_mark: |
-| < 0.0.4 | :x:                |
+| < 0.0.5 | :x:                |
 
 We strongly encourage all pilots to update to the latest release to ensure you have the latest security patches, bug fixes, and telemetry engine improvements.
 
