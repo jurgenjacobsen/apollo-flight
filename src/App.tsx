@@ -16,6 +16,9 @@ import { HoldTrainer } from "./components/views/HoldTrainer";
 import { SettingsView } from "./components/views/SettingsView";
 import { FeedbackView } from "./components/views/FeedbackView";
 import { RecycleBinView } from "./components/views/RecycleBinView";
+import { EfbCompanionApp } from "./components/efb/EfbCompanionApp";
+import { isEfbMode } from "./services/efbService";
+import { useEfbStore } from "./store/efbStore";
 import { ImportModal } from "./components/modals/ImportModal";
 import { SimBridge } from "./components/bridge/SimBridge";
 import { UpdateNotificationBanner } from "./components/layout/UpdateNotificationBanner";
@@ -126,6 +129,25 @@ export const App: React.FC = () => {
             );
         };
     }, []);
+
+    const currentGeneratedRoute = useFlightStore((s) => s.currentGeneratedRoute);
+    const { autoStartEfb, serverMode, startServer, syncRoute } = useEfbStore();
+
+    useEffect(() => {
+        if (!isEfbMode() && (autoStartEfb || serverMode === "auto")) {
+            startServer();
+        }
+    }, [autoStartEfb, serverMode, startServer]);
+
+    useEffect(() => {
+        if (!isEfbMode()) {
+            syncRoute(currentGeneratedRoute);
+        }
+    }, [currentGeneratedRoute, syncRoute]);
+
+    if (isEfbMode()) {
+        return <EfbCompanionApp />;
+    }
 
     return (
         <div className="flex h-screen w-screen bg-neutral-50 dark:bg-black text-neutral-900 dark:text-[#ededed] overflow-hidden font-sans selection:bg-neutral-200 dark:selection:bg-[#333333] transition-colors duration-150">

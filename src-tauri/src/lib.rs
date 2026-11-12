@@ -1,5 +1,6 @@
 pub mod db;
 pub mod fsuipc;
+pub mod efb;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -536,6 +537,27 @@ mod commands {
         db::recompute_visited_stats_with_navdata(&logbook, &navdata).map_err(|e| e.to_string())?;
         db::get_visited_stats(&logbook).map_err(|e| e.to_string())
     }
+
+    #[tauri::command]
+    pub fn get_efb_status() -> Result<efb::EfbStatus, String> {
+        Ok(efb::get_status())
+    }
+
+    #[tauri::command]
+    pub async fn start_efb(app: AppHandle, port: Option<u16>) -> Result<efb::EfbStatus, String> {
+        efb::start_server(app, port).await
+    }
+
+    #[tauri::command]
+    pub async fn stop_efb() -> Result<(), String> {
+        efb::stop_server().await
+    }
+
+    #[tauri::command]
+    pub fn set_efb_route(route: Option<serde_json::Value>) -> Result<(), String> {
+        efb::set_active_route(route);
+        Ok(())
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -738,7 +760,11 @@ pub fn run() {
             commands::toggle_route_favorite,
             commands::update_route_status,
             commands::delete_saved_route,
-            commands::recompute_visited_destinations
+            commands::recompute_visited_destinations,
+            commands::get_efb_status,
+            commands::start_efb,
+            commands::stop_efb,
+            commands::set_efb_route
         ])
         .run(tauri::generate_context!())
         .expect("error while running apollo flight application");

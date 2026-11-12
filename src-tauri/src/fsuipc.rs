@@ -329,6 +329,7 @@ pub fn start_telemetry_loop(app: AppHandle, is_running: Arc<AtomicBool>) {
                         match win::read_telemetry_batch(&mut handle) {
                             Ok(packet) => {
                                 let _ = app.emit("fsuipc-telemetry", &packet);
+                                crate::efb::update_telemetry(&packet);
 
                                 // Dynamic poll rate: 4Hz (250ms) when airborne/active, 1Hz (1000ms) when stationary on ground
                                 let sleep_ms = if packet.is_on_ground && packet.ground_speed < 10.0 {
@@ -350,6 +351,7 @@ pub fn start_telemetry_loop(app: AppHandle, is_running: Arc<AtomicBool>) {
                     let mut disconnected_packet = TelemetryPacket::default();
                     disconnected_packet.sim_connected = false;
                     let _ = app.emit("fsuipc-telemetry", &disconnected_packet);
+                    crate::efb::update_telemetry(&disconnected_packet);
                     log::info!("FSUIPC7 connection lost, waiting to reconnect...");
                 }
                 Err(_) => {
