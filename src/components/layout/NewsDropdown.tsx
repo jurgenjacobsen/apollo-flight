@@ -302,7 +302,7 @@ export const NewsDropdown: React.FC<NewsDropdownProps> = ({
                                 <div>
                                     <div className="flex items-center flex-wrap gap-1.5">
                                         <h4 className="text-xs font-semibold text-neutral-900 dark:text-white">
-                                            Apollo Flight v{availableUpdate.version}
+                                            Apollo Flight {availableUpdate.version}
                                         </h4>
                                         <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60">
                                             Ready to install
@@ -354,7 +354,7 @@ export const NewsDropdown: React.FC<NewsDropdownProps> = ({
                                     <button
                                         type="button"
                                         onClick={installUpdate}
-                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-xs cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 transition-colors cursor-pointer"
                                     >
                                         <Download className="w-3.5 h-3.5" />
                                         <span>Update & Restart</span>
@@ -366,7 +366,7 @@ export const NewsDropdown: React.FC<NewsDropdownProps> = ({
                                             setActiveView("settings");
                                             onClose();
                                         }}
-                                        className="px-2.5 py-1.5 rounded-sm text-xs font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 hover:bg-neutral-200 dark:bg-[#202020] dark:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors cursor-pointer"
                                     >
                                         Settings
                                     </button>
