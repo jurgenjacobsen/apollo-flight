@@ -1060,7 +1060,7 @@ export const SettingsView: React.FC = () => {
                             <div className="shrink-0 flex items-center">
                                 <button
                                     type="button"
-                                    onClick={() => setActiveView("recycle-bin")}
+                                    onClick={() => setIsImportModalOpen(true)}
                                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 enabled:hover:bg-neutral-200 dark:bg-[#202020] dark:enabled:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors cursor-pointer"
                                 >
                                     <Upload className="w-3.5 h-3.5" />
