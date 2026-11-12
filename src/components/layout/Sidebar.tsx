@@ -237,7 +237,7 @@ export const Sidebar: React.FC = () => {
                         {!isSidebarCollapsed && (
                             <div className="flex items-center justify-between">
                                 <span className="flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
                                     Recording
                                 </span>
                                 <span className="text-[11px] font-mono text-neutral-700 dark:text-neutral-300">

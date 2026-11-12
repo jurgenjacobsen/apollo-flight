@@ -616,7 +616,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                             type="button"
                             onClick={handleExecuteImport}
                             disabled={isProcessing}
-                            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-sm bg-neutral-900 hover:bg-black dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-black transition-colors shadow-xs disabled:opacity-50"
+                            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-sm bg-neutral-900 enabled:hover:bg-neutral-800 dark:bg-white dark:enabled:hover:bg-neutral-200 text-white dark:text-black transition-colors shadow-xs cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <Upload className="w-3.5 h-3.5" />
                             <span>
