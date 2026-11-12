@@ -21,7 +21,6 @@ import {
     Upload,
     Trash2,
     Archive,
-    FolderDown,
     Wind,
     Scale,
     Tablet,
@@ -29,6 +28,8 @@ import {
     ChevronDown,
     Copy,
     ExternalLink,
+    BookOpen,
+    Route,
 } from "lucide-react";
 
 import packageJson from "../../../package.json";
@@ -1010,35 +1011,39 @@ export const SettingsView: React.FC = () => {
                                     <span>Full Backup</span>
                                 </button>
 
-                                <button
-                                    type="button"
+                                {/* ponytail: single select menu replaces row of individual segment buttons */}
+                                <Select
+                                    value=""
+                                    onChange={(val) => {
+                                        if (val)
+                                            handleExport(
+                                                val as
+                                                    | "logbook"
+                                                    | "routes"
+                                                    | "settings",
+                                            );
+                                    }}
+                                    placeholder="Export segment..."
                                     disabled={isExporting}
-                                    onClick={() => handleExport("logbook")}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 enabled:hover:bg-neutral-200 dark:bg-[#202020] dark:enabled:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors cursor-pointer"
-                                >
-                                    <FolderDown className="w-3.5 h-3.5 text-neutral-500" />
-                                    <span>Logbook</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    disabled={isExporting}
-                                    onClick={() => handleExport("routes")}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 enabled:hover:bg-neutral-200 dark:bg-[#202020] dark:enabled:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors cursor-pointer"
-                                >
-                                    <FolderDown className="w-3.5 h-3.5 text-neutral-500" />
-                                    <span>Routes</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    disabled={isExporting}
-                                    onClick={() => handleExport("settings")}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 enabled:hover:bg-neutral-200 dark:bg-[#202020] dark:enabled:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors cursor-pointer"
-                                >
-                                    <Sliders className="w-3.5 h-3.5 text-neutral-500" />
-                                    <span>Settings</span>
-                                </button>
+                                    options={[
+                                        {
+                                            value: "logbook",
+                                            label: "Logbook",
+                                            icon: <BookOpen className="w-3.5 h-3.5" />,
+                                        },
+                                        {
+                                            value: "routes",
+                                            label: "Routes",
+                                            icon: <Route className="w-3.5 h-3.5" />,
+                                        },
+                                        {
+                                            value: "settings",
+                                            label: "Settings",
+                                            icon: <Sliders className="w-3.5 h-3.5" />,
+                                        },
+                                    ]}
+                                    className="min-w-[140px]"
+                                />
                             </div>
                         </div>
 
