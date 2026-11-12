@@ -21,7 +21,6 @@ import { isEfbMode } from "./services/efbService";
 import { useEfbStore } from "./store/efbStore";
 import { ImportModal } from "./components/modals/ImportModal";
 import { SimBridge } from "./components/bridge/SimBridge";
-import { UpdateNotificationBanner } from "./components/layout/UpdateNotificationBanner";
 import { safeInvoke } from "./store/flightStore";
 import { ApolloExportBundle } from "./types/flight";
 
@@ -161,9 +160,6 @@ export const App: React.FC = () => {
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-neutral-50 dark:bg-black">
                 {/* Real-time Telemetry Ribbon with Theme Toggle */}
                 <TopHeader />
-
-                {/* Global Update Notification Banner */}
-                <UpdateNotificationBanner />
 
                 {/* Dynamic Viewports */}
                 <main className="flex-1 flex flex-col overflow-hidden">

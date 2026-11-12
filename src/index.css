@@ -152,3 +152,23 @@ html.dark .leaflet-popup-tip {
 .collapse-accordion-inner {
     overflow: hidden;
 }
+
+/* Smooth dropdown entrance animation (pure opacity fade, zero vertical shift or blur) */
+@keyframes dropdown-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.animate-dropdown-smooth {
+    animation: dropdown-fade 120ms ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-dropdown-smooth {
+        animation: none !important;
+    }
+}

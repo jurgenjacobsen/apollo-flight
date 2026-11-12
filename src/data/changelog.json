@@ -1,0 +1,15 @@
+[
+  {
+    "title": "EFB & Data Management - Update",
+    "description": "• **EFB Companion**: Integrated tablet & mobile companion server with QR code pairing and live telemetry streaming.\n• **Export User Data**: Single select menu with full backup and segment exports.\n• Improved dark mode contrast and accessibility.",
+    "badge": "0.0.4",
+    "date": "12-11-2026@13:37",
+    "type": "version"
+  },
+  {
+    "title": "Welcome to Apollo Flight",
+    "description": "Track your flights, analyze landing rates, and export flight bundles seamlessly. Check this news menu for upcoming updates and release notes.",
+    "date": "01-11-2026@08:00",
+    "type": "any"
+  }
+]
