@@ -2,7 +2,7 @@
   {
     "title": "EFB & Data Management - Update",
     "description": "• **EFB Companion**: Integrated tablet & mobile companion server with QR code pairing and live telemetry streaming.\n• **Export User Data**: Single select menu with full backup and segment exports.\n• Improved dark mode contrast and accessibility.",
-    "badge": "0.0.4",
+    "badge": "0.0.5",
     "date": "12-11-2026@13:37",
     "type": "version"
   },
