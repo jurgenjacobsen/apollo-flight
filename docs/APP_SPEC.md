@@ -49,15 +49,17 @@
 | **Magnetic Heading** | `0x0580` | 4 Bytes | UInt32 | `Value * 360.0 / (65536.0 * 65536.0)` (deg) |
 | **Aircraft Title / Model** | `0x3D00` | 256 Bytes| String | Null-terminated ASCII string |
 | **On Ground Flag (WOW)** | `0x0366` | 2 Bytes | UInt16 | `1` = On Ground, `0` = In Flight |
-| **NAV 1 Radial / OBS** | `0x0C4E` | 2 Bytes | UInt16 | Magnetic radial degrees |
-| **NAV 1 Relative Bearing** | `0x0C54` | 2 Bytes | Int16 | `Value * 360.0 / 65536.0` |
+| **NAV 1 OBS Selected** | `0x0C4E` | 2 Bytes | UInt16 | Selected OBS course degrees (0–359°) |
+| **NAV 1 Radial** | `0x0C50` | 2 Bytes | UInt16 | Magnetic radial from station: `Value * 360.0 / 65536.0` |
+| **NAV 1 Relative Bearing** | `0x0C56` | 2 Bytes | Int16 | Relative degrees to station: `Value * 360.0 / 65536.0` |
 | **NAV 1 DME Distance** | `0x0300` | 2 Bytes | UInt16 | BCD or integer / 10 (NM) |
 | **NAV 1 DME Speed** | `0x0302` | 2 Bytes | UInt16 | BCD knots |
-| **NAV 2 Radial / OBS** | `0x0C5E` | 2 Bytes | UInt16 | Magnetic radial degrees |
-| **NAV 2 Relative Bearing** | `0x0C64` | 2 Bytes | Int16 | `Value * 360.0 / 65536.0` |
+| **NAV 2 OBS Selected** | `0x0C5E` | 2 Bytes | UInt16 | Selected OBS course degrees (0–359°) |
+| **NAV 2 Radial** | `0x0C60` | 2 Bytes | UInt16 | Magnetic radial from station: `Value * 360.0 / 65536.0` |
+| **NAV 2 Relative Bearing** | `0x0C62` | 2 Bytes | Int16 | Relative degrees to station: `Value * 360.0 / 65536.0` |
 | **NAV 2 DME Distance** | `0x0306` | 2 Bytes | UInt16 | BCD or integer / 10 (NM) |
 | **NAV 2 DME Speed** | `0x0308` | 2 Bytes | UInt16 | BCD knots |
-| **ADF 1 Relative Bearing** | `0x02C0` | 2 Bytes | Int16 | Relative degrees to station |
+| **ADF 1 Relative Bearing** | `0x02C0` | 2 Bytes | Int16 | Relative degrees to station: `Value * 360.0 / 65536.0` |
 
 ---
 
@@ -504,9 +506,116 @@ For that we will apply these improvements:
   - [x] Once the app is started OR before the user actually opens the recycle bin page the app should check the 30 day period status for each deleted flight, after the user has viewed and closed/moved from the page the app will actually delete it.
   - [x] If the app knows that recycle bin item is about to be deleted (within 24h) add a small chip/badge to the listed item saying it will deleted soon.
 
-### Phase 12:
+### Phase 12: Telemetry Update
+Add a detailed telemetry option to the settings page allowing the user to get as much as possible information recorded for their flight.
 
+Using FSUIPC information from the user's position such as :
+- [x] Wind information (Speed and direction);
+- [x] Temperature (OAT & TAT);
+- [x] Visibility;
+
+This will allow users to have more detailed information for their flights to be analyzed:
+- [x] In the telemetry graph, when the user is sliding through the recorded flight telemtry timeline in the information popup display this detailed information (wind, temp. and visibility);
+- [x] Add "totals" information such as statistics of:
+    - [x] Lowest/maximum OAT encountered;
+    - [x] Lowest visibility encountered;
+    - [x] Average wind during cruise (direction & speed);
+    - [x] Maximum wind speed encountered (direction & speed);
+
+This will be an optional feature, disabled by default so the user doesn't have to deal with excessive storage usage from the start.
+
+### Phase 13: EFB / WiFi Companion Add-on
+An embedded lightweight local HTTP & WebSocket server hosted by the Tauri Rust backend that serves a mobile-responsive Electronic Flight Bag (EFB) web page over the local network. Users can open the URL on an iPad, Android tablet, or smartphone with zero device installation.
+
+- [x] **Backend HTTP & WebSocket Service (Rust / Tokio / Axum):**
+    - [x] Implement lightweight embedded web server running on configurable dynamic random port (default safe range 24000–29999, avoiding collision-prone 8080).
+    - [x] Serve static web assets from `dist` bundle with SPA fallback.
+    - [x] Implement high-frequency WebSocket endpoint (`/ws`) broadcasting live sim telemetry (1–4 Hz).
+    - [x] Expose REST endpoints for active route briefing and server telemetry (`/api/status`, `/api/telemetry`, `/api/route`).
+- [x] **Device Discovery & QR Code Pairing:**
+    - [x] Add desktop "EFB Companion" view in sidebar displaying local network IP, LAN URL, and dynamic scannable QR Code.
+    - [x] Implement server start/stop/port toggle with random safe port generator and auto-start setting.
+- [x] **Mobile-Responsive EFB Frontend (Matching Desktop Geist Design):**
+    - [x] Mobile & tablet UI matching Apollo Flight desktop styling (Geist design system, surfaces, tabular telemetry, light/dark themes).
+    - [x] Responsive collapsible sidebar and slide-over drawer navigation.
+    - [x] TopHeader telemetry ribbon with real-time `ALT`, `GS`, `HDG`, `VS`, `WIND`, `OAT`, and `StatusPill`.
+    - [x] Implement Screen Wake Lock API (`navigator.wakeLock`) to keep display awake during flight.
+- [x] **Live Moving Map & Telemetry HUD:**
+    - [x] Responsive Leaflet map with plane position, heading rotation, flight trail breadcrumbs, and nearest airport badges.
+    - [x] Live instrument KPI cards: Altitude (MSL/AGL), IAS/TAS/GS, Vertical Speed, Wind component, and Atmosphere.
+- [x] **Active Route & OFP Tracker:**
+    - [x] Synchronize active or drafted multi-sector routes with live distance, course, cruise FL, and airport metadata.
+- [x] **IFR Trainer & Holding Pattern Repeater:**
+    - [x] Real-time NAV1/NAV2/ADF receiver readouts, selected OBS, radial deviation, DME distance/speed, and holding pattern entry visualizer with live aircraft track vector.
+- [x] **Pilot Scratchpad & Checklists:**
+    - [x] Quick-tap scratchpad for ATC clearances (Squawk, Altimeter, Runway, Heading, Altitude, and freeform taxi notes).
+    - [x] Interactive normal flight deck checklists with progress tracking and resets.
+
+### Phase 14: Overview page (DashboardView.tsx) & UI - Update
+- [x] Replace the "Flight Operations" button on the sidebar with the colapse sidebar action button, remove it from the branding header.
+- [x] Now that the "Flight Operations" button doesn't exist anymore, add a new status to the list in the StatusPill.tsx, which includes is the "Updating Navdata". It will be shown whenever the user prompts the app to a navigation data (airports, runways, etc.) update.
+- [x] Map Section
+    - [x] With the current overview page (DashboardView.tsx), fill the "Map" section with a map with the same tiles used in the app. When the user has the app connected to the MSFS display the aircraft of the user at the current position;
+    - [x] When the user isn't recording a flight display a layer with all airports listed in the database, the marker should be like a small dot, clickable with a popup which will display the airport name, country, and further information available such as runways and dimensions. Also display the airport metar/taf from [https://aviationweather.gov/api/data/metar](https://aviationweather.gov/api/data/metar);
+    - [x] The user is flying draw the flight path on this map and add the possibility to the user for the map to follow/focus them or not;
+- [x] Weather information Section
+    - [x] Weather information section will have a input field for the user to search for an airport by ICAO code;
+    - [x] Display the METAR/TAF, if available, from [https://aviationweather.gov/api/data/metar](https://aviationweather.gov/api/data/metar);
+- [x] Flight Control Section
+    - [x] Add a start recording button and all necessary flight/app controls shortcuts in this section.
+- [x] Change the page name to just "Overview", change file name to "Overview.tsx".
+
+### Phase 15: Checklists
+The checklists feature will allow users to create custom checklists, import and export it from different file formats such as JSON.
+It will add a list of checklists saved on the user database listed by a title (usually the aircraft to what it is related or a category as the user prefers).
+The checklists will be structurized in sections and items within. Each item will have their own name and a fill in space which will be the thing to be checked. The user might add a note to what should be checked there.
+
+- [x] Checklists page;
+- [x] When the user is editing or creating one checklist it should have a form input select menu which will list all of the aircraft the user has flown in their logbook so that checklist will be associated with the aircraft, when the user is in-game with that associated aircraft it will highlight the checklist on the list or move it to the top.
+**Later added features**:
+- [ ] Voice recognition for checklists: (Deferred to [Phase 99](#phase-99-eventual-changes-not-planned-in-short-future) – see technical design in [VOICE_CHECKLISTS_SPEC.md](VOICE_CHECKLISTS_SPEC.md))
+
+--- 
+
+### Phase 16: User Profile Update
+Instead of only having the visited airports and countries as the user "profile". We can create a user profile, with user statistics such as total distance, flight time, visited airports, number of landings, etc. The visited countries/airports visited map should be moved into this page. Add a badges card which will be awarded like game achievements, which will be awarded when users check some information, for example, if they have visited a continent as a whole.
+
+Instead of the achivements be hard coded into the page itself a data file (.ts) should be used for this, so instead of having static achivements to be checked agaisnt data we will make use of an array list which will have the achivement data plus an expression which checks and returns boolean and progression (%) values.
+
+Example:
+```typescript
+{
+    name: "Visited the Alps"
+    description: "Lorem ipsum... compact description.",
+    // user = all of the user data
+    expression: (user) => {
+
+        const alpenAirports = ["ZZZZ", "YYYY", "XXXX"]
+
+        const completed = user.visitedAirports + alpenAirports // Match?
+
+        const progression = () // Amount
+
+        return {
+            completed: true,
+            progression: 0.75
+        }
+    }
+}
+```
+
+### Phase 19: Testing Unit & Error Management
+We should have a testing unit standalone application/script which allows the development team to test the app without being actually in the game, simulating a FSUIPC bridge.
+Implementation of UI usage testing should also be something to look into.
+
+- [ ] Replace the default Vite error page with a custom error page or modal depending on the error. Any other error or issues such as handling problems at the backend should also be notified to the user as modals instead of banners inside the page UI;
+
+[ Feature description will be added here ]
+
+### Phase 20: Onboarding Update
+Before launching the app as totally ready for use, we should implement an onboarding page/flow which allow people to understand how the app works, where they can find information/settings, and how they could configure the app for better usage.
 
 ### Phase 99: Eventual Changes (not planned in short future)
 - [ ] Abstract database repository layer using Rust traits (`FlightRepository`).
 - [ ] Plan JWT auth / Supabase / PostgreSQL schema alignment so local SQLite syncs transparently to remote backend.
+- [ ] Voice Recognition for Checklists (Virtual Co-Pilot): Interactive voice-driven co-pilot for checklists. Pilot calls checklist sections (e.g., *"Before take-off checklist"*), Apollo speaks challenges via TTS, recognizes verbal responses via STT, checks off completed items, and advances sections hands-free. (Detailed technical spec in [VOICE_CHECKLISTS_SPEC.md](VOICE_CHECKLISTS_SPEC.md)).
