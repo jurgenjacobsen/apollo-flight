@@ -2,7 +2,11 @@ import React from "react";
 import { useFlightStore } from "../../store/flightStore";
 
 export type SystemOperationalStatus =
-    "disconnected" | "in_menu" | "recording" | "connected";
+    | "disconnected"
+    | "in_menu"
+    | "recording"
+    | "connected"
+    | "updating_navdata";
 
 export interface StatusInfo {
     status: SystemOperationalStatus;
@@ -16,7 +20,19 @@ export function getSystemStatus(
     simConnected: boolean,
     isInMenu?: boolean,
     isRecording?: boolean,
+    isUpdatingNavdata?: boolean,
 ): StatusInfo {
+    if (isUpdatingNavdata) {
+        return {
+            status: "updating_navdata",
+            label: "Updating Navdata",
+            dotColor: "bg-blue-500 animate-pulse",
+            badgeClasses:
+                "bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 shadow-xs",
+            tooltip: "Updating Navigation Data (Airports & Runways)",
+        };
+    }
+
     if (!simConnected) {
         return {
             status: "disconnected",
@@ -82,16 +98,19 @@ export const StatusPill: React.FC<StatusPillProps> = ({
     compact = false,
     showRoute = false,
 }) => {
-    const { currentTelemetry, activeFlight } = useFlightStore();
+    const { currentTelemetry, activeFlight, isSyncingAirports } = useFlightStore();
     const info = getSystemStatus(
         Boolean(currentTelemetry.simConnected),
         Boolean(currentTelemetry.isInMenu),
         Boolean(activeFlight),
+        Boolean(isSyncingAirports),
     );
 
-    const tooltip = activeFlight
-        ? `Flight Recording: ${activeFlight.departureIcao} ➔ ${activeFlight.arrivalIcao} (${currentTelemetry.aircraftTitle || "Active"})`
-        : currentTelemetry.aircraftTitle &&
+    const tooltip = isSyncingAirports
+        ? "Updating Navigation Data (Airports & Runways)"
+        : activeFlight
+          ? `Flight Recording: ${activeFlight.departureIcao} ➔ ${activeFlight.arrivalIcao} (${currentTelemetry.aircraftTitle || "Active"})`
+          : currentTelemetry.aircraftTitle &&
             currentTelemetry.aircraftTitle !== "Standby (Waiting for MSFS)"
           ? `${info.tooltip} • ${currentTelemetry.aircraftTitle}`
           : info.tooltip;

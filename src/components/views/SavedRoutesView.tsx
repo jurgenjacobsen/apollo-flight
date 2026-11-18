@@ -6,7 +6,16 @@ import {
     formatFlightLevelOrAltitude,
 } from "../../data/aircraftCategories";
 import { calculateDistanceNm } from "../../data/mockData";
-import { PaginationBar, ConfirmDeleteButton } from "../ui";
+import {
+    PaginationBar,
+    ConfirmDeleteButton,
+    TableColumnCustomizer,
+    ResizableHeaderCell,
+} from "../ui";
+import {
+    useTableColumnOrder,
+    ColumnDefinition,
+} from "../../hooks/useTableColumnOrder";
 import { RouteEditModal } from "../modals/RouteEditModal";
 import {
     Bookmark,
@@ -50,6 +59,18 @@ export type RouteSortField =
 
 export type SortDirection = "asc" | "desc";
 
+const DEFAULT_SAVED_ROUTES_COLUMNS: ColumnDefinition[] = [
+    { id: "favorite", label: "Favorite" },
+    { id: "route", label: "Route", required: true },
+    { id: "category", label: "Category" },
+    { id: "distance", label: "Distance" },
+    { id: "airborne", label: "Airborne" },
+    { id: "blockTime", label: "Block Time" },
+    { id: "altitude", label: "Altitude" },
+    { id: "status", label: "Status" },
+    { id: "saved", label: "Saved Date" },
+];
+
 export const SavedRoutesView: React.FC = () => {
     const {
         savedRoutes,
@@ -81,6 +102,23 @@ export const SavedRoutesView: React.FC = () => {
     const [copiedRouteId, setCopiedRouteId] = useState<string | null>(null);
     const [routeToEdit, setRouteToEdit] = useState<SavedRoute | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
+
+    const {
+        columns,
+        visibleColumnIds,
+        getColumnWidth,
+        setColumnWidth,
+        resetColumnWidth,
+        resetColumnWidths,
+        hasCustomWidths,
+        toggleColumnVisibility,
+        moveColumnUp,
+        moveColumnDown,
+        resetToDefaults,
+    } = useTableColumnOrder(
+        "apollo_saved_routes_columns_v1",
+        DEFAULT_SAVED_ROUTES_COLUMNS,
+    );
 
     const getPrimaryDirection = (field: RouteSortField): SortDirection => {
         return [
@@ -467,20 +505,22 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                 </div>
 
                 {/* Search input */}
-                <div className="relative w-full sm:w-64">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search ICAO, name, category..."
-                        className="w-full h-8 pl-8 pr-3 bg-white dark:bg-[#111] border border-neutral-200 dark:border-geist-hairline rounded-sm text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400 transition-colors"
-                    />
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="relative flex-1 sm:w-64">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search ICAO, name, category..."
+                            className="w-full h-8 pl-8 pr-3 bg-white dark:bg-[#111] border border-neutral-200 dark:border-geist-hairline rounded-sm text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400 transition-colors"
+                        />
+                    </div>
                 </div>
             </div>
 
             {/* Routes Table Container */}
-            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-xs overflow-hidden">
+            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-xs relative">
                 {filteredRoutes.length === 0 ? (
                     <div className="p-12 text-center space-y-3">
                         <div className="w-12 h-12 rounded-full bg-neutral-100 dark:bg-[#1a1a1a] flex items-center justify-center mx-auto text-neutral-400">
@@ -512,107 +552,201 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                        <table
+                            className="w-full text-left border-collapse"
+                            style={{ tableLayout: hasCustomWidths ? "fixed" : "auto" }}
+                        >
                             <thead>
                                 <tr className="bg-neutral-100/70 dark:bg-[#0e0e0e] border-b border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-400 select-none">
+                                    {visibleColumnIds.map((colId) => {
+                                        switch (colId) {
+                                            case "favorite":
+                                                return (
+                                                    <ResizableHeaderCell
+                                                        key="favorite"
+                                                        columnId="favorite"
+                                                        width={getColumnWidth("favorite")}
+                                                        minWidth={36}
+                                                        align="center"
+                                                        onResize={setColumnWidth}
+                                                        onResetWidth={resetColumnWidth}
+                                                        onClick={() => handleSort("favorite")}
+                                                        title="Sort by favorite"
+                                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            <Heart className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-rose-500 transition-colors" />
+                                                            {renderSortIcon("favorite")}
+                                                        </div>
+                                                    </ResizableHeaderCell>
+                                                );
+                                            case "route":
+                                                return (
+                                                    <ResizableHeaderCell
+                                                        key="route"
+                                                        columnId="route"
+                                                        width={getColumnWidth("route")}
+                                                        minWidth={120}
+                                                        onResize={setColumnWidth}
+                                                        onResetWidth={resetColumnWidth}
+                                                        onClick={() => handleSort("route")}
+                                                        title="Sort by route"
+                                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                                                    >
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Plane className="w-3.5 h-3.5 text-neutral-400" />
+                                                            <span>Route</span>
+                                                            {renderSortIcon("route")}
+                                                        </div>
+                                                    </ResizableHeaderCell>
+                                                );
+                                            case "category":
+                                                return (
+                                                    <ResizableHeaderCell
+                                                        key="category"
+                                                        columnId="category"
+                                                        width={getColumnWidth("category")}
+                                                        minWidth={60}
+                                                        onResize={setColumnWidth}
+                                                        onResetWidth={resetColumnWidth}
+                                                        onClick={() => handleSort("category")}
+                                                        title="Sort by aircraft category"
+                                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                                                    >
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Layers className="w-3.5 h-3.5 text-neutral-400" />
+                                                            <span>Category</span>
+                                                            {renderSortIcon("category")}
+                                                        </div>
+                                                    </ResizableHeaderCell>
+                                                );
+                                            case "distance":
+                                                return (
+                                                    <ResizableHeaderCell
+                                                        key="distance"
+                                                        columnId="distance"
+                                                        width={getColumnWidth("distance")}
+                                                        minWidth={60}
+                                                        onResize={setColumnWidth}
+                                                        onResetWidth={resetColumnWidth}
+                                                        onClick={() => handleSort("distance")}
+                                                        title="Sort by distance"
+                                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                                                    >
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Milestone className="w-3.5 h-3.5 text-neutral-400" />
+                                                            <span>Distance</span>
+                                                            {renderSortIcon("distance")}
+                                                        </div>
+                                                    </ResizableHeaderCell>
+                                                );
+                                            case "airborne":
+                                                return (
+                                                    <ResizableHeaderCell
+                                                        key="airborne"
+                                                        columnId="airborne"
+                                                        width={getColumnWidth("airborne")}
+                                                        minWidth={60}
+                                                        onResize={setColumnWidth}
+                                                        onResetWidth={resetColumnWidth}
+                                                        onClick={() => handleSort("airborne")}
+                                                        title="Sort by airborne duration"
+                                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                                                    >
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                                                            <span>Airborne</span>
+                                                            {renderSortIcon("airborne")}
+                                                        </div>
+                                                    </ResizableHeaderCell>
+                                                );
+                                            case "blockTime":
+                                                return (
+                                                    <ResizableHeaderCell
+                                                        key="blockTime"
+                                                        columnId="blockTime"
+                                                        width={getColumnWidth("blockTime")}
+                                                        minWidth={60}
+                                                        onResize={setColumnWidth}
+                                                        onResetWidth={resetColumnWidth}
+                                                        onClick={() => handleSort("blockTime")}
+                                                        title="Sort by block time"
+                                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                                                    >
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Gauge className="w-3.5 h-3.5 text-neutral-400" />
+                                                            <span>Block Time</span>
+                                                            {renderSortIcon("blockTime")}
+                                                        </div>
+                                                    </ResizableHeaderCell>
+                                                );
+                                            case "altitude":
+                                                return (
+                                                    <ResizableHeaderCell
+                                                        key="altitude"
+                                                        columnId="altitude"
+                                                        width={getColumnWidth("altitude")}
+                                                        minWidth={60}
+                                                        onResize={setColumnWidth}
+                                                        onResetWidth={resetColumnWidth}
+                                                        onClick={() => handleSort("altitude")}
+                                                        title="Sort by cruise altitude"
+                                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                                                    >
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Mountain className="w-3.5 h-3.5 text-neutral-400" />
+                                                            <span>Altitude</span>
+                                                            {renderSortIcon("altitude")}
+                                                        </div>
+                                                    </ResizableHeaderCell>
+                                                );
+                                            case "status":
+                                                return (
+                                                    <ResizableHeaderCell
+                                                        key="status"
+                                                        columnId="status"
+                                                        width={getColumnWidth("status")}
+                                                        minWidth={60}
+                                                        onResize={setColumnWidth}
+                                                        onResetWidth={resetColumnWidth}
+                                                        onClick={() => handleSort("status")}
+                                                        title="Sort by status"
+                                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                                                    >
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span>Status</span>
+                                                            {renderSortIcon("status")}
+                                                        </div>
+                                                    </ResizableHeaderCell>
+                                                );
+                                            case "saved":
+                                                return (
+                                                    <ResizableHeaderCell
+                                                        key="saved"
+                                                        columnId="saved"
+                                                        width={getColumnWidth("saved")}
+                                                        minWidth={60}
+                                                        onResize={setColumnWidth}
+                                                        onResetWidth={resetColumnWidth}
+                                                        onClick={() => handleSort("saved")}
+                                                        title="Sort by saved date"
+                                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                                                    >
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Calendar className="w-3.5 h-3.5 text-neutral-400" />
+                                                            <span>Saved</span>
+                                                            {renderSortIcon("saved")}
+                                                        </div>
+                                                    </ResizableHeaderCell>
+                                                );
+                                            default:
+                                                return null;
+                                        }
+                                    })}
                                     <th
-                                        onClick={() => handleSort("favorite")}
-                                        title="Sort by favorite"
-                                        className="py-2.5 px-3 font-medium w-10 text-center cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
+                                        className="py-2.5 px-3 font-medium text-right pr-4"
+                                        style={hasCustomWidths ? { width: "160px" } : undefined}
                                     >
-                                        <div className="flex items-center justify-center gap-1">
-                                            <Heart className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-rose-500 transition-colors" />
-                                            {renderSortIcon("favorite")}
-                                        </div>
-                                    </th>
-                                    <th
-                                        onClick={() => handleSort("route")}
-                                        title="Sort by route"
-                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <Plane className="w-3.5 h-3.5 text-neutral-400" />
-                                            <span>Route</span>
-                                            {renderSortIcon("route")}
-                                        </div>
-                                    </th>
-                                    <th
-                                        onClick={() => handleSort("category")}
-                                        title="Sort by aircraft category"
-                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <Layers className="w-3.5 h-3.5 text-neutral-400" />
-                                            <span>Category</span>
-                                            {renderSortIcon("category")}
-                                        </div>
-                                    </th>
-                                    <th
-                                        onClick={() => handleSort("distance")}
-                                        title="Sort by distance"
-                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <Milestone className="w-3.5 h-3.5 text-neutral-400" />
-                                            <span>Distance</span>
-                                            {renderSortIcon("distance")}
-                                        </div>
-                                    </th>
-                                    <th
-                                        onClick={() => handleSort("airborne")}
-                                        title="Sort by airborne duration"
-                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <Clock className="w-3.5 h-3.5 text-neutral-400" />
-                                            <span>Airborne</span>
-                                            {renderSortIcon("airborne")}
-                                        </div>
-                                    </th>
-                                    <th
-                                        onClick={() => handleSort("blockTime")}
-                                        title="Sort by block time"
-                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <Gauge className="w-3.5 h-3.5 text-neutral-400" />
-                                            <span>Block Time</span>
-                                            {renderSortIcon("blockTime")}
-                                        </div>
-                                    </th>
-                                    <th
-                                        onClick={() => handleSort("altitude")}
-                                        title="Sort by cruise altitude"
-                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <Mountain className="w-3.5 h-3.5 text-neutral-400" />
-                                            <span>Altitude</span>
-                                            {renderSortIcon("altitude")}
-                                        </div>
-                                    </th>
-                                    <th
-                                        onClick={() => handleSort("status")}
-                                        title="Sort by status"
-                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <span>Status</span>
-                                            {renderSortIcon("status")}
-                                        </div>
-                                    </th>
-                                    <th
-                                        onClick={() => handleSort("saved")}
-                                        title="Sort by saved date"
-                                        className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <Calendar className="w-3.5 h-3.5 text-neutral-400" />
-                                            <span>Saved</span>
-                                            {renderSortIcon("saved")}
-                                        </div>
-                                    </th>
-                                    <th className="py-2.5 px-3 font-medium text-right pr-4">
                                         <span>Actions</span>
                                     </th>
                                 </tr>
@@ -689,179 +823,206 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                         : ""
                                                 } ${isMultiSector ? "cursor-pointer" : ""}`}
                                             >
-                                                {/* Favorite Button Cell */}
-                                                <td
-                                                    className="py-3 px-3 text-center align-middle"
-                                                    onClick={(e) =>
-                                                        e.stopPropagation()
-                                                    }
-                                                >
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            toggleRouteFavorite(
-                                                                route.id,
-                                                            )
-                                                        }
-                                                        title={
-                                                            route.isFavorite
-                                                                ? "Unfavorite"
-                                                                : "Add to Favorites"
-                                                        }
-                                                        className={`p-1 rounded transition-colors ${
-                                                            route.isFavorite
-                                                                ? "text-rose-600 hover:text-rose-700"
-                                                                : "text-neutral-300 dark:text-neutral-700 hover:text-rose-500"
-                                                        }`}
-                                                    >
-                                                        <Heart
-                                                            className={`w-3.5 h-3.5 ${route.isFavorite ? "fill-rose-500" : ""}`}
-                                                        />
-                                                    </button>
-                                                </td>
+                                                {visibleColumnIds.map((colId) => {
+                                                    const colWidth = getColumnWidth(colId);
+                                                    const cellStyle: React.CSSProperties | undefined = colWidth
+                                                        ? {
+                                                              width: `${colWidth}px`,
+                                                              maxWidth: `${colWidth}px`,
+                                                              overflow: "hidden",
+                                                          }
+                                                        : undefined;
 
-                                                {/* Route / Sectors Cell */}
-                                                <td className="py-3 px-3 align-middle">
-                                                    <div className="flex items-center gap-2">
-                                                        {isMultiSector ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) =>
-                                                                    toggleExpanded(
-                                                                        route.id,
-                                                                        e,
-                                                                    )
-                                                                }
-                                                                className="w-5 h-5 flex items-center justify-center text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors shrink-0 rounded-xs"
-                                                                title={
-                                                                    isExpanded
-                                                                        ? "Collapse legs"
-                                                                        : "Expand legs"
-                                                                }
-                                                            >
-                                                                {isExpanded ? (
-                                                                    <ChevronDown className="w-3.5 h-3.5" />
-                                                                ) : (
-                                                                    <ChevronRight className="w-3.5 h-3.5" />
-                                                                )}
-                                                            </button>
-                                                        ) : (
-                                                            <span
-                                                                className="w-5 h-5 shrink-0"
-                                                                aria-hidden="true"
-                                                            />
-                                                        )}
+                                                    switch (colId) {
+                                                        case "favorite":
+                                                            return (
+                                                                <td
+                                                                    key="favorite"
+                                                                    className="py-3 px-3 text-center align-middle"
+                                                                    style={cellStyle}
+                                                                    onClick={(e) =>
+                                                                        e.stopPropagation()
+                                                                    }
+                                                                >
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            toggleRouteFavorite(
+                                                                                route.id,
+                                                                            )
+                                                                        }
+                                                                        title={
+                                                                            route.isFavorite
+                                                                                ? "Unfavorite"
+                                                                                : "Add to Favorites"
+                                                                        }
+                                                                        className={`p-1 rounded transition-colors ${
+                                                                            route.isFavorite
+                                                                                ? "text-rose-600 hover:text-rose-700"
+                                                                                : "text-neutral-300 dark:text-neutral-700 hover:text-rose-500"
+                                                                        }`}
+                                                                    >
+                                                                        <Heart
+                                                                            className={`w-3.5 h-3.5 ${route.isFavorite ? "fill-rose-500" : ""}`}
+                                                                        />
+                                                                    </button>
+                                                                </td>
+                                                            );
+                                                        case "route":
+                                                            return (
+                                                                <td key="route" className="py-3 px-3 align-middle" style={cellStyle}>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {isMultiSector ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) =>
+                                                                                    toggleExpanded(
+                                                                                        route.id,
+                                                                                        e,
+                                                                                    )
+                                                                                }
+                                                                                className="w-5 h-5 flex items-center justify-center text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors shrink-0 rounded-xs"
+                                                                                title={
+                                                                                    isExpanded
+                                                                                        ? "Collapse legs"
+                                                                                        : "Expand legs"
+                                                                                }
+                                                                            >
+                                                                                {isExpanded ? (
+                                                                                    <ChevronDown className="w-3.5 h-3.5" />
+                                                                                ) : (
+                                                                                    <ChevronRight className="w-3.5 h-3.5" />
+                                                                                )}
+                                                                            </button>
+                                                                        ) : (
+                                                                            <span
+                                                                                className="w-5 h-5 shrink-0"
+                                                                                aria-hidden="true"
+                                                                            />
+                                                                        )}
 
-                                                        <div>
-                                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <span className="font-bold font-mono text-neutral-900 dark:text-white tracking-tight">
-                                                                    {waypointsStr ||
-                                                                        `${route.departureIcao} ➔ ${route.arrivalIcao}`}
-                                                                </span>
-                                                                {isMultiSector && (
-                                                                    <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-neutral-100 dark:bg-[#202020] text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-800">
-                                                                        {
-                                                                            sectors.length
-                                                                        }{" "}
-                                                                        legs
+                                                                        <div className="truncate">
+                                                                            <div className="flex items-center gap-1.5 flex-wrap truncate">
+                                                                                <span className="font-bold font-mono text-neutral-900 dark:text-white tracking-tight truncate">
+                                                                                    {waypointsStr ||
+                                                                                        `${route.departureIcao} ➔ ${route.arrivalIcao}`}
+                                                                                </span>
+                                                                                {isMultiSector && (
+                                                                                    <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-neutral-100 dark:bg-[#202020] text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-800 shrink-0">
+                                                                                        {
+                                                                                            sectors.length
+                                                                                        }{" "}
+                                                                                        legs
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="text-[11px] text-neutral-400 dark:text-geist-muted truncate max-w-[260px]">
+                                                                                {firstSector
+                                                                                    ? `${firstSector.departure.name} to ${finalSector?.arrival?.name || route.arrivalIcao}`
+                                                                                    : route.name}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            );
+                                                        case "category":
+                                                            return (
+                                                                <td key="category" className="py-3 px-3 align-middle" style={cellStyle}>
+                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-mono font-medium border border-blue-200/50 dark:border-blue-900/50">
+                                                                        Cat{" "}
+                                                                        {route.aircraftCategory}
                                                                     </span>
-                                                                )}
-                                                            </div>
-                                                            <div className="text-[11px] text-neutral-400 dark:text-geist-muted truncate max-w-[260px]">
-                                                                {firstSector
-                                                                    ? `${firstSector.departure.name} to ${finalSector?.arrival?.name || route.arrivalIcao}`
-                                                                    : route.name}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-
-                                                {/* Category Cell */}
-                                                <td className="py-3 px-3 align-middle">
-                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-mono font-medium border border-blue-200/50 dark:border-blue-900/50">
-                                                        Cat{" "}
-                                                        {route.aircraftCategory}
-                                                    </span>
-                                                </td>
-
-                                                {/* Distance Cell */}
-                                                <td className="py-3 px-3 align-middle font-mono tabular-nums">
-                                                    <div className="font-medium text-neutral-900 dark:text-white">
-                                                        {route.totalDistanceNm}{" "}
-                                                        <span className="text-[10px] text-neutral-400 font-normal">
-                                                            NM
-                                                        </span>
-                                                    </div>
-                                                    <div className="text-[10px] text-neutral-400">
-                                                        {Math.round(
-                                                            route.totalDistanceNm *
-                                                                1.852,
-                                                        )}{" "}
-                                                        km
-                                                    </div>
-                                                </td>
-
-                                                {/* Airborne Duration Cell */}
-                                                <td className="py-3 px-3 align-middle font-mono tabular-nums text-neutral-900 dark:text-white">
-                                                    {formatDurationHoursMinutes(
-                                                        route.totalAirborneMinutes,
-                                                    )}
-                                                </td>
-
-                                                {/* Total Block Duration Cell */}
-                                                <td className="py-3 px-3 align-middle font-mono tabular-nums">
-                                                    <div className="text-neutral-900 dark:text-white">
-                                                        {formatDurationHoursMinutes(
-                                                            route.totalDurationMinutes,
-                                                        )}
-                                                    </div>
-                                                    {route.totalGroundMinutes >
-                                                        0 && (
-                                                        <div className="text-[10px] text-neutral-400">
-                                                            incl.{" "}
-                                                            {
-                                                                route.totalGroundMinutes
-                                                            }
-                                                            m taxi
-                                                        </div>
-                                                    )}
-                                                </td>
-
-                                                {/* Altitude Cell */}
-                                                <td className="py-3 px-3 align-middle font-mono tabular-nums text-neutral-700 dark:text-neutral-300">
-                                                    {route.recommendedAltitudeFt
-                                                        ? formatFlightLevelOrAltitude(
-                                                              route.recommendedAltitudeFt,
-                                                          )
-                                                        : firstSector?.cruiseAltitudeFt
-                                                          ? formatFlightLevelOrAltitude(
-                                                                firstSector.cruiseAltitudeFt,
-                                                            )
-                                                          : "VFR"}
-                                                </td>
-
-                                                {/* Status Cell */}
-                                                <td className="py-3 px-3 align-middle">
-                                                    {route.status ===
-                                                    "flown" ? (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
-                                                            <CheckCircle2 className="w-3 h-3" />
-                                                            <span>Flown</span>
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40">
-                                                            <Clock className="w-3 h-3" />
-                                                            <span>Draft</span>
-                                                        </span>
-                                                    )}
-                                                </td>
-
-                                                {/* Date Saved Cell */}
-                                                <td className="py-3 px-3 align-middle text-[11px] text-neutral-500 dark:text-neutral-400 font-mono whitespace-nowrap">
-                                                    {new Date(
-                                                        route.createdAt,
-                                                    ).toLocaleDateString()}
-                                                </td>
+                                                                </td>
+                                                            );
+                                                        case "distance":
+                                                            return (
+                                                                <td key="distance" className="py-3 px-3 align-middle font-mono tabular-nums" style={cellStyle}>
+                                                                    <div className="font-medium text-neutral-900 dark:text-white">
+                                                                        {route.totalDistanceNm}{" "}
+                                                                        <span className="text-[10px] text-neutral-400 font-normal">
+                                                                            NM
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="text-[10px] text-neutral-400">
+                                                                        {Math.round(
+                                                                            route.totalDistanceNm *
+                                                                                1.852,
+                                                                        )}{" "}
+                                                                        km
+                                                                    </div>
+                                                                </td>
+                                                            );
+                                                        case "airborne":
+                                                            return (
+                                                                <td key="airborne" className="py-3 px-3 align-middle font-mono tabular-nums text-neutral-900 dark:text-white" style={cellStyle}>
+                                                                    {formatDurationHoursMinutes(
+                                                                        route.totalAirborneMinutes,
+                                                                    )}
+                                                                </td>
+                                                            );
+                                                        case "blockTime":
+                                                            return (
+                                                                <td key="blockTime" className="py-3 px-3 align-middle font-mono tabular-nums" style={cellStyle}>
+                                                                    <div className="text-neutral-900 dark:text-white">
+                                                                        {formatDurationHoursMinutes(
+                                                                            route.totalDurationMinutes,
+                                                                        )}
+                                                                    </div>
+                                                                    {route.totalGroundMinutes >
+                                                                        0 && (
+                                                                        <div className="text-[10px] text-neutral-400">
+                                                                            incl.{" "}
+                                                                            {
+                                                                                route.totalGroundMinutes
+                                                                            }
+                                                                            m taxi
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                            );
+                                                        case "altitude":
+                                                            return (
+                                                                <td key="altitude" className="py-3 px-3 align-middle font-mono tabular-nums text-neutral-700 dark:text-neutral-300" style={cellStyle}>
+                                                                    {route.recommendedAltitudeFt
+                                                                        ? formatFlightLevelOrAltitude(
+                                                                              route.recommendedAltitudeFt,
+                                                                          )
+                                                                        : firstSector?.cruiseAltitudeFt
+                                                                          ? formatFlightLevelOrAltitude(
+                                                                                firstSector.cruiseAltitudeFt,
+                                                                            )
+                                                                          : "VFR"}
+                                                                </td>
+                                                            );
+                                                        case "status":
+                                                            return (
+                                                                <td key="status" className="py-3 px-3 align-middle" style={cellStyle}>
+                                                                    {route.status ===
+                                                                    "flown" ? (
+                                                                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
+                                                                            <CheckCircle2 className="w-3 h-3" />
+                                                                            <span>Flown</span>
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40">
+                                                                            <Clock className="w-3.5 h-3.5" />
+                                                                            <span>Draft</span>
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                            );
+                                                        case "saved":
+                                                            return (
+                                                                <td key="saved" className="py-3 px-3 align-middle text-[11px] text-neutral-500 dark:text-neutral-400 font-mono whitespace-nowrap truncate" style={cellStyle}>
+                                                                    {new Date(
+                                                                        route.createdAt,
+                                                                    ).toLocaleDateString()}
+                                                                </td>
+                                                            );
+                                                        default:
+                                                            return null;
+                                                    }
+                                                })}
 
                                                 {/* Actions Cell */}
                                                 <td
@@ -1041,7 +1202,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                             {isMultiSector && isExpanded && (
                                                 <tr className="bg-neutral-100/60 dark:bg-[#0c0c0c] border-b border-neutral-200 dark:border-geist-hairline">
                                                     <td
-                                                        colSpan={10}
+                                                        colSpan={visibleColumnIds.length + 1}
                                                         className="p-3 pl-12 pr-4"
                                                     >
                                                         <div className="bg-white dark:bg-[#141414] border border-neutral-200 dark:border-geist-hairline rounded-sm p-3 space-y-2 shadow-2xs">
@@ -1188,7 +1349,21 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                             setCurrentPage(1);
                         }}
                         itemName="saved routes"
-                    />
+                    >
+                        <TableColumnCustomizer
+                            columns={columns}
+                            onToggleVisibility={toggleColumnVisibility}
+                            onMoveUp={moveColumnUp}
+                            onMoveDown={moveColumnDown}
+                            onReset={resetToDefaults}
+                            onResetWidths={resetColumnWidths}
+                            onResetColumnWidth={resetColumnWidth}
+                            hasCustomWidths={hasCustomWidths}
+                            placement="auto"
+                            alignPopover="left"
+                            size="sm"
+                        />
+                    </PaginationBar>
                 )}
             </div>
 

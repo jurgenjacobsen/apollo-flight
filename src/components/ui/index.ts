@@ -2,3 +2,8 @@ export * from "./Select";
 export * from "./PaginationBar";
 export * from "./ConfirmDeleteButton";
 export * from "./StatusPill";
+export * from "./Tooltip";
+export * from "./TableColumnCustomizer";
+export * from "./ResizableHeaderCell";
+export * from "./ErrorBoundary";
+export * from "./Checkbox";

@@ -9,7 +9,16 @@ import {
     FlightRecord,
     LogbookExportFormat,
 } from "../../types/flight";
-import { PaginationBar, ConfirmDeleteButton } from "../ui";
+import {
+    PaginationBar,
+    ConfirmDeleteButton,
+    TableColumnCustomizer,
+    ResizableHeaderCell,
+} from "../ui";
+import {
+    useTableColumnOrder,
+    ColumnDefinition,
+} from "../../hooks/useTableColumnOrder";
 import {
     BookOpen,
     Search,
@@ -51,6 +60,18 @@ export type LogbookSortField =
 
 export type LogbookSortDirection = "asc" | "desc";
 
+const DEFAULT_LOGBOOK_COLUMNS: ColumnDefinition[] = [
+    { id: "route", label: "Route", required: true },
+    { id: "aircraft", label: "Aircraft" },
+    { id: "date", label: "Date & Time" },
+    { id: "duration", label: "Duration" },
+    { id: "distance", label: "Distance" },
+    { id: "maxAlt", label: "Max Alt" },
+    { id: "peakGs", label: "Peak GS" },
+    { id: "touchdown", label: "Touchdown" },
+    { id: "status", label: "Status" },
+];
+
 interface ExportMenuState {
     flightId: string;
     departureIcao: string;
@@ -90,6 +111,23 @@ export const LogbookView: React.FC = () => {
     const menuRef = useRef<HTMLDivElement>(null);
     const logbookMenuRef = useRef<HTMLDivElement>(null);
     const attemptedHealingRef = useRef<Set<string>>(new Set());
+
+    const {
+        columns,
+        visibleColumnIds,
+        getColumnWidth,
+        setColumnWidth,
+        resetColumnWidth,
+        resetColumnWidths,
+        hasCustomWidths,
+        toggleColumnVisibility,
+        moveColumnUp,
+        moveColumnDown,
+        resetToDefaults,
+    } = useTableColumnOrder(
+        "apollo_logbook_columns_v1",
+        DEFAULT_LOGBOOK_COLUMNS,
+    );
 
     const getPrimaryDirection = (
         field: LogbookSortField,
@@ -714,111 +752,213 @@ export const LogbookView: React.FC = () => {
             </div>
 
             {/* Flight Logbook Table Container */}
-            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-sm relative">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table
+                        className="w-full text-left border-collapse"
+                        style={{ tableLayout: hasCustomWidths ? "fixed" : "auto" }}
+                    >
                         <thead>
                             <tr className="bg-neutral-100/70 dark:bg-[#0e0e0e] border-b border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-400 select-none">
-                                <th className="py-2.5 px-4 font-medium">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSort("route")}
-                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
-                                    >
-                                        <Plane className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
-                                        <span>Route</span>
-                                        {renderSortIcon("route")}
-                                    </button>
-                                </th>
-                                <th className="py-2.5 px-4 font-medium">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSort("aircraft")}
-                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
-                                    >
-                                        <Layers className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
-                                        <span>Aircraft</span>
-                                        {renderSortIcon("aircraft")}
-                                    </button>
-                                </th>
-                                <th className="py-2.5 px-4 font-medium">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSort("date")}
-                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
-                                    >
-                                        <Calendar className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
-                                        <span>Date & Time</span>
-                                        {renderSortIcon("date")}
-                                    </button>
-                                </th>
-                                <th className="py-2.5 px-4 font-medium">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSort("duration")}
-                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
-                                    >
-                                        <Clock className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
-                                        <span>Duration</span>
-                                        {renderSortIcon("duration")}
-                                    </button>
-                                </th>
-                                <th className="py-2.5 px-4 font-medium">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSort("distance")}
-                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
-                                    >
-                                        <Compass className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
-                                        <span>Distance</span>
-                                        {renderSortIcon("distance")}
-                                    </button>
-                                </th>
-                                <th className="py-2.5 px-4 font-medium">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSort("maxAlt")}
-                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
-                                    >
-                                        <Gauge className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
-                                        <span>Max Alt</span>
-                                        {renderSortIcon("maxAlt")}
-                                    </button>
-                                </th>
-                                <th className="py-2.5 px-4 font-medium">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSort("peakGs")}
-                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
-                                    >
-                                        <Wind className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
-                                        <span>Peak GS</span>
-                                        {renderSortIcon("peakGs")}
-                                    </button>
-                                </th>
-                                <th className="py-2.5 px-4 font-medium">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSort("touchdown")}
-                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
-                                    >
-                                        <TrendingDown className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
-                                        <span>Touchdown</span>
-                                        {renderSortIcon("touchdown")}
-                                    </button>
-                                </th>
-                                <th className="py-2.5 px-4 font-medium">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSort("status")}
-                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
-                                    >
-                                        <Activity className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
-                                        <span>Status</span>
-                                        {renderSortIcon("status")}
-                                    </button>
-                                </th>
-                                <th className="py-2.5 px-4 font-medium text-right">
+                                {visibleColumnIds.map((colId) => {
+                                    switch (colId) {
+                                        case "route":
+                                            return (
+                                                <ResizableHeaderCell
+                                                    key="route"
+                                                    columnId="route"
+                                                    width={getColumnWidth("route")}
+                                                    onResize={setColumnWidth}
+                                                    onResetWidth={resetColumnWidth}
+                                                    className="py-2.5 px-4 font-medium"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSort("route")}
+                                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                                    >
+                                                        <Plane className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                        <span>Route</span>
+                                                        {renderSortIcon("route")}
+                                                    </button>
+                                                </ResizableHeaderCell>
+                                            );
+                                        case "aircraft":
+                                            return (
+                                                <ResizableHeaderCell
+                                                    key="aircraft"
+                                                    columnId="aircraft"
+                                                    width={getColumnWidth("aircraft")}
+                                                    onResize={setColumnWidth}
+                                                    onResetWidth={resetColumnWidth}
+                                                    className="py-2.5 px-4 font-medium"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSort("aircraft")}
+                                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                                    >
+                                                        <Layers className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                        <span>Aircraft</span>
+                                                        {renderSortIcon("aircraft")}
+                                                    </button>
+                                                </ResizableHeaderCell>
+                                            );
+                                        case "date":
+                                            return (
+                                                <ResizableHeaderCell
+                                                    key="date"
+                                                    columnId="date"
+                                                    width={getColumnWidth("date")}
+                                                    onResize={setColumnWidth}
+                                                    onResetWidth={resetColumnWidth}
+                                                    className="py-2.5 px-4 font-medium"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSort("date")}
+                                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                                    >
+                                                        <Calendar className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                        <span>Date & Time</span>
+                                                        {renderSortIcon("date")}
+                                                    </button>
+                                                </ResizableHeaderCell>
+                                            );
+                                        case "duration":
+                                            return (
+                                                <ResizableHeaderCell
+                                                    key="duration"
+                                                    columnId="duration"
+                                                    width={getColumnWidth("duration")}
+                                                    onResize={setColumnWidth}
+                                                    onResetWidth={resetColumnWidth}
+                                                    className="py-2.5 px-4 font-medium"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSort("duration")}
+                                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                                    >
+                                                        <Clock className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                        <span>Duration</span>
+                                                        {renderSortIcon("duration")}
+                                                    </button>
+                                                </ResizableHeaderCell>
+                                            );
+                                        case "distance":
+                                            return (
+                                                <ResizableHeaderCell
+                                                    key="distance"
+                                                    columnId="distance"
+                                                    width={getColumnWidth("distance")}
+                                                    onResize={setColumnWidth}
+                                                    onResetWidth={resetColumnWidth}
+                                                    className="py-2.5 px-4 font-medium"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSort("distance")}
+                                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                                    >
+                                                        <Compass className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                        <span>Distance</span>
+                                                        {renderSortIcon("distance")}
+                                                    </button>
+                                                </ResizableHeaderCell>
+                                            );
+                                        case "maxAlt":
+                                            return (
+                                                <ResizableHeaderCell
+                                                    key="maxAlt"
+                                                    columnId="maxAlt"
+                                                    width={getColumnWidth("maxAlt")}
+                                                    onResize={setColumnWidth}
+                                                    onResetWidth={resetColumnWidth}
+                                                    className="py-2.5 px-4 font-medium"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSort("maxAlt")}
+                                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                                    >
+                                                        <Gauge className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                        <span>Max Alt</span>
+                                                        {renderSortIcon("maxAlt")}
+                                                    </button>
+                                                </ResizableHeaderCell>
+                                            );
+                                        case "peakGs":
+                                            return (
+                                                <ResizableHeaderCell
+                                                    key="peakGs"
+                                                    columnId="peakGs"
+                                                    width={getColumnWidth("peakGs")}
+                                                    onResize={setColumnWidth}
+                                                    onResetWidth={resetColumnWidth}
+                                                    className="py-2.5 px-4 font-medium"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSort("peakGs")}
+                                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                                    >
+                                                        <Wind className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                        <span>Peak GS</span>
+                                                        {renderSortIcon("peakGs")}
+                                                    </button>
+                                                </ResizableHeaderCell>
+                                            );
+                                        case "touchdown":
+                                            return (
+                                                <ResizableHeaderCell
+                                                    key="touchdown"
+                                                    columnId="touchdown"
+                                                    width={getColumnWidth("touchdown")}
+                                                    onResize={setColumnWidth}
+                                                    onResetWidth={resetColumnWidth}
+                                                    className="py-2.5 px-4 font-medium"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSort("touchdown")}
+                                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                                    >
+                                                        <TrendingDown className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                        <span>Touchdown</span>
+                                                        {renderSortIcon("touchdown")}
+                                                    </button>
+                                                </ResizableHeaderCell>
+                                            );
+                                        case "status":
+                                            return (
+                                                <ResizableHeaderCell
+                                                    key="status"
+                                                    columnId="status"
+                                                    width={getColumnWidth("status")}
+                                                    onResize={setColumnWidth}
+                                                    onResetWidth={resetColumnWidth}
+                                                    className="py-2.5 px-4 font-medium"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSort("status")}
+                                                        className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                                    >
+                                                        <Activity className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                        <span>Status</span>
+                                                        {renderSortIcon("status")}
+                                                    </button>
+                                                </ResizableHeaderCell>
+                                            );
+                                        default:
+                                            return null;
+                                    }
+                                })}
+                                <th
+                                    className="py-2.5 px-4 font-medium text-right"
+                                    style={hasCustomWidths ? { width: "110px" } : undefined}
+                                >
                                     <div className="flex items-center justify-end gap-1.5">
                                         <Sliders className="w-3.5 h-3.5 text-neutral-400" />
                                         <span>Actions</span>
@@ -853,105 +993,115 @@ export const LogbookView: React.FC = () => {
                                         }
                                         className="hover:bg-neutral-50/80 dark:hover:bg-[#121212] transition-colors duration-150 group"
                                     >
-                                        {/* Route */}
-                                        <td className="py-3 px-4">
-                                            <div className="flex items-center gap-1.5 font-semibold text-neutral-900 dark:text-white">
-                                                <span>
-                                                    {flight.departureIcao}
-                                                </span>
-                                                <ArrowRight className="w-3 h-3 text-neutral-400" />
-                                                <span>
-                                                    {flight.arrivalIcao}
-                                                </span>
-                                            </div>
-                                        </td>
+                                        {visibleColumnIds.map((colId) => {
+                                            const colWidth = getColumnWidth(colId);
+                                            const cellStyle: React.CSSProperties | undefined = colWidth
+                                                ? {
+                                                      width: `${colWidth}px`,
+                                                      maxWidth: `${colWidth}px`,
+                                                      overflow: "hidden",
+                                                  }
+                                                : undefined;
 
-                                        {/* Aircraft Type */}
-                                        <td
-                                            className="py-3 px-4 text-neutral-700 dark:text-neutral-300 max-w-[190px] truncate"
-                                            title={`${flight.aircraftType}${flight.totalWeight || flight.grossWeight ? ` · Gross Weight: ${formatWeight(flight.totalWeight || flight.grossWeight, weightUnit)}` : ""}`}
-                                        >
-                                            <div className="font-medium text-neutral-900 dark:text-white truncate">
-                                                {flight.aircraftType}
-                                            </div>
-                                            {flight.totalWeight ||
-                                            flight.grossWeight ? (
-                                                <div className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tracking-tight">
-                                                    {formatWeight(
-                                                        flight.totalWeight ||
-                                                            flight.grossWeight,
-                                                        weightUnit,
-                                                    )}
-                                                </div>
-                                            ) : null}
-                                        </td>
-
-                                        {/* Date */}
-                                        <td className="py-3 px-4 text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
-                                            <span>{flightDate}</span>
-                                            <span className="text-[11px] text-neutral-400 dark:text-neutral-500 ml-1.5">
-                                                ({flightTime})
-                                            </span>
-                                        </td>
-
-                                        {/* Duration */}
-                                        <td className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
-                                            {formatLogbookDuration(
-                                                flight.flightTimeSeconds,
-                                            )}
-                                        </td>
-
-                                        {/* Distance */}
-                                        <td className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
-                                            {flight.distanceFlownNm.toFixed(1)}{" "}
-                                            NM
-                                        </td>
-
-                                        {/* Max Altitude */}
-                                        <td className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
-                                            {flight.maxAltitude.toLocaleString()}{" "}
-                                            ft
-                                        </td>
-
-                                        {/* Peak GS */}
-                                        <td className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
-                                            {flight.maxGroundSpeed} kt
-                                        </td>
-
-                                        {/* Landing Rate */}
-                                        <td className="py-3 px-4 tabular-nums whitespace-nowrap">
-                                            {flight.landingRateFpm ? (
-                                                <span
-                                                    className={`inline-flex items-center gap-1 ${
-                                                        Math.abs(
-                                                            flight.landingRateFpm,
-                                                        ) < 180
-                                                            ? "text-emerald-600 dark:text-emerald-400"
-                                                            : Math.abs(
-                                                                    flight.landingRateFpm,
-                                                                ) < 300
-                                                              ? "text-amber-600 dark:text-amber-400"
-                                                              : "text-red-600 dark:text-red-400"
-                                                    }`}
-                                                >
-                                                    {Math.round(
-                                                        flight.landingRateFpm,
-                                                    )}{" "}
-                                                    fpm
-                                                </span>
-                                            ) : (
-                                                <span className="text-neutral-400 dark:text-neutral-600">
-                                                    —
-                                                </span>
-                                            )}
-                                        </td>
-
-                                        {/* Status */}
-                                        <td className="py-3 px-4 whitespace-nowrap">
-                                            <span className="inline-block text-[11px] px-2 py-0.5 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-geist-hairline">
-                                                {flight.status}
-                                            </span>
-                                        </td>
+                                            switch (colId) {
+                                                case "route":
+                                                    return (
+                                                        <td key="route" className="py-3 px-4" style={cellStyle}>
+                                                            <div className="flex items-center gap-1.5 font-semibold text-neutral-900 dark:text-white truncate">
+                                                                <span>{flight.departureIcao}</span>
+                                                                <ArrowRight className="w-3 h-3 text-neutral-400 shrink-0" />
+                                                                <span>{flight.arrivalIcao}</span>
+                                                            </div>
+                                                        </td>
+                                                    );
+                                                case "aircraft":
+                                                    return (
+                                                        <td
+                                                            key="aircraft"
+                                                            className="py-3 px-4 text-neutral-700 dark:text-neutral-300 truncate"
+                                                            style={cellStyle}
+                                                            title={`${flight.aircraftType}${flight.totalWeight || flight.grossWeight ? ` · Gross Weight: ${formatWeight(flight.totalWeight || flight.grossWeight, weightUnit)}` : ""}`}
+                                                        >
+                                                            <div className="font-medium text-neutral-900 dark:text-white truncate">
+                                                                {flight.aircraftType}
+                                                            </div>
+                                                            {flight.totalWeight || flight.grossWeight ? (
+                                                                <div className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tracking-tight truncate">
+                                                                    {formatWeight(
+                                                                        flight.totalWeight || flight.grossWeight,
+                                                                        weightUnit,
+                                                                    )}
+                                                                </div>
+                                                            ) : null}
+                                                        </td>
+                                                    );
+                                                case "date":
+                                                    return (
+                                                        <td key="date" className="py-3 px-4 text-neutral-500 dark:text-neutral-400 whitespace-nowrap truncate" style={cellStyle}>
+                                                            <span>{flightDate}</span>
+                                                            <span className="text-[11px] text-neutral-400 dark:text-neutral-500 ml-1.5">
+                                                                ({flightTime})
+                                                            </span>
+                                                        </td>
+                                                    );
+                                                case "duration":
+                                                    return (
+                                                        <td key="duration" className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate" style={cellStyle}>
+                                                            {formatLogbookDuration(flight.flightTimeSeconds)}
+                                                        </td>
+                                                    );
+                                                case "distance":
+                                                    return (
+                                                        <td key="distance" className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate" style={cellStyle}>
+                                                            {(flight.distanceFlownNm ?? 0).toFixed(1)} NM
+                                                        </td>
+                                                    );
+                                                case "maxAlt":
+                                                    return (
+                                                        <td key="maxAlt" className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate" style={cellStyle}>
+                                                            {flight.maxAltitude.toLocaleString()} ft
+                                                        </td>
+                                                    );
+                                                case "peakGs":
+                                                    return (
+                                                        <td key="peakGs" className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate" style={cellStyle}>
+                                                            {flight.maxGroundSpeed} kt
+                                                        </td>
+                                                    );
+                                                case "touchdown":
+                                                    return (
+                                                        <td key="touchdown" className="py-3 px-4 tabular-nums whitespace-nowrap truncate" style={cellStyle}>
+                                                            {flight.landingRateFpm ? (
+                                                                <span
+                                                                    className={`inline-flex items-center gap-1 ${
+                                                                        Math.abs(flight.landingRateFpm) < 180
+                                                                            ? "text-emerald-600 dark:text-emerald-400"
+                                                                            : Math.abs(flight.landingRateFpm) < 300
+                                                                              ? "text-amber-600 dark:text-amber-400"
+                                                                              : "text-red-600 dark:text-red-400"
+                                                                    }`}
+                                                                >
+                                                                    {Math.round(flight.landingRateFpm)} fpm
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-neutral-400 dark:text-neutral-600">
+                                                                    —
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                    );
+                                                case "status":
+                                                    return (
+                                                        <td key="status" className="py-3 px-4 whitespace-nowrap truncate" style={cellStyle}>
+                                                            <span className="inline-block text-[11px] px-2 py-0.5 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-geist-hairline">
+                                                                {flight.status}
+                                                            </span>
+                                                        </td>
+                                                    );
+                                                default:
+                                                    return null;
+                                            }
+                                        })}
 
                                         {/* Actions */}
                                         <td className="py-3 px-4 text-right whitespace-nowrap relative">
@@ -1036,7 +1186,21 @@ export const LogbookView: React.FC = () => {
                             setCurrentPage(1);
                         }}
                         itemName="flights"
-                    />
+                    >
+                        <TableColumnCustomizer
+                            columns={columns}
+                            onToggleVisibility={toggleColumnVisibility}
+                            onMoveUp={moveColumnUp}
+                            onMoveDown={moveColumnDown}
+                            onReset={resetToDefaults}
+                            onResetWidths={resetColumnWidths}
+                            onResetColumnWidth={resetColumnWidth}
+                            hasCustomWidths={hasCustomWidths}
+                            placement="auto"
+                            alignPopover="left"
+                            size="sm"
+                        />
+                    </PaginationBar>
                 )}
 
                 {filteredFlights.length === 0 && (

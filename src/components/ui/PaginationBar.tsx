@@ -16,6 +16,7 @@ export interface PaginationBarProps {
     pageSizeOptions?: number[];
     itemName?: string;
     className?: string;
+    children?: React.ReactNode;
 }
 
 export const PaginationBar: React.FC<PaginationBarProps> = ({
@@ -28,6 +29,7 @@ export const PaginationBar: React.FC<PaginationBarProps> = ({
     pageSizeOptions = [25, 50, 100],
     itemName = "items",
     className = "",
+    children,
 }) => {
     const safeTotalPages = Math.max(1, totalPages);
     const [pageInput, setPageInput] = useState<string>(String(currentPage));
@@ -115,6 +117,12 @@ export const PaginationBar: React.FC<PaginationBarProps> = ({
                         ))}
                     </div>
                 </div>
+
+                {children && (
+                    <div className="flex items-center pl-3 border-l border-neutral-200 dark:border-geist-hairline">
+                        {children}
+                    </div>
+                )}
             </div>
 
             {/* Pagination Controls */}
