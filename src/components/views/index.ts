@@ -1,4 +1,4 @@
-export * from "./DashboardView";
+export * from "./Overview";
 export * from "./NewRouteView";
 export * from "./SavedRoutesView";
 export * from "./LogbookView";
@@ -7,5 +7,6 @@ export * from "./VisitedWorldView";
 export * from "./IfrTrainer";
 export * from "./HoldTrainer";
 export * from "./SettingsView";
+export * from "./ChecklistsView";
 export * from "./FeedbackView";
 export * from "./RecycleBinView";

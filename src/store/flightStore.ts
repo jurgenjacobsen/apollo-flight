@@ -16,6 +16,8 @@ import {
     ApolloExportBundle,
     WeightUnit,
 } from "../types/flight";
+import { Checklist, ChecklistItem, ChecklistSection } from "../types/checklist";
+import { DEFAULT_CHECKLISTS } from "../data/defaultChecklists";
 import { SavedRoute, GeneratedRoute, RouteSector } from "../types/route";
 import { calculateTouchdownGForce } from "../utils/touchdownPhysics";
 import { calculateDistanceNm } from "../data/mockData";
@@ -956,10 +958,13 @@ export interface FlightState {
         | "visited"
         | "ifr-trainer"
         | "hold-trainer"
+        | "checklists"
         | "settings"
         | "feedback"
         | "recycle-bin";
     recycleBin: DeletedFlightRecord[];
+    checklists: Checklist[];
+    activeChecklistId: string | null;
     isSidebarCollapsed: boolean;
     theme: "light" | "dark";
     weightUnit: WeightUnit;
@@ -1065,6 +1070,24 @@ export interface FlightState {
         importedRoutes: number;
         message: string;
     }>;
+    setActiveChecklistId: (id: string | null) => void;
+    setChecklists: (checklists: Checklist[]) => void;
+    addChecklist: (
+        checklist: Omit<Checklist, "id" | "createdAt" | "updatedAt"> & { id?: string },
+    ) => Checklist;
+    updateChecklist: (id: string, updates: Partial<Checklist>) => void;
+    deleteChecklist: (id: string) => void;
+    duplicateChecklist: (id: string) => void;
+    toggleChecklistItem: (
+        checklistId: string,
+        sectionId: string,
+        itemId: string,
+    ) => void;
+    resetChecklist: (checklistId: string) => void;
+    resetChecklistSection: (checklistId: string, sectionId: string) => void;
+    importChecklists: (
+        imported: Checklist[],
+    ) => { added: number; replaced: number };
 }
 
 const DEFAULT_TELEMETRY: TelemetryData = {
@@ -1280,6 +1303,8 @@ export const useFlightStore = create<FlightState>()(
             visitedCountries: [],
             savedRoutes: [],
             recycleBin: [],
+            checklists: DEFAULT_CHECKLISTS,
+            activeChecklistId: null,
             isSidebarCollapsed: false,
             currentGeneratedRoute: null,
             selectedFlightId: null,
@@ -1680,9 +1705,34 @@ export const useFlightStore = create<FlightState>()(
                                     dbSettings.recycle_bin_flights,
                                 );
                                 if (Array.isArray(parsed)) {
-                                    set({ recycleBin: parsed });
+                                    set({
+                                        recycleBin: parsed.map(
+                                            ({ telemetryPoints, ...rest }) => ({
+                                                ...rest,
+                                                telemetryPoints: [],
+                                            }),
+                                        ),
+                                    });
                                 }
                             } catch {}
+                        }
+                        if (typeof dbSettings.checklists === "string") {
+                            try {
+                                const parsed = JSON.parse(dbSettings.checklists);
+                                if (Array.isArray(parsed) && parsed.length > 0) {
+                                    set({ checklists: parsed });
+                                }
+                            } catch {}
+                        } else {
+                            const initialChecklists =
+                                get().checklists && get().checklists.length > 0
+                                    ? get().checklists
+                                    : DEFAULT_CHECKLISTS;
+                            set({ checklists: initialChecklists });
+                            safeInvoke("set_user_setting", {
+                                key: "checklists",
+                                value: JSON.stringify(initialChecklists),
+                            }).catch(() => {});
                         }
                     } else {
                         // Seed existing preferences into logbook.db user_settings table on initial migration
@@ -1694,6 +1744,10 @@ export const useFlightStore = create<FlightState>()(
                         const currentAutoCheck = get().autoCheckUpdates;
                         const currentPageSize = get().pageSize || 50;
                         const currentWeightUnit = get().weightUnit || "kg";
+                        const currentChecklists =
+                            get().checklists && get().checklists.length > 0
+                                ? get().checklists
+                                : DEFAULT_CHECKLISTS;
                         await safeInvoke("set_user_setting", {
                             key: "theme",
                             value: currentTheme,
@@ -1722,6 +1776,10 @@ export const useFlightStore = create<FlightState>()(
                             key: "weightUnit",
                             value: currentWeightUnit,
                         });
+                        await safeInvoke("set_user_setting", {
+                            key: "checklists",
+                            value: JSON.stringify(currentChecklists),
+                        });
                     }
 
                     if (
@@ -1729,17 +1787,33 @@ export const useFlightStore = create<FlightState>()(
                         Array.isArray(dbFlights) &&
                         dbFlights.length > 0
                     ) {
+                        const existingDbIds = new Set(dbFlights.map((f) => f.id));
+                        const unsyncedCached = get().flights.filter(
+                            (f) => !existingDbIds.has(f.id),
+                        );
+                        for (const unsaved of unsyncedCached) {
+                            const {
+                                telemetryPoints: _pts,
+                                touchdowns: _tds,
+                                ...dbRecord
+                            } = unsaved;
+                            await safeInvoke("save_flight", { flight: dbRecord });
+                        }
+
+                        const mergedFlights = [...unsyncedCached, ...dbFlights];
                         const initialId =
-                            get().selectedFlightId || dbFlights[0]?.id || null;
+                            get().selectedFlightId ||
+                            mergedFlights[0]?.id ||
+                            null;
                         set({
-                            flights: dbFlights,
+                            flights: mergedFlights,
                             selectedFlightId: initialId,
                         });
                         if (initialId) {
                             get().loadFlightDetails(initialId);
                         }
                         // Auto-heal any legacy flights with 0 distance in the background
-                        const needsHealing = dbFlights.filter(
+                        const needsHealing = mergedFlights.filter(
                             (f) => !f.distanceFlownNm || f.distanceFlownNm <= 0,
                         );
                         for (const f of needsHealing) {
@@ -2119,7 +2193,12 @@ export const useFlightStore = create<FlightState>()(
                                           }
                                         : state.activeFlight,
                             }));
-                            safeInvoke("save_flight", { flight: healed }).catch(
+                            const {
+                                telemetryPoints: _pts,
+                                touchdowns: _tds,
+                                ...dbRecord
+                            } = healed;
+                            safeInvoke("save_flight", { flight: dbRecord }).catch(
                                 () => {},
                             );
                             return healed;
@@ -2268,7 +2347,12 @@ export const useFlightStore = create<FlightState>()(
                 }
 
                 // 2. MSFS Main Menu / Loading Screen: Clean telemetry display & halt recording data
-                if (newData.isInMenu) {
+                if (
+                    newData.isInMenu ||
+                    (newData.simConnected &&
+                        newData.latitude === 0 &&
+                        newData.longitude === 0)
+                ) {
                     set({
                         currentTelemetry: {
                             ...DEFAULT_TELEMETRY,
@@ -2819,14 +2903,24 @@ export const useFlightStore = create<FlightState>()(
                                 );
                             }
 
+                            const endTime = new Date().toISOString();
+                            const flightDurationSeconds = Math.max(
+                                0,
+                                Math.round(
+                                    (new Date(endTime).getTime() -
+                                        new Date(active.startTime).getTime()) /
+                                        1000,
+                                ),
+                            );
+
                             const completedFlight: FlightRecord = {
                                 ...active,
                                 arrivalIcao: arrIcao,
-                                endTime: new Date().toISOString(),
+                                endTime,
                                 status: "COMPLETED",
                                 landingRateFpm: avgLandingRate,
                                 touchdowns: currentTouchdowns,
-                                flightTimeSeconds: active.flightTimeSeconds + 1,
+                                flightTimeSeconds: flightDurationSeconds,
                                 maxAltitude: Math.max(
                                     active.maxAltitude,
                                     Math.round(current.altitudeMsl),
@@ -2847,9 +2941,44 @@ export const useFlightStore = create<FlightState>()(
                             };
 
                             flushTelemetryBuffer();
-                            safeInvoke("save_flight", {
-                                flight: completedFlight,
+                            const {
+                                telemetryPoints: _pts,
+                                touchdowns: _tds,
+                                ...dbRecord
+                            } = completedFlight;
+                            await safeInvoke("save_flight", {
+                                flight: dbRecord,
                             });
+
+                            if (allPoints.length > 0) {
+                                saveFlightTelemetry(
+                                    completedFlight.id,
+                                    allPoints,
+                                ).catch(() => {});
+                                const rawPoints = allPoints.map((tp) => ({
+                                    flight_id: completedFlight.id,
+                                    timestamp: tp.timestamp,
+                                    latitude: tp.latitude,
+                                    longitude: tp.longitude,
+                                    altitude_msl: tp.altitudeMsl,
+                                    altitude_agl: tp.altitudeAgl,
+                                    indicated_airspeed: tp.indicatedAirspeed,
+                                    ground_speed: tp.groundSpeed,
+                                    heading: tp.heading,
+                                    pitch: tp.pitch,
+                                    bank: tp.bank,
+                                    vertical_speed: tp.verticalSpeed,
+                                    is_on_ground: tp.isOnGround ? 1 : 0,
+                                    wind_speed: tp.windSpeed,
+                                    wind_direction: tp.windDirection,
+                                    oat: tp.oat,
+                                    tat: tp.tat,
+                                    visibility: tp.visibility,
+                                }));
+                                safeInvoke("save_telemetry_batch", {
+                                    points: rawPoints,
+                                }).catch(() => {});
+                            }
 
                             // Record unique airports visited on this flight
                             const uniqueAirportIcaos = new Set<string>();
@@ -2926,7 +3055,14 @@ export const useFlightStore = create<FlightState>()(
                         maxWindSpeed,
                         maxWindDirection,
                         touchdowns: currentTouchdowns,
-                        flightTimeSeconds: active.flightTimeSeconds + 1,
+                        flightTimeSeconds: Math.max(
+                            0,
+                            Math.round(
+                                (Date.now() -
+                                    new Date(active.startTime).getTime()) /
+                                    1000,
+                            ),
+                        ),
                         maxAltitude: Math.max(
                             active.maxAltitude,
                             Math.round(current.altitudeMsl),
@@ -3077,10 +3213,21 @@ export const useFlightStore = create<FlightState>()(
                     );
                 }
 
+                const endTime = new Date().toISOString();
+                const flightDurationSeconds = Math.max(
+                    0,
+                    Math.round(
+                        (new Date(endTime).getTime() -
+                            new Date(activeFlight.startTime).getTime()) /
+                            1000,
+                    ),
+                );
+
                 const completedFlight: FlightRecord = {
                     ...activeFlight,
                     arrivalIcao: arrIcao,
-                    endTime: new Date().toISOString(),
+                    endTime,
+                    flightTimeSeconds: flightDurationSeconds,
                     status: "COMPLETED",
                     landingRateFpm: avgLandingRate,
                     touchdowns: tds,
@@ -3090,7 +3237,12 @@ export const useFlightStore = create<FlightState>()(
                 };
 
                 flushTelemetryBuffer();
-                safeInvoke("save_flight", { flight: completedFlight });
+                const {
+                    telemetryPoints: _pts,
+                    touchdowns: _tds,
+                    ...dbRecord
+                } = completedFlight;
+                await safeInvoke("save_flight", { flight: dbRecord });
                 if (
                     completedFlight.telemetryPoints &&
                     completedFlight.telemetryPoints.length > 0
@@ -3179,8 +3331,11 @@ export const useFlightStore = create<FlightState>()(
                 }
                 if (!fullFlight) return;
 
+                const { telemetryPoints: _pts, ...flightWithoutTelem } =
+                    fullFlight;
                 const deletedFlight: DeletedFlightRecord = {
-                    ...fullFlight,
+                    ...flightWithoutTelem,
+                    telemetryPoints: [],
                     deletedAt: new Date().toISOString(),
                 };
 
@@ -3199,6 +3354,7 @@ export const useFlightStore = create<FlightState>()(
                         get().selectedFlightId === id
                             ? updatedActive[0]?.id || null
                             : get().selectedFlightId,
+                    scrubbedTelemetryIndex: null,
                     visitedCountries: computeVisitedCountries(
                         updatedActive,
                         get().visitedAirports,
@@ -3208,7 +3364,14 @@ export const useFlightStore = create<FlightState>()(
                 try {
                     await safeInvoke("set_user_setting", {
                         key: "recycle_bin_flights",
-                        value: JSON.stringify(updatedRecycle),
+                        value: JSON.stringify(
+                            updatedRecycle.map(
+                                ({ telemetryPoints, ...rest }) => ({
+                                    ...rest,
+                                    telemetryPoints: [],
+                                }),
+                            ),
+                        ),
                     });
                 } catch (err) {
                     console.warn(
@@ -3821,6 +3984,219 @@ export const useFlightStore = create<FlightState>()(
                     ),
                 });
             },
+
+            setActiveChecklistId: (id) => set({ activeChecklistId: id }),
+
+            setChecklists: (checklists) => {
+                set({ checklists });
+                safeInvoke("set_user_setting", {
+                    key: "checklists",
+                    value: JSON.stringify(checklists),
+                }).catch(() => {});
+            },
+
+            addChecklist: (checklistData) => {
+                const id =
+                    checklistData.id ||
+                    `chk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                const now = new Date().toISOString();
+                const newChecklist: Checklist = {
+                    ...checklistData,
+                    id,
+                    createdAt: now,
+                    updatedAt: now,
+                };
+                const updated = [newChecklist, ...get().checklists];
+                set({ checklists: updated, activeChecklistId: id });
+                safeInvoke("set_user_setting", {
+                    key: "checklists",
+                    value: JSON.stringify(updated),
+                }).catch(() => {});
+                return newChecklist;
+            },
+
+            updateChecklist: (id, updates) => {
+                const now = new Date().toISOString();
+                const updated = get().checklists.map((c) =>
+                    c.id === id ? { ...c, ...updates, updatedAt: now } : c,
+                );
+                set({ checklists: updated });
+                safeInvoke("set_user_setting", {
+                    key: "checklists",
+                    value: JSON.stringify(updated),
+                }).catch(() => {});
+            },
+
+            deleteChecklist: (id) => {
+                const updated = get().checklists.filter((c) => c.id !== id);
+                const activeChecklistId =
+                    get().activeChecklistId === id ? null : get().activeChecklistId;
+                set({ checklists: updated, activeChecklistId });
+                safeInvoke("set_user_setting", {
+                    key: "checklists",
+                    value: JSON.stringify(updated),
+                }).catch(() => {});
+            },
+
+            duplicateChecklist: (id) => {
+                const target = get().checklists.find((c) => c.id === id);
+                if (!target) return;
+                const now = new Date().toISOString();
+                const newId = `chk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                const duplicated: Checklist = {
+                    ...target,
+                    id: newId,
+                    title: `${target.title} (Copy)`,
+                    isDefault: false,
+                    createdAt: now,
+                    updatedAt: now,
+                    sections: target.sections.map((s) => ({
+                        ...s,
+                        id: `sec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                        items: s.items.map((i) => ({
+                            ...i,
+                            id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                            checked: false,
+                        })),
+                    })),
+                };
+                const updated = [duplicated, ...get().checklists];
+                set({ checklists: updated, activeChecklistId: newId });
+                safeInvoke("set_user_setting", {
+                    key: "checklists",
+                    value: JSON.stringify(updated),
+                }).catch(() => {});
+            },
+
+            toggleChecklistItem: (checklistId, sectionId, itemId) => {
+                const updated = get().checklists.map((chk) => {
+                    if (chk.id !== checklistId) return chk;
+                    return {
+                        ...chk,
+                        sections: chk.sections.map((sec) => {
+                            if (sec.id !== sectionId) return sec;
+                            return {
+                                ...sec,
+                                items: sec.items.map((it) => {
+                                    if (it.id !== itemId) return it;
+                                    return { ...it, checked: !it.checked };
+                                }),
+                            };
+                        }),
+                    };
+                });
+                set({ checklists: updated });
+                safeInvoke("set_user_setting", {
+                    key: "checklists",
+                    value: JSON.stringify(updated),
+                }).catch(() => {});
+            },
+
+            resetChecklist: (checklistId) => {
+                const updated = get().checklists.map((chk) => {
+                    if (chk.id !== checklistId) return chk;
+                    return {
+                        ...chk,
+                        sections: chk.sections.map((sec) => ({
+                            ...sec,
+                            items: sec.items.map((it) => ({
+                                ...it,
+                                checked: false,
+                            })),
+                        })),
+                    };
+                });
+                set({ checklists: updated });
+                safeInvoke("set_user_setting", {
+                    key: "checklists",
+                    value: JSON.stringify(updated),
+                }).catch(() => {});
+            },
+
+            resetChecklistSection: (checklistId, sectionId) => {
+                const updated = get().checklists.map((chk) => {
+                    if (chk.id !== checklistId) return chk;
+                    return {
+                        ...chk,
+                        sections: chk.sections.map((sec) => {
+                            if (sec.id !== sectionId) return sec;
+                            return {
+                                ...sec,
+                                items: sec.items.map((it) => ({
+                                    ...it,
+                                    checked: false,
+                                })),
+                            };
+                        }),
+                    };
+                });
+                set({ checklists: updated });
+                safeInvoke("set_user_setting", {
+                    key: "checklists",
+                    value: JSON.stringify(updated),
+                }).catch(() => {});
+            },
+
+            importChecklists: (imported) => {
+                const current = get().checklists;
+                const currentMap = new Map(current.map((c) => [c.id, c]));
+                let added = 0;
+                let replaced = 0;
+                const now = new Date().toISOString();
+
+                for (const chk of imported) {
+                    if (!chk.title || !Array.isArray(chk.sections)) continue;
+                    const id =
+                        chk.id ||
+                        `chk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                    const validItem: Checklist = {
+                        id,
+                        title: chk.title,
+                        aircraftAssociation: chk.aircraftAssociation || undefined,
+                        category: chk.category || "General",
+                        description: chk.description || "",
+                        isDefault: Boolean(chk.isDefault),
+                        createdAt: chk.createdAt || now,
+                        updatedAt: now,
+                        sections: chk.sections.map((sec, sIdx) => ({
+                            id:
+                                sec.id ||
+                                `sec-${sIdx}-${Math.random().toString(36).slice(2, 7)}`,
+                            title: sec.title || `Section ${sIdx + 1}`,
+                            procedureType:
+                                sec.procedureType === "abnormal" ||
+                                sec.procedureType === "emergency"
+                                    ? sec.procedureType
+                                    : "normal",
+                            items: (sec.items || []).map((it, iIdx) => ({
+                                id:
+                                    it.id ||
+                                    `it-${iIdx}-${Math.random().toString(36).slice(2, 7)}`,
+                                challenge: it.challenge || "Item",
+                                response: it.response || "CHECK",
+                                note: it.note,
+                                checked: Boolean(it.checked),
+                            })),
+                        })),
+                    };
+
+                    if (currentMap.has(id)) {
+                        currentMap.set(id, validItem);
+                        replaced++;
+                    } else {
+                        currentMap.set(id, validItem);
+                        added++;
+                    }
+                }
+
+                const updated = Array.from(currentMap.values());
+                set({ checklists: updated });
+                safeInvoke("set_user_setting", {
+                    key: "checklists",
+                    value: JSON.stringify(updated),
+                }).catch(() => {});
+                return { added, replaced };
+            },
         }),
         {
             name: "apollo-flight-store",
@@ -3832,13 +4208,19 @@ export const useFlightStore = create<FlightState>()(
                 autoCheckUpdates: state.autoCheckUpdates,
                 pageSize: state.pageSize,
                 savedRoutes: state.savedRoutes,
-                recycleBin: state.recycleBin,
+                recycleBin: state.recycleBin.map(
+                    ({ telemetryPoints, ...rest }) => ({
+                        ...rest,
+                        telemetryPoints: [],
+                    }),
+                ),
                 flights: state.flights.map(({ telemetryPoints, ...rest }) => ({
                     ...rest,
                     telemetryPoints: [],
                 })),
                 visitedAirports: state.visitedAirports,
                 visitedCountries: state.visitedCountries,
+                checklists: state.checklists,
             }),
             onRehydrateStorage: () => (state) => {
                 if (state && typeof document !== "undefined") {
