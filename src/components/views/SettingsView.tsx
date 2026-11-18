@@ -34,7 +34,7 @@ import {
 
 import packageJson from "../../../package.json";
 import type { Update } from "@tauri-apps/plugin-updater";
-import { Select } from "../ui";
+import { Checkbox, Tooltip } from "../ui";
 import { QrCodeView } from "../ui/QrCodeView";
 import { ImportModal } from "../modals/ImportModal";
 
@@ -119,6 +119,34 @@ export const SettingsView: React.FC = () => {
     const [exportSuccessMsg, setExportSuccessMsg] = useState<string | null>(
         null,
     );
+    const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+    const exportMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!isExportMenuOpen) return;
+
+        const handleClickOutside = (e: MouseEvent) => {
+            if (
+                exportMenuRef.current &&
+                !exportMenuRef.current.contains(e.target as Node)
+            ) {
+                setIsExportMenuOpen(false);
+            }
+        };
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                setIsExportMenuOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [isExportMenuOpen]);
 
     const handleExport = async (
         scope: "full" | "settings" | "logbook" | "routes",
@@ -451,16 +479,16 @@ export const SettingsView: React.FC = () => {
                             </div>
 
                             <div className="shrink-0 flex items-center">
-                                <div className="inline-flex items-center rounded-full overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline">
+                                <div className="inline-flex items-center rounded-sm overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline p-0.5 gap-1">
                                     <button
                                         type="button"
                                         onClick={() => {
                                             setTheme("light");
                                             notifySaved();
                                         }}
-                                        className={`flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors ${
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
                                             theme === "light"
-                                                ? "bg-white text-neutral-900"
+                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
                                                 : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
                                         }`}
                                     >
@@ -473,9 +501,9 @@ export const SettingsView: React.FC = () => {
                                             setTheme("dark");
                                             notifySaved();
                                         }}
-                                        className={`flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors ${
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
                                             theme === "dark"
-                                                ? "bg-neutral-900 text-white dark:bg-[#333333] shadow-xs"
+                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
                                                 : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
                                         }`}
                                     >
@@ -550,11 +578,10 @@ export const SettingsView: React.FC = () => {
                     </div>
 
                     <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm divide-y divide-neutral-200 dark:divide-geist-hairline shadow-xs">
-                                                {/* Preference: Detailed Telemetry Option (Phase 12) */}
+                        {/* Preference: Detailed Telemetry Option (Phase 12) */}
                         <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div className="space-y-1 max-w-xl">
                                 <div className="flex items-center gap-2">
-                                    <Wind className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
                                     <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
                                         Detailed Atmospheric Telemetry
                                     </h3>
@@ -640,26 +667,14 @@ export const SettingsView: React.FC = () => {
                         >
                             <div className="space-y-1 max-w-xl">
                                 <div className="flex items-center gap-2">
-                                    <PlaneTakeoff className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
                                     <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
                                         Flight Start Conditions
                                     </h3>
                                 </div>
                                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                                    Monitors aircraft ground speed exceeding{" "}
-                                    <span className="font-mono text-neutral-800 dark:text-neutral-200 font-medium">
-                                        20 kt
-                                    </span>{" "}
-                                    or engine combustion offsets (
-                                    <code className="font-mono text-[11px]">
-                                        0x0894
-                                    </code>{" "}
-                                    /{" "}
-                                    <code className="font-mono text-[11px]">
-                                        0x092C
-                                    </code>
-                                    ) polled via FSUIPC7. Manual initiation via
-                                    &ldquo;Start Flight Session&rdquo; is always
+                                    Monitors aircraft ground speed exceeding 20 knots
+                                    or engine running polled via FSUIPC7. Manual initiation via
+                                    &ldquo;Start Recording Flight&rdquo; is always
                                     available.
                                 </p>
                             </div>
@@ -677,7 +692,6 @@ export const SettingsView: React.FC = () => {
                         >
                             <div className="space-y-1 max-w-xl">
                                 <div className="flex items-center gap-2">
-                                    <PlaneLanding className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
                                     <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
                                         Flight Stop & Safeguard Conditions
                                     </h3>
@@ -685,18 +699,12 @@ export const SettingsView: React.FC = () => {
                                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
                                     Auto-started flights finalize when the
                                     aircraft remains stationary on the ground
-                                    for 30 consecutive seconds with one or more
+                                    for 30 seconds with one or more
                                     engines shut down. Flights started manually
                                     are protected and present a confirmation
                                     prompt upon landing rather than
                                     auto-terminating.
                                 </p>
-                            </div>
-
-                            <div className="shrink-0 flex items-center gap-1.5">
-                                <span className="px-2.5 py-1 rounded-sm text-xs font-medium bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline text-neutral-900 dark:text-white tabular-nums">
-                                    Stationary 30s + Cut
-                                </span>
                             </div>
                         </div>
                     </div>
@@ -777,7 +785,7 @@ export const SettingsView: React.FC = () => {
                                     disabled={
                                         isSyncingAirports || !!activeFlight
                                     }
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium bg-neutral-900 enabled:hover:bg-neutral-800 dark:bg-white dark:enabled:hover:bg-neutral-200 text-white dark:text-black transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 shadow-xs"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium bg-neutral-900 enabled:hover:bg-neutral-800 dark:bg-white dark:enabled:hover:bg-neutral-200 text-white dark:text-black transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 shadow-xs"
                                 >
                                     <RefreshCw
                                         className={`w-3.5 h-3.5 ${isSyncingAirports ? "animate-spin" : ""}`}
@@ -795,7 +803,6 @@ export const SettingsView: React.FC = () => {
                         <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div className="space-y-1 max-w-xl">
                                 <div className="flex items-center gap-2">
-                                    <HardDrive className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
                                     <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
                                         Database Engine
                                     </h3>
@@ -925,7 +932,7 @@ export const SettingsView: React.FC = () => {
                                     value={efbPortInput}
                                     onChange={(e) => handleEfbPortChange(e.target.value)}
                                     disabled={efbStatus.isRunning}
-                                    className="w-28 px-2.5 py-1.5 text-xs font-mono bg-white dark:bg-black border border-neutral-300 dark:border-geist-hairline rounded-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-28 px-2.5 py-1.5 text-xs font-mono bg-white dark:bg-black border border-neutral-300 dark:border-geist-hairline rounded-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50 disabled:cursor-default"
                                 />
                                 <button
                                     type="button"
@@ -963,7 +970,7 @@ export const SettingsView: React.FC = () => {
                                         type="button"
                                         onClick={() => setIsQrDrawerOpen(!isQrDrawerOpen)}
                                         disabled={efbCurrentMode === "off"}
-                                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 enabled:hover:bg-neutral-200 dark:bg-[#202020] dark:enabled:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-all duration-200 select-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 enabled:hover:bg-neutral-200 dark:bg-[#202020] dark:enabled:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-all duration-200 select-none cursor-pointer disabled:cursor-default disabled:opacity-50"
                                     >
                                         <QrCode className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
                                         <span className="whitespace-nowrap">
@@ -1046,7 +1053,7 @@ export const SettingsView: React.FC = () => {
                                     className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-sm border border-neutral-300 dark:border-geist-hairline transition-all duration-200 select-none ${
                                         efbStatus.isRunning && efbStatus.url
                                             ? "bg-neutral-100 hover:bg-neutral-200 dark:bg-[#202020] dark:hover:bg-[#2a2a2a] text-neutral-800 dark:text-neutral-200 cursor-pointer"
-                                            : "bg-neutral-100 dark:bg-[#202020] text-neutral-400 dark:text-neutral-500 opacity-50 cursor-not-allowed pointer-events-none"
+                                            : "bg-neutral-100 dark:bg-[#202020] text-neutral-400 dark:text-neutral-500 opacity-50 cursor-default pointer-events-none"
                                     }`}
                                 >
                                     <ExternalLink className="w-3.5 h-3.5 text-neutral-500" />
@@ -1075,7 +1082,7 @@ export const SettingsView: React.FC = () => {
                             <div className="space-y-1 max-w-xl">
                                 <div className="flex items-center gap-2">
                                     <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
-                                        Export User Data
+                                        User Data
                                     </h3>
                                 </div>
                                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
@@ -1090,73 +1097,150 @@ export const SettingsView: React.FC = () => {
                                 )}
 
                                 {/* Optional Telemetry Checkbox */}
-                                <div className="pt-2 flex items-center gap-2">
-                                    <input
-                                        type="checkbox"
+                                <div className="pt-2">
+                                    <Checkbox
                                         id="telemetryExportToggle"
                                         checked={includeTelemetryExport}
                                         disabled={isExporting}
-                                        onChange={(e) =>
-                                            setIncludeTelemetryExport(
-                                                e.target.checked,
-                                            )
-                                        }
-                                        className="rounded border-neutral-300 dark:border-neutral-700 text-neutral-900 focus:ring-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                                        onChange={setIncludeTelemetryExport}
+                                        label="Include high-resolution GPS telemetry points in logbook export"
                                     />
-                                    <label
-                                        htmlFor="telemetryExportToggle"
-                                        className="text-xs text-neutral-600 dark:text-neutral-300 cursor-pointer select-none"
-                                    >
-                                        Include high-resolution GPS telemetry
-                                        points in logbook export
-                                    </label>
                                 </div>
                             </div>
 
-                            <div className="shrink-0 flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    disabled={isExporting}
-                                    onClick={() => handleExport("full")}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-900 enabled:hover:bg-neutral-800 dark:bg-white dark:enabled:hover:bg-neutral-200 text-white dark:text-black shadow-xs transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                            <div className="shrink-0 flex items-center">
+                                <div
+                                    ref={exportMenuRef}
+                                    className="relative inline-flex items-center rounded-sm shadow-xs bg-neutral-900 dark:bg-white text-white dark:text-black"
                                 >
-                                    <Download className="w-3.5 h-3.5" />
-                                    <span>Full Backup</span>
-                                </button>
+                                    {/* Primary Action Button: "Export" */}
+                                    <Tooltip
+                                        content="Export full backup bundle"
+                                        disabled={isExportMenuOpen}
+                                    >
+                                        <button
+                                            type="button"
+                                            disabled={isExporting}
+                                            onClick={() => handleExport("full")}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-l-sm enabled:hover:bg-neutral-800 dark:enabled:hover:bg-neutral-200 transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
+                                        >
+                                            <Download className="w-3.5 h-3.5" />
+                                            <span>
+                                                {isExporting
+                                                    ? "Exporting..."
+                                                    : "Export"}
+                                            </span>
+                                        </button>
+                                    </Tooltip>
 
-                                {/* ponytail: single select menu replaces row of individual segment buttons */}
-                                <Select
-                                    value=""
-                                    onChange={(val) => {
-                                        if (val)
-                                            handleExport(
-                                                val as
-                                                    | "logbook"
-                                                    | "routes"
-                                                    | "settings",
-                                            );
-                                    }}
-                                    placeholder="Export segment..."
-                                    disabled={isExporting}
-                                    options={[
-                                        {
-                                            value: "logbook",
-                                            label: "Logbook",
-                                            icon: <BookOpen className="w-3.5 h-3.5" />,
-                                        },
-                                        {
-                                            value: "routes",
-                                            label: "Routes",
-                                            icon: <Route className="w-3.5 h-3.5" />,
-                                        },
-                                        {
-                                            value: "settings",
-                                            label: "Settings",
-                                            icon: <Sliders className="w-3.5 h-3.5" />,
-                                        },
-                                    ]}
-                                    className="min-w-[140px]"
-                                />
+                                    {/* Vertical divider */}
+                                    <div className="h-4 w-px bg-neutral-700 dark:bg-neutral-300" />
+
+                                    {/* Chevron trigger button */}
+                                    <Tooltip
+                                        content="Choose specific data to export"
+                                        disabled={isExportMenuOpen}
+                                    >
+                                        <button
+                                            type="button"
+                                            disabled={isExporting}
+                                            onClick={() =>
+                                                setIsExportMenuOpen(
+                                                    !isExportMenuOpen,
+                                                )
+                                            }
+                                            aria-expanded={isExportMenuOpen}
+                                            className="px-2 py-1.5 text-xs font-medium rounded-r-sm enabled:hover:bg-neutral-800 dark:enabled:hover:bg-neutral-200 transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50 flex items-center justify-center"
+                                        >
+                                            <ChevronDown
+                                                className={`w-3.5 h-3.5 transition-transform duration-150 ${
+                                                    isExportMenuOpen
+                                                        ? "rotate-180"
+                                                        : ""
+                                                }`}
+                                            />
+                                        </button>
+                                    </Tooltip>
+
+                                    {/* Dropdown Menu */}
+                                    {isExportMenuOpen && (
+                                        <div className="absolute right-0 top-full mt-1 z-50 w-52 bg-white dark:bg-[#161616] border border-neutral-200 dark:border-[#2a2a2a] rounded-sm shadow-xl p-1 text-left text-neutral-900 dark:text-neutral-100 select-none animate-in fade-in zoom-in-95 duration-100">
+                                            <div className="px-2.5 pb-1.5 border-b border-neutral-100 dark:border-[#222222] mb-1">
+                                                <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                                                    Export Scope
+                                                </span>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsExportMenuOpen(false);
+                                                    handleExport("full");
+                                                }}
+                                                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xs text-xs font-medium text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#222222] transition-colors"
+                                            >
+                                                <Download className="w-3.5 h-3.5 text-neutral-500" />
+                                                <div className="flex-1 text-left">
+                                                    <div>Full Backup</div>
+                                                    <div className="text-[10px] text-neutral-400 dark:text-neutral-500 font-normal">
+                                                        Entire dataset & history
+                                                    </div>
+                                                </div>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsExportMenuOpen(false);
+                                                    handleExport("logbook");
+                                                }}
+                                                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xs text-xs font-medium text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#222222] transition-colors"
+                                            >
+                                                <BookOpen className="w-3.5 h-3.5 text-neutral-500" />
+                                                <div className="flex-1 text-left">
+                                                    <div>Logbook Only</div>
+                                                    <div className="text-[10px] text-neutral-400 dark:text-neutral-500 font-normal">
+                                                        Flight logs & stats
+                                                    </div>
+                                                </div>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsExportMenuOpen(false);
+                                                    handleExport("routes");
+                                                }}
+                                                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xs text-xs font-medium text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#222222] transition-colors"
+                                            >
+                                                <Route className="w-3.5 h-3.5 text-neutral-500" />
+                                                <div className="flex-1 text-left">
+                                                    <div>Routes Only</div>
+                                                    <div className="text-[10px] text-neutral-400 dark:text-neutral-500 font-normal">
+                                                        Saved flight plans
+                                                    </div>
+                                                </div>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsExportMenuOpen(false);
+                                                    handleExport("settings");
+                                                }}
+                                                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xs text-xs font-medium text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#222222] transition-colors"
+                                            >
+                                                <Sliders className="w-3.5 h-3.5 text-neutral-500" />
+                                                <div className="flex-1 text-left">
+                                                    <div>Settings Only</div>
+                                                    <div className="text-[10px] text-neutral-400 dark:text-neutral-500 font-normal">
+                                                        Preferences & config
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -1265,10 +1349,8 @@ export const SettingsView: React.FC = () => {
                                     </h3>
                                 </div>
                                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                                    Automatically check for newer Apollo Flight
-                                    releases from GitHub when the application
-                                    starts, and notify you when an update is
-                                    available.
+                                    Automatically check for newer versions when the application
+                                    starts.
                                 </p>
                             </div>
 
@@ -1301,7 +1383,6 @@ export const SettingsView: React.FC = () => {
                         <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div className="space-y-1 max-w-xl">
                                 <div className="flex items-center gap-2">
-                                    <ArrowUpCircle className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
                                     <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
                                         Software Updates
                                     </h3>
@@ -1313,8 +1394,7 @@ export const SettingsView: React.FC = () => {
                                 </div>
                                 <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
                                     Check for newer releases from our GitHub
-                                    repository and install updates
-                                    automatically.
+                                    and install updates automatically.
                                 </p>
                                 {isInstallingUpdate &&
                                     downloadProgress !== null && (
@@ -1340,7 +1420,7 @@ export const SettingsView: React.FC = () => {
                                     disabled={
                                         isCheckingUpdate || isInstallingUpdate
                                     }
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 ${
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 ${
                                         availableUpdate
                                             ? "bg-emerald-600 enabled:hover:bg-emerald-500 text-white focus-visible:ring-emerald-400 shadow-sm"
                                             : "bg-neutral-900 enabled:hover:bg-neutral-800 dark:bg-white dark:enabled:hover:bg-neutral-200 text-white dark:text-black shadow-xs focus-visible:ring-neutral-400"
@@ -1383,7 +1463,7 @@ export const SettingsView: React.FC = () => {
                                         onClick={handleCheckForUpdates}
                                         disabled={isCheckingUpdate}
                                         title="Check again"
-                                        className="p-1.5 rounded-sm text-neutral-500 enabled:hover:text-neutral-900 dark:enabled:hover:text-white enabled:hover:bg-neutral-100 dark:enabled:hover:bg-neutral-800 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="p-1.5 rounded-sm text-neutral-500 enabled:hover:text-neutral-900 dark:enabled:hover:text-white enabled:hover:bg-neutral-100 dark:enabled:hover:bg-neutral-800 transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
                                     >
                                         <RefreshCw
                                             className={`w-3.5 h-3.5 ${isCheckingUpdate ? "animate-spin" : ""}`}
@@ -1411,35 +1491,6 @@ export const SettingsView: React.FC = () => {
                             <div className="shrink-0 flex items-center">
                                 <span className="px-2.5 py-1 rounded-sm text-xs font-medium bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline text-neutral-900 dark:text-white">
                                     MIT License
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Preference: Platform & Interface Architecture */}
-                        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div className="space-y-1 max-w-xl">
-                                <div className="flex items-center gap-2">
-                                    <Cpu className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
-                                    <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
-                                        Runtime Architecture
-                                    </h3>
-                                </div>
-                                <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                                    Low-latency desktop integration with
-                                    Microsoft Flight Simulator communicating via
-                                    FSUIPC7.
-                                </p>
-                            </div>
-
-                            <div className="shrink-0 flex items-center gap-2">
-                                <span className="px-2.5 py-1 rounded-sm text-xs font-medium bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline text-neutral-900 dark:text-white">
-                                    Tauri v2
-                                </span>
-                                <span className="px-2.5 py-1 rounded-sm text-xs font-medium bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline text-neutral-900 dark:text-white">
-                                    FSUIPC7
-                                </span>
-                                <span className="px-2.5 py-1 rounded-sm text-xs font-medium bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline text-neutral-900 dark:text-white">
-                                    React 19
                                 </span>
                             </div>
                         </div>

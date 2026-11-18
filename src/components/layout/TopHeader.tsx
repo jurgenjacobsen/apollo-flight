@@ -9,7 +9,6 @@ import {
     Radio,
     Sun,
     Moon,
-    Menu,
     Newspaper,
 } from "lucide-react";
 import { StatusPill } from "../ui";
@@ -22,8 +21,6 @@ export const TopHeader: React.FC = () => {
         activeFlight,
         theme,
         toggleTheme,
-        isSidebarCollapsed,
-        toggleSidebar,
         availableUpdate,
     } = useFlightStore();
 
@@ -55,20 +52,7 @@ export const TopHeader: React.FC = () => {
 
     return (
         <header className="h-11 bg-white dark:bg-geist-surface border-b border-neutral-200 dark:border-geist-hairline px-3 sm:px-4 flex items-center justify-between text-xs font-sans text-neutral-600 dark:text-neutral-300 z-10 flex-shrink-0 select-none transition-colors duration-150 gap-2">
-            {/* Sidebar Toggle for Small Screens or Collapsed Mode */}
-            <div className="flex items-center gap-2">
-                {isSidebarCollapsed && (
-                    <button
-                        type="button"
-                        onClick={toggleSidebar}
-                        className="p-1.5 rounded-sm text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] border border-neutral-200 dark:border-geist-hairline transition-colors shrink-0"
-                        title="Expand sidebar"
-                        aria-label="Expand sidebar"
-                    >
-                        <Menu className="w-3.5 h-3.5" />
-                    </button>
-                )}
-
+            <div className="flex items-center gap-2 min-w-0">
                 {/* Real-time telemetry items */}
                 <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto text-xs no-scrollbar">
                     <div className="flex items-center gap-1.5 whitespace-nowrap">

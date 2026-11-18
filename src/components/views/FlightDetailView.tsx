@@ -13,6 +13,7 @@ import {
 import { FALLBACK_AIRPORTS } from "../../data/fallbackAirports";
 import { calculateDistanceNm } from "../../data/mockData";
 import { Select } from "../ui/Select";
+import { ConfirmDeleteButton } from "../ui/ConfirmDeleteButton";
 import {
     MapContainer,
     TileLayer,
@@ -157,6 +158,7 @@ export const FlightDetailView: React.FC = () => {
         selectedFlightId,
         setSelectedFlightId,
         setActiveView,
+        deleteFlight,
         scrubbedTelemetryIndex,
         setScrubbedTelemetryIndex,
         exportFlight,
@@ -172,6 +174,7 @@ export const FlightDetailView: React.FC = () => {
     const [isHeavyReady, setIsHeavyReady] = useState(false);
 
     useEffect(() => {
+        setIsHeavyReady(false);
         // Immediate frame paint for layout, selectors & cards; defer heavy Leaflet & Recharts mount by 40ms
         const timer = setTimeout(() => {
             setIsHeavyReady(true);
@@ -1003,6 +1006,17 @@ export const FlightDetailView: React.FC = () => {
                         className="min-w-[200px]"
                         triggerClassName="bg-white dark:bg-geist-surface"
                     />
+
+                    {/* Expanding Delete Confirmation Button */}
+                    <ConfirmDeleteButton
+                        onConfirm={async () => {
+                            const idToDelete = flight.id;
+                            setActiveView("logbook");
+                            await deleteFlight(idToDelete);
+                        }}
+                        title="Delete flight log"
+                        confirmTitle="Click again to confirm delete"
+                    />
                 </div>
             </div>
 
@@ -1042,7 +1056,7 @@ export const FlightDetailView: React.FC = () => {
                         <span>Distance</span>
                     </div>
                     <div className="text-xl font-semibold text-neutral-900 dark:text-white tabular-nums">
-                        {flight.distanceFlownNm.toFixed(1)}{" "}
+                        {(flight.distanceFlownNm ?? 0).toFixed(1)}{" "}
                         <span className="text-xs text-neutral-500 dark:text-geist-muted font-normal">
                             NM
                         </span>
@@ -1249,6 +1263,7 @@ export const FlightDetailView: React.FC = () => {
                         </div>
                     ) : coordinates.length > 0 ? (
                         <MapContainer
+                            key={flight.id}
                             center={coordinates[0]}
                             zoom={8}
                             style={{ height: "100%", width: "100%" }}

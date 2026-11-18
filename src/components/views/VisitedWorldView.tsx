@@ -81,6 +81,7 @@ const getFeatureName = (props: Record<string, any>): string => {
 export const VisitedWorldView: React.FC = () => {
     const { visitedAirports, visitedCountries, theme } = useFlightStore();
     const [filterText, setFilterText] = useState("");
+    const [airportFilterText, setAirportFilterText] = useState("");
     const [showAllBorders, setShowAllBorders] = useState(true);
     const [geoJsonData, setGeoJsonData] = useState<any>(cachedCountriesGeoJson);
     const [isLoadingBoundaries, setIsLoadingBoundaries] = useState(
@@ -159,8 +160,22 @@ export const VisitedWorldView: React.FC = () => {
         );
     }, [visitedCountries, filterText]);
 
+    const filteredAirports = useMemo(() => {
+        const sorted = [...visitedAirports].sort(
+            (a, b) => b.visitCount - a.visitCount,
+        );
+        if (!airportFilterText.trim()) return sorted;
+        const q = airportFilterText.toLowerCase();
+        return sorted.filter(
+            (a) =>
+                a.icao.toLowerCase().includes(q) ||
+                a.name.toLowerCase().includes(q) ||
+                (a.countryName && a.countryName.toLowerCase().includes(q)),
+        );
+    }, [visitedAirports, airportFilterText]);
+
     return (
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
+        <div className="flex-1 min-h-0 h-full overflow-y-auto p-4 sm:p-5 space-y-5 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
             {/* Metrics Row */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {/* Progress Card */}
@@ -540,10 +555,12 @@ export const VisitedWorldView: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1 flex-1">
+                    <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1 flex-1">
                         {filteredCountries.length === 0 ? (
-                            <div className="p-4 text-center text-xs text-neutral-500 dark:text-neutral-400">
-                                No matching visited countries found.
+                            <div className="p-6 text-center text-xs text-neutral-500 dark:text-neutral-400">
+                                {filterText.trim()
+                                    ? "No matching visited countries found."
+                                    : "No sovereign nations logged yet. Completed flights will automatically record visited countries."}
                             </div>
                         ) : (
                             filteredCountries.map((c) => (
@@ -582,34 +599,66 @@ export const VisitedWorldView: React.FC = () => {
 
                 {/* Airports Table */}
                 <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 shadow-sm flex flex-col">
-                    <div className="mb-3">
-                        <h3 className="text-xs font-medium uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
-                            <MapPin className="w-3.5 h-3.5 text-neutral-400" />
-                            Top Visited Aerodromes ({visitedAirports.length})
-                        </h3>
-                        <p className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">
-                            Arrival & departure waypoints
-                        </p>
+                    <div className="flex items-center justify-between mb-3">
+                        <div>
+                            <h3 className="text-xs font-medium uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
+                                <MapPin className="w-3.5 h-3.5 text-neutral-400" />
+                                Top Visited Aerodromes ({visitedAirports.length})
+                            </h3>
+                            <p className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+                                Arrival & departure waypoints
+                            </p>
+                        </div>
+
+                        {/* Search Filter for Airports */}
+                        <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                            <input
+                                type="text"
+                                placeholder="Filter airports..."
+                                value={airportFilterText}
+                                onChange={(e) => setAirportFilterText(e.target.value)}
+                                className="pl-7 pr-2.5 py-1 text-xs rounded-sm bg-neutral-100 dark:bg-[#111] border border-neutral-200 dark:border-geist-hairline text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-blue-500 transition-colors w-36"
+                            />
+                        </div>
                     </div>
-                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1 flex-1">
-                        {visitedAirports.map((apt) => (
-                            <div
-                                key={apt.icao}
-                                className="flex items-center justify-between p-2 rounded-sm bg-neutral-50 dark:bg-[#0e0e0e] border border-neutral-200 dark:border-geist-hairline text-xs"
-                            >
-                                <div>
-                                    <span className="font-semibold text-neutral-900 dark:text-white">
-                                        {apt.icao}
-                                    </span>
-                                    <span className="text-neutral-700 dark:text-neutral-300 ml-2">
-                                        {apt.name}
+
+                    <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1 flex-1">
+                        {filteredAirports.length === 0 ? (
+                            <div className="p-6 text-center text-xs text-neutral-500 dark:text-neutral-400">
+                                {airportFilterText.trim()
+                                    ? "No matching aerodromes found."
+                                    : "No aerodromes visited yet. Completed flights will automatically register departure & arrival airports."}
+                            </div>
+                        ) : (
+                            filteredAirports.map((apt) => (
+                                <div
+                                    key={apt.icao}
+                                    className="flex items-center justify-between p-2 rounded-sm bg-neutral-50 dark:bg-[#0e0e0e] border border-neutral-200 dark:border-geist-hairline text-xs"
+                                >
+                                    <div className="min-w-0 pr-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="font-semibold text-neutral-900 dark:text-white font-mono">
+                                                {apt.icao}
+                                            </span>
+                                            <span className="text-neutral-700 dark:text-neutral-300 truncate">
+                                                {apt.name}
+                                            </span>
+                                        </div>
+                                        {apt.countryName && (
+                                            <div className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate">
+                                                {[apt.countryName, apt.countryCode]
+                                                    .filter(Boolean)
+                                                    .join(" • ")}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <span className="bg-neutral-100 dark:bg-[#171717] text-neutral-800 dark:text-neutral-200 px-2 py-0.5 rounded-sm border border-neutral-200 dark:border-geist-hairline tabular-nums font-medium shrink-0">
+                                        {apt.visitCount} {apt.visitCount === 1 ? "visit" : "visits"}
                                     </span>
                                 </div>
-                                <span className="bg-neutral-100 dark:bg-[#171717] text-neutral-800 dark:text-neutral-200 px-2 py-0.5 rounded-sm border border-neutral-200 dark:border-geist-hairline tabular-nums font-medium">
-                                    {apt.visitCount} visits
-                                </span>
-                            </div>
-                        ))}
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

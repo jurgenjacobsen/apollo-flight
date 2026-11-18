@@ -17,5 +17,13 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    proxy: {
+      '/api/awc': {
+        target: 'https://aviationweather.gov',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/awc/, '/api'),
+      },
+    },
   },
 });

@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { useFlightStore } from "./store/flightStore";
 import { Sidebar } from "./components/layout/Sidebar";
 import { TopHeader } from "./components/layout/TopHeader";
-import { DashboardView } from "./components/views/DashboardView";
+import { Overview } from "./components/views/Overview";
 import { NewRouteView } from "./components/views/NewRouteView";
 import { SavedRoutesView } from "./components/views/SavedRoutesView";
 import { LogbookView } from "./components/views/LogbookView";
@@ -14,6 +14,7 @@ import {
 import { IfrTrainer } from "./components/views/IfrTrainer";
 import { HoldTrainer } from "./components/views/HoldTrainer";
 import { SettingsView } from "./components/views/SettingsView";
+import { ChecklistsView } from "./components/views/ChecklistsView";
 import { FeedbackView } from "./components/views/FeedbackView";
 import { RecycleBinView } from "./components/views/RecycleBinView";
 import { EfbCompanionApp } from "./components/efb/EfbCompanionApp";
@@ -21,6 +22,7 @@ import { isEfbMode } from "./services/efbService";
 import { useEfbStore } from "./store/efbStore";
 import { ImportModal } from "./components/modals/ImportModal";
 import { SimBridge } from "./components/bridge/SimBridge";
+import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { safeInvoke } from "./store/flightStore";
 import { ApolloExportBundle } from "./types/flight";
 
@@ -163,17 +165,20 @@ export const App: React.FC = () => {
 
                 {/* Dynamic Viewports */}
                 <main className="flex-1 flex flex-col overflow-hidden">
-                    {activeView === "dashboard" && <DashboardView />}
-                    {activeView === "new-route" && <NewRouteView />}
-                    {activeView === "saved-routes" && <SavedRoutesView />}
-                    {activeView === "logbook" && <LogbookView />}
-                    {activeView === "flight-detail" && <FlightDetailView />}
-                    {activeView === "visited" && <VisitedWorldView />}
-                    {activeView === "ifr-trainer" && <IfrTrainer />}
-                    {activeView === "hold-trainer" && <HoldTrainer />}
-                    {activeView === "settings" && <SettingsView />}
-                    {activeView === "feedback" && <FeedbackView />}
-                    {activeView === "recycle-bin" && <RecycleBinView />}
+                    <ErrorBoundary key={activeView}>
+                        {activeView === "dashboard" && <Overview />}
+                        {activeView === "new-route" && <NewRouteView />}
+                        {activeView === "saved-routes" && <SavedRoutesView />}
+                        {activeView === "logbook" && <LogbookView />}
+                        {activeView === "flight-detail" && <FlightDetailView />}
+                        {activeView === "visited" && <VisitedWorldView />}
+                        {activeView === "ifr-trainer" && <IfrTrainer />}
+                        {activeView === "hold-trainer" && <HoldTrainer />}
+                        {activeView === "checklists" && <ChecklistsView />}
+                        {activeView === "settings" && <SettingsView />}
+                        {activeView === "feedback" && <FeedbackView />}
+                        {activeView === "recycle-bin" && <RecycleBinView />}
+                    </ErrorBoundary>
                 </main>
             </div>
 

@@ -198,7 +198,7 @@ export const FeedbackView: React.FC = () => {
                 `- **Duration:** ${Math.round(selectedFlight.flightTimeSeconds / 60)} minutes`,
             );
             sections.push(
-                `- **Distance Flown:** ${selectedFlight.distanceFlownNm.toFixed(1)} NM`,
+                `- **Distance Flown:** ${(selectedFlight.distanceFlownNm ?? 0).toFixed(1)} NM`,
             );
             sections.push(
                 `- **Max Altitude:** ${selectedFlight.maxAltitude.toLocaleString()} ft MSL`,
