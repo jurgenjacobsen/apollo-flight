@@ -72,6 +72,18 @@ export interface Airport {
     hasUnpaved?: boolean;
 }
 
+export interface Runway {
+    id: number;
+    airportIdent: string;
+    lengthFt?: number;
+    widthFt?: number;
+    surface?: string;
+    isPaved: boolean;
+    isUnpaved: boolean;
+    lighted: boolean;
+    closed: boolean;
+}
+
 export interface OurAirportsSyncResult {
     success: boolean;
     totalAirports: number;

@@ -279,6 +279,23 @@ mod commands {
     }
 
     #[tauri::command]
+    pub fn get_all_airports(
+        state: tauri::State<'_, DbState>,
+    ) -> Result<Vec<db::Airport>, String> {
+        let conn = state.navdata.lock().map_err(|e| e.to_string())?;
+        db::get_all_airports(&conn).map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub fn get_airport_runways(
+        state: tauri::State<'_, DbState>,
+        icao: String,
+    ) -> Result<Vec<db::Runway>, String> {
+        let conn = state.navdata.lock().map_err(|e| e.to_string())?;
+        db::get_airport_runways(&conn, &icao).map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
     pub fn search_route_airports(
         state: tauri::State<'_, DbState>,
         filter: db::RouteSearchFilter,
@@ -747,6 +764,8 @@ pub fn run() {
             commands::export_logbook,
             commands::get_airports_count,
             commands::get_airport,
+            commands::get_all_airports,
+            commands::get_airport_runways,
             commands::search_route_airports,
             commands::sync_ourairports,
             commands::is_dataset_syncing,

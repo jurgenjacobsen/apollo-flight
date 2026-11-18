@@ -127,6 +127,20 @@ pub struct Airport {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Runway {
+    pub id: i64,
+    pub airport_ident: String,
+    pub length_ft: Option<i32>,
+    pub width_ft: Option<i32>,
+    pub surface: Option<String>,
+    pub is_paved: bool,
+    pub is_unpaved: bool,
+    pub lighted: bool,
+    pub closed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RouteSearchFilter {
     pub continent: Option<String>,
     pub country_code: Option<String>,
@@ -428,6 +442,17 @@ pub fn init_databases(
         "#
     )?;
 
+    // Ensure unique indexes exist on user tables so ON CONFLICT clauses match a unique index
+    let _ = logbook_conn.execute_batch(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_flights_id_uniq ON flights(id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_routes_id_uniq ON saved_routes(id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_visited_airports_icao_uniq ON visited_airports(icao);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_visited_countries_iso_uniq ON visited_countries(iso_a2);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_key_uniq ON user_settings(key);
+        "#
+    );
+
     // Attach navdata to logbook so logbook can query navdata.airports and navdata.runways seamlessly
     let navdata_abs = navdata_path.to_string_lossy().to_string();
     let _ = logbook_conn.execute("ATTACH DATABASE ?1 AS navdata", [&navdata_abs]);
@@ -454,6 +479,11 @@ fn migrate_from_legacy_aerotrack(legacy_db: &Path, logbook_path: &Path, navdata_
                     CREATE TABLE IF NOT EXISTS visited_countries AS SELECT * FROM legacy.visited_countries;
                     CREATE TABLE IF NOT EXISTS saved_routes AS SELECT * FROM legacy.saved_routes;
                     CREATE TABLE IF NOT EXISTS schema_migrations AS SELECT * FROM legacy.schema_migrations;
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_flights_id_uniq ON flights(id);
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_routes_id_uniq ON saved_routes(id);
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_visited_airports_icao_uniq ON visited_airports(icao);
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_visited_countries_iso_uniq ON visited_countries(iso_a2);
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_key_uniq ON user_settings(key);
                     "#
                 );
                 let _ = logbook.execute("CREATE TABLE IF NOT EXISTS user_settings AS SELECT * FROM legacy.user_settings", []);
@@ -1929,6 +1959,67 @@ pub fn get_airport_by_icao(conn: &Connection, icao: &str) -> Result<Option<Airpo
     } else {
         Ok(None)
     }
+}
+
+pub fn get_airport_runways(conn: &Connection, icao: &str) -> Result<Vec<Runway>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, airport_ident, length_ft, width_ft, surface, is_paved, is_unpaved, lighted, closed
+         FROM runways WHERE airport_ident = ?1 COLLATE NOCASE ORDER BY length_ft DESC"
+    )?;
+    let rows = stmt.query_map([icao.trim()], |row| {
+        Ok(Runway {
+            id: row.get(0)?,
+            airport_ident: row.get(1)?,
+            length_ft: row.get(2)?,
+            width_ft: row.get(3)?,
+            surface: row.get(4)?,
+            is_paved: row.get(5)?,
+            is_unpaved: row.get(6)?,
+            lighted: row.get(7)?,
+            closed: row.get(8)?,
+        })
+    })?;
+    let mut runways = Vec::new();
+    for r in rows {
+        runways.push(r?);
+    }
+    Ok(runways)
+}
+
+pub fn get_all_airports(conn: &Connection) -> Result<Vec<Airport>> {
+    let mut stmt = conn.prepare(
+        "SELECT icao, name, latitude, longitude, elevation_ft, country_code, country_name, municipality, airport_type, continent,
+                max_runway_length_ft, has_paved, has_unpaved
+         FROM airports WHERE LENGTH(icao) = 4 AND icao GLOB '[A-Za-z][A-Za-z][A-Za-z][A-Za-z]'
+           AND latitude IS NOT NULL AND longitude IS NOT NULL
+           AND airport_type IN ('large_airport', 'medium_airport', 'small_airport')
+           AND (all_runways_closed = 0 OR all_runways_closed IS NULL)
+         GROUP BY icao
+         ORDER BY CASE airport_type WHEN 'large_airport' THEN 1 WHEN 'medium_airport' THEN 2 ELSE 3 END, icao ASC
+         LIMIT 2000"
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(Airport {
+            icao: row.get(0)?,
+            name: row.get(1)?,
+            latitude: row.get(2)?,
+            longitude: row.get(3)?,
+            elevation_ft: row.get(4)?,
+            country_code: row.get(5)?,
+            country_name: row.get(6)?,
+            municipality: row.get(7)?,
+            airport_type: row.get(8)?,
+            continent: row.get(9)?,
+            max_runway_length_ft: row.get(10)?,
+            has_paved: row.get(11)?,
+            has_unpaved: row.get(12)?,
+        })
+    })?;
+    let mut airports = Vec::new();
+    for r in rows {
+        airports.push(r?);
+    }
+    Ok(airports)
 }
 
 pub fn search_route_airports(conn: &Connection, filter: &RouteSearchFilter) -> Result<Vec<Airport>> {

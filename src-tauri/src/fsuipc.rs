@@ -235,7 +235,8 @@ pub mod win {
         let is_in_menu = aircraft_title.is_empty()
             || aircraft_title == "Standby (Waiting for MSFS)"
             || raw_in_menu != 0
-            || sim_ok != 0;
+            || sim_ok != 0
+            || (raw_lat == 0 && raw_lon == 0);
 
         let dme_dist = if raw_nav1_dme_dist == 0xFFFF {
             0.0
