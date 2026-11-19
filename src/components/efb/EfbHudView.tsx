@@ -193,13 +193,9 @@ export const EfbHudView: React.FC = () => {
                     className="h-full w-full z-0"
                 >
                     <TileLayer
-                        attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                        url={
-                            isDark
-                                ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                                : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                        }
-                        maxZoom={18}
+                        attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
+                        url="https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                        maxZoom={19}
                     />
 
                     {trackTrail.length > 1 && (

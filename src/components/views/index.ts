@@ -3,7 +3,7 @@ export * from "./NewRouteView";
 export * from "./SavedRoutesView";
 export * from "./LogbookView";
 export * from "./FlightDetailView";
-export * from "./VisitedWorldView";
+export * from "./ProfileView";
 export * from "./IfrTrainer";
 export * from "./HoldTrainer";
 export * from "./SettingsView";

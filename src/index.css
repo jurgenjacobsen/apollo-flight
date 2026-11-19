@@ -90,8 +90,7 @@ html.dark .leaflet-container {
     background-color: #050505 !important;
 }
 html.dark .dark-tiles .leaflet-tile {
-    filter: brightness(0.6) invert(1) contrast(3.2) hue-rotate(190deg)
-        saturate(0.2) brightness(0.7);
+    filter: brightness(0.9) contrast(1.05);
 }
 
 /* Tooltip styling */

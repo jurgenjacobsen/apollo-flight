@@ -8,9 +8,9 @@ import { SavedRoutesView } from "./components/views/SavedRoutesView";
 import { LogbookView } from "./components/views/LogbookView";
 import { FlightDetailView } from "./components/views/FlightDetailView";
 import {
-    VisitedWorldView,
+    ProfileView,
     preloadCountriesGeoJson,
-} from "./components/views/VisitedWorldView";
+} from "./components/views/ProfileView";
 import { IfrTrainer } from "./components/views/IfrTrainer";
 import { HoldTrainer } from "./components/views/HoldTrainer";
 import { SettingsView } from "./components/views/SettingsView";
@@ -172,7 +172,7 @@ export const App: React.FC = () => {
                         {activeView === "saved-routes" && <SavedRoutesView />}
                         {activeView === "logbook" && <LogbookView />}
                         {activeView === "flight-detail" && <FlightDetailView />}
-                        {activeView === "visited" && <VisitedWorldView />}
+                        {activeView === "visited" && <ProfileView />}
                         {activeView === "ifr-trainer" && <IfrTrainer />}
                         {activeView === "hold-trainer" && <HoldTrainer />}
                         {activeView === "checklists" && <ChecklistsView />}

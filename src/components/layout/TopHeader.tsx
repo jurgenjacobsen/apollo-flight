@@ -51,54 +51,54 @@ export const TopHeader: React.FC = () => {
     }, [checkUnread, isNewsOpen]);
 
     return (
-        <header className="h-11 bg-slate-100/90 dark:bg-[#0c1322] border-b border-slate-200 dark:border-slate-800/80 px-3 sm:px-4 flex items-center justify-between text-xs font-sans text-slate-700 dark:text-slate-200 z-10 flex-shrink-0 select-none transition-colors duration-150 gap-2 backdrop-blur-xs">
+        <header className="h-11 bg-white/90 dark:bg-black/90 border-b border-neutral-200 dark:border-geist-hairline px-3 sm:px-4 flex items-center justify-between text-xs font-sans text-neutral-700 dark:text-neutral-200 z-10 flex-shrink-0 select-none transition-colors duration-150 gap-2 backdrop-blur-xs">
             <div className="flex items-center gap-2 min-w-0">
                 {/* Real-time telemetry items */}
                 <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto text-xs no-scrollbar">
                     <div className="flex items-center gap-1.5 whitespace-nowrap">
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">
+                        <span className="text-neutral-500 dark:text-neutral-400 font-medium">
                             ALT
                         </span>
-                        <span className="font-semibold text-slate-900 dark:text-white tabular-nums">
+                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                             {currentTelemetry.altitudeMsl.toLocaleString()}
                         </span>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
                             FT
                         </span>
                     </div>
 
-                    <div className="h-3 w-[1px] bg-slate-300/80 dark:bg-slate-700/80 shrink-0" />
+                    <div className="h-3 w-[1px] bg-neutral-200 dark:bg-neutral-800 shrink-0" />
 
                     <div className="flex items-center gap-1.5 whitespace-nowrap">
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">
+                        <span className="text-neutral-500 dark:text-neutral-400 font-medium">
                             GS
                         </span>
-                        <span className="font-semibold text-slate-900 dark:text-white tabular-nums">
+                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                             {currentTelemetry.groundSpeed}
                         </span>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
                             KT
                         </span>
-                        <span className="hidden md:inline text-[10px] text-slate-500 dark:text-slate-400 tabular-nums">
+                        <span className="hidden md:inline text-[10px] text-neutral-500 dark:text-neutral-400 tabular-nums">
                             ({currentTelemetry.indicatedAirspeed} IAS)
                         </span>
                     </div>
 
-                    <div className="h-3 w-[1px] bg-slate-300/80 dark:bg-slate-700/80 shrink-0" />
+                    <div className="h-3 w-[1px] bg-neutral-200 dark:bg-neutral-800 shrink-0" />
 
                     <div className="flex items-center gap-1.5 whitespace-nowrap">
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">
+                        <span className="text-neutral-500 dark:text-neutral-400 font-medium">
                             HDG
                         </span>
-                        <span className="font-semibold text-slate-900 dark:text-white tabular-nums">
+                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                             {String(currentTelemetry.heading).padStart(3, "0")}°
                         </span>
                     </div>
 
-                    <div className="hidden sm:block h-3 w-[1px] bg-slate-300/80 dark:bg-slate-700/80 shrink-0" />
+                    <div className="hidden sm:block h-3 w-[1px] bg-neutral-200 dark:bg-neutral-800 shrink-0" />
 
                     <div className="hidden sm:flex items-center gap-1.5 whitespace-nowrap">
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">
+                        <span className="text-neutral-500 dark:text-neutral-400 font-medium">
                             VS
                         </span>
                         <span
@@ -107,25 +107,25 @@ export const TopHeader: React.FC = () => {
                                     ? "text-emerald-600 dark:text-emerald-400"
                                     : currentTelemetry.verticalSpeed < -50
                                       ? "text-red-600 dark:text-rose-400"
-                                      : "text-slate-700 dark:text-slate-300"
+                                      : "text-neutral-700 dark:text-neutral-300"
                             }`}
                         >
                             {currentTelemetry.verticalSpeed > 0
                                 ? `+${currentTelemetry.verticalSpeed}`
                                 : currentTelemetry.verticalSpeed}
                         </span>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
                             FPM
                         </span>
                     </div>
 
-                    <div className="hidden lg:block h-3 w-[1px] bg-slate-300/80 dark:bg-slate-700/80 shrink-0" />
+                    <div className="hidden lg:block h-3 w-[1px] bg-neutral-200 dark:bg-neutral-800 shrink-0" />
 
                     <div className="hidden lg:flex items-center gap-1.5 whitespace-nowrap">
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">
+                        <span className="text-neutral-500 dark:text-neutral-400 font-medium">
                             ATT
                         </span>
-                        <span className="font-semibold text-slate-900 dark:text-white tabular-nums">
+                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                             {currentTelemetry.pitch}° / {currentTelemetry.bank}°
                         </span>
                     </div>
@@ -136,7 +136,7 @@ export const TopHeader: React.FC = () => {
             <div className="flex items-center gap-2 sm:gap-3 pl-2 shrink-0">
                 <StatusPill showRoute />
 
-                <div className="h-3 w-[1px] bg-slate-300/80 dark:bg-slate-700/80" />
+                <div className="h-3 w-[1px] bg-neutral-200 dark:bg-neutral-800" />
                 {/* News & Updates Dropdown */}
                 <div className="relative">
                     <button

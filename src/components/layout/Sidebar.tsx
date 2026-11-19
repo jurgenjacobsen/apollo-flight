@@ -20,6 +20,7 @@ import {
     FileText,
     ChevronLeft,
     ChevronRight,
+    User,
 } from "lucide-react";
 
 interface NavItem {
@@ -60,7 +61,7 @@ export const Sidebar: React.FC = () => {
                     label: "Telemetry Analysis",
                     icon: Layers,
                 },
-                { id: "visited", label: "Visited Destinations", icon: Globe2 },
+                { id: "visited", label: "Pilot Profile", icon: User },
             ],
         },
         {
