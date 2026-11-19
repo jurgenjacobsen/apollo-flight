@@ -19,6 +19,7 @@ export const UpdateNotificationBanner: React.FC = () => {
         downloadProgress,
         installUpdate,
         setActiveView,
+        setSettingsActiveTab,
     } = useFlightStore();
 
     const [isExpanded, setIsExpanded] = useState(false);
@@ -89,7 +90,10 @@ export const UpdateNotificationBanner: React.FC = () => {
 
                             <button
                                 type="button"
-                                onClick={() => setActiveView("settings")}
+                                onClick={() => {
+                                    setSettingsActiveTab("settings-about");
+                                    setActiveView("settings");
+                                }}
                                 title="View update options in Settings"
                                 className="px-2.5 py-1 rounded-sm text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 dark:hover:bg-[#222222] transition-colors"
                             >

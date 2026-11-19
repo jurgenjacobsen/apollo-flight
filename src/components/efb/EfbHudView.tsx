@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useFlightStore } from "../../store/flightStore";
+import { formatVisibility, formatWindSpeed, formatTemperature } from "../../utils/weatherUnits";
+import { TouchdownFlyoutBanner } from "../telemetry/TouchdownFlyoutBanner";
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -49,7 +51,7 @@ const MapFollowController: React.FC<{
 };
 
 export const EfbHudView: React.FC = () => {
-    const { currentTelemetry, theme, nearestAirport } = useFlightStore();
+    const { currentTelemetry, theme, nearestAirport, visibilityUnit, windSpeedUnit, temperatureUnit } = useFlightStore();
     const [isFollow, setIsFollow] = useState(true);
     const [trackTrail, setTrackTrail] = useState<[number, number][]>([]);
     const lastPosRef = useRef<[number, number] | null>(null);
@@ -65,8 +67,12 @@ export const EfbHudView: React.FC = () => {
     const vs = Math.round(currentTelemetry.verticalSpeed ?? 0);
     const windSpd = Math.round(currentTelemetry.windSpeed ?? 0);
     const windDir = Math.round(currentTelemetry.windDirection ?? 0);
-    const oat = (currentTelemetry.oat ?? 15).toFixed(1);
-    const vis = (currentTelemetry.visibility ?? 10).toFixed(1);
+    const oatFormatted = formatTemperature(currentTelemetry.oat ?? 15, temperatureUnit, {
+        decimals: 1,
+        includeSign: false,
+    });
+    const rawVis = currentTelemetry.visibility ?? 10;
+    const visFormatted = formatVisibility(rawVis, visibilityUnit);
 
     const angleRad = ((windDir - heading) * Math.PI) / 180;
     const crosswind = Math.round(windSpd * Math.sin(angleRad));
@@ -163,10 +169,10 @@ export const EfbHudView: React.FC = () => {
                         <Wind className="w-3 h-3 text-blue-500" /> Wind
                     </span>
                     <div className="text-lg sm:text-xl font-bold tracking-tight text-neutral-900 dark:text-white tabular-nums my-0.5">
-                        {String(windDir).padStart(3, "0")}° / {windSpd} kt
+                        {String(windDir).padStart(3, "0")}° / {formatWindSpeed(windSpd, windSpeedUnit)}
                     </div>
                     <div className="text-[11px] text-neutral-500 dark:text-geist-muted truncate">
-                        {Math.abs(crosswind)} kt X-WIND ({crosswind > 0 ? "R" : "L"})
+                        {formatWindSpeed(Math.abs(crosswind), windSpeedUnit)} X-WIND ({crosswind > 0 ? "R" : "L"})
                     </div>
                 </div>
 
@@ -176,10 +182,10 @@ export const EfbHudView: React.FC = () => {
                         <Thermometer className="w-3 h-3 text-amber-500" /> Atmosphere
                     </span>
                     <div className="text-lg sm:text-xl font-bold tracking-tight text-neutral-900 dark:text-white tabular-nums my-0.5">
-                        {oat}°C OAT
+                        {oatFormatted} OAT
                     </div>
                     <div className="text-[11px] text-neutral-500 dark:text-geist-muted truncate">
-                        {vis} NM VISIBILITY
+                        {visFormatted} VISIBILITY
                     </div>
                 </div>
             </div>
@@ -258,6 +264,9 @@ export const EfbHudView: React.FC = () => {
                         </div>
                     )}
                 </div>
+
+                {/* Instant Touchdown Banner */}
+                <TouchdownFlyoutBanner />
             </div>
         </div>
     );

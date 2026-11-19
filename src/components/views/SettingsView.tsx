@@ -43,44 +43,51 @@ import { ImportModal } from "../modals/ImportModal";
 const SETTINGS_SECTIONS = [
     {
         id: "settings-window",
-        label: "System Tray & Window Lifecycle",
-        shortLabel: "Window & Tray",
+        label: "General & Measurement Units",
+        shortLabel: "General & Units",
+        description: "Window lifecycle, dark theme, and measurement units",
         icon: AppWindow,
     },
     {
         id: "settings-recording",
         label: "Flight Recording Lifecycle Rules",
         shortLabel: "Recording Rules",
+        description: "Automated flight detection, engine start, and telemetry frequency",
         icon: Sliders,
     },
     {
         id: "settings-database",
         label: "Database & Aerodrome Datasets",
         shortLabel: "Datasets & Airports",
+        description: "Global airport cache, runway databases, and OurAirports sync",
         icon: Database,
     },
     {
         id: "settings-efb",
-        label: "EFB Companion",
+        label: "EFB Companion & Remote Cockpit",
         shortLabel: "EFB Companion",
+        description: "Local web server, port configuration, and mobile QR pairing",
         icon: Tablet,
     },
     {
         id: "settings-documentation",
         label: "Documentation Options",
         shortLabel: "Documentation",
+        description: "Custom document directories and real-time filesystem sync",
         icon: BookOpen,
     },
     {
         id: "settings-data",
         label: "Data Management, Backup & Export",
         shortLabel: "Backup & Export",
+        description: "Apollo JSON bundles, table pagination, and recycle bin",
         icon: Archive,
     },
     {
         id: "settings-about",
         label: "About Apollo Flight",
         shortLabel: "About & Runtime",
+        description: "Version details, runtime environment, updates, and credits",
         icon: Info,
     },
 ];
@@ -100,6 +107,12 @@ export const SettingsView: React.FC = () => {
         toggleTheme,
         weightUnit,
         setWeightUnit,
+        visibilityUnit,
+        setVisibilityUnit,
+        windSpeedUnit,
+        setWindSpeedUnit,
+        temperatureUnit,
+        setTemperatureUnit,
         airportsCount,
         isSyncingAirports,
         syncProgress,
@@ -122,6 +135,8 @@ export const SettingsView: React.FC = () => {
         docLiveUpdate,
         setDocCustomDirs,
         setDocLiveUpdate,
+        settingsActiveTab,
+        setSettingsActiveTab,
     } = useFlightStore();
 
     const [savedSuccess, setSavedSuccess] = useState(false);
@@ -289,115 +304,114 @@ export const SettingsView: React.FC = () => {
         await installUpdate();
     };
 
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [activeSection, setActiveSection] = useState<string>("settings-window");
+    const activeSection = settingsActiveTab || "settings-window";
+    const setActiveSection = (id: string) => setSettingsActiveTab(id);
 
-    useEffect(() => {
-        const rootEl = containerRef.current;
-        if (!rootEl) return;
-
-        const checkBottom = () => {
-            const isAtBottom =
-                rootEl.scrollHeight - rootEl.scrollTop - rootEl.clientHeight < 40;
-            if (isAtBottom) {
-                const lastSection = SETTINGS_SECTIONS[SETTINGS_SECTIONS.length - 1];
-                if (lastSection) {
-                    setActiveSection(lastSection.id);
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        const handleScroll = () => {
-            checkBottom();
-        };
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (checkBottom()) return;
-
-                const visible = entries.filter((e) => e.isIntersecting);
-                if (visible.length > 0) {
-                    visible.sort(
-                        (a, b) =>
-                            a.boundingClientRect.top -
-                            b.boundingClientRect.top,
-                    );
-                    setActiveSection(visible[0].target.id);
-                }
-            },
-            {
-                root: rootEl,
-                rootMargin: "-10% 0px -65% 0px",
-                threshold: [0, 0.2, 0.5],
-            },
-        );
-
-        rootEl.addEventListener("scroll", handleScroll, { passive: true });
-
-        SETTINGS_SECTIONS.forEach((sec) => {
-            const el = document.getElementById(sec.id);
-            if (el) observer.observe(el);
-        });
-
-        return () => {
-            rootEl.removeEventListener("scroll", handleScroll);
-            observer.disconnect();
-        };
-    }, []);
-
-    const handleScrollTo = (id: string) => {
-        setActiveSection(id);
-        const el = document.getElementById(id);
-        if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-    };
+    const activeSectionObj =
+        SETTINGS_SECTIONS.find((s) => s.id === activeSection) ||
+        SETTINGS_SECTIONS[0];
+    const ActiveSectionIcon = activeSectionObj.icon;
 
     return (
-        <div
-            ref={containerRef}
-            className="flex-1 overflow-y-auto p-6 md:p-8 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150"
-        >
-            <div className="max-w-5xl xl:max-w-6xl mx-auto space-y-6">
-                {/* Page Header */}
-                <div className="flex items-center justify-between pb-5 border-b border-neutral-200 dark:border-geist-hairline">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
-                            <Settings className="w-5 h-5 text-neutral-500 dark:text-neutral-300" />
-                        </div>
-                        <div>
-                            <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight">
-                                Settings & Preferences
-                            </h1>
-                            <p className="text-xs text-neutral-500 dark:text-geist-muted">
-                                Configure system tray behavior, themes, flight
-                                recording rules, and datasets.
-                            </p>
-                        </div>
+        <div className="flex-1 flex flex-col min-h-0 p-5 space-y-4 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans overflow-hidden select-none">
+            {/* Page Header */}
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-geist-hairline">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
+                        <Settings className="w-5 h-5 text-neutral-500 dark:text-neutral-300" />
                     </div>
-
-                    {savedSuccess && (
-                        <div className="px-4 py-1 rounded-sm text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 animate-fade-in">
-                            <span>Preferences updated</span>
-                        </div>
-                    )}
+                    <div>
+                        <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight flex items-center gap-2">
+                            Settings & Preferences
+                        </h1>
+                        <p className="text-xs text-neutral-500 dark:text-geist-muted mt-0.5">
+                            Configure system tray behavior, themes, flight recording rules, and datasets
+                        </p>
+                    </div>
                 </div>
 
-
-                {/* 2-Column Content + Sticky Sidebar */}
-                <div className="flex items-stretch gap-8 xl:gap-12">
-                    {/* Main Content Area */}
-                    <div className="flex-1 min-w-0 space-y-8 pb-32">
-                        {/* Section 1: System Tray & Window Lifecycle */}
-                        <section id="settings-window" className="space-y-4 scroll-mt-6">
-                    <div className="flex items-center gap-2">
-                        <AppWindow className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
-                        <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
-                            System Tray & Window Lifecycle
-                        </h2>
+                {savedSuccess && (
+                    <div className="px-3 py-1.5 rounded-sm text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 animate-fade-in flex items-center gap-1.5 font-medium shadow-xs">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Preferences updated</span>
                     </div>
+                )}
+            </div>
+
+            {/* Split Master-Detail Layout */}
+            <div className="flex-1 flex min-h-0 border border-neutral-200 dark:border-geist-hairline rounded-sm overflow-hidden bg-white dark:bg-geist-surface shadow-xs">
+                {/* Left Sub-Sidebar */}
+                <div className="w-64 sm:w-72 md:w-80 border-r border-neutral-200 dark:border-geist-hairline flex flex-col bg-neutral-50/60 dark:bg-[#0c0c0c] shrink-0">
+                    <div className="px-3 py-2 border-b border-neutral-200 dark:border-geist-hairline select-none">
+                        <span className="text-[10px] font-semibold tracking-wider uppercase text-neutral-400 dark:text-neutral-500 px-1">
+                            Configuration Sections
+                        </span>
+                    </div>
+
+                    <nav className="flex-1 overflow-y-auto p-2 space-y-1">
+                        {SETTINGS_SECTIONS.map((sec) => {
+                            const Icon = sec.icon;
+                            const isActive = activeSection === sec.id;
+                            return (
+                                <button
+                                    key={sec.id}
+                                    type="button"
+                                    onClick={() => setActiveSection(sec.id)}
+                                    className={`w-full flex items-start gap-3 p-2.5 rounded-sm text-left transition-colors cursor-pointer select-none ${
+                                        isActive
+                                            ? "bg-white dark:bg-geist-surface text-neutral-900 dark:text-white shadow-xs border border-neutral-200/80 dark:border-geist-hairline font-medium"
+                                            : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100/70 dark:hover:bg-[#161616] border border-transparent"
+                                    }`}
+                                >
+                                    <div
+                                        className={`p-1.5 rounded-sm mt-0.5 shrink-0 ${
+                                            isActive
+                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
+                                                : "bg-neutral-200/60 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
+                                        }`}
+                                    >
+                                        <Icon className="w-3.5 h-3.5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="text-xs font-medium truncate">
+                                            {sec.shortLabel}
+                                        </div>
+                                        <p className="text-[11px] text-neutral-400 dark:text-neutral-500 line-clamp-1 mt-0.5 leading-snug">
+                                            {sec.description}
+                                        </p>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </nav>
+
+                    <div className="p-3 border-t border-neutral-200 dark:border-geist-hairline text-[11px] text-neutral-400 dark:text-neutral-500 flex items-center justify-between select-none">
+                        <span>Apollo Flight</span>
+                        <span>{packageJson.version}</span>
+                    </div>
+                </div>
+
+                {/* Right Section Content Pane */}
+                <div className="flex-1 min-w-0 overflow-y-auto p-5 sm:p-6 md:p-8 bg-white dark:bg-geist-surface select-text">
+                    <div className="max-w-4xl space-y-6">
+                        {/* Active Section Tab Header */}
+                        <div className="flex items-center gap-3 pb-4 border-b border-neutral-200 dark:border-geist-hairline">
+                            <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline text-neutral-700 dark:text-neutral-300">
+                                <ActiveSectionIcon className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h2 className="text-sm sm:text-base font-semibold text-neutral-900 dark:text-white tracking-tight">
+                                    {activeSectionObj.label}
+                                </h2>
+                                <p className="text-xs text-neutral-500 dark:text-geist-muted mt-0.5">
+                                    {activeSectionObj.description}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Section 1: System Tray & Window Lifecycle */}
+                        {activeSection === "settings-window" && (
+                            <div className="space-y-4">
 
                     <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm divide-y divide-neutral-200 dark:divide-geist-hairline shadow-xs">
                         {/* Preference: Close to System Tray */}
@@ -575,21 +589,154 @@ export const SettingsView: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Preference: Atmospheric Visibility Units */}
+                        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="space-y-1 max-w-xl">
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
+                                        Atmospheric Visibility Units
+                                    </h3>
+                                </div>
+                                <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
+                                    Choose whether atmospheric visibility across telemetry displays, debrief charts, and EFB is shown in Statute Miles or Meters / Kilometers.
+                                </p>
+                            </div>
+
+                            <div className="shrink-0 flex items-center">
+                                <div className="inline-flex items-center rounded-sm overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline p-0.5 gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            await setVisibilityUnit("sm");
+                                            notifySaved();
+                                        }}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
+                                            visibilityUnit === "sm"
+                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
+                                                : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                                        }`}
+                                    >
+                                        <span>Statute Miles (SM)</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            await setVisibilityUnit("metric");
+                                            notifySaved();
+                                        }}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
+                                            visibilityUnit === "metric"
+                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
+                                                : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                                        }`}
+                                    >
+                                        <span>Meters / Kilometers (m / km)</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Preference: Wind Speed Units */}
+                        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="space-y-1 max-w-xl">
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
+                                        Wind Speed Units
+                                    </h3>
+                                </div>
+                                <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
+                                    Choose whether wind velocity, gusts, and crosswind vectors are formatted in Knots (kt) or Meters per second (m/s).
+                                </p>
+                            </div>
+
+                            <div className="shrink-0 flex items-center">
+                                <div className="inline-flex items-center rounded-sm overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline p-0.5 gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            await setWindSpeedUnit("kt");
+                                            notifySaved();
+                                        }}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
+                                            windSpeedUnit === "kt"
+                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
+                                                : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                                        }`}
+                                    >
+                                        <span>Knots (kt)</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            await setWindSpeedUnit("mps");
+                                            notifySaved();
+                                        }}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
+                                            windSpeedUnit === "mps"
+                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
+                                                : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                                        }`}
+                                    >
+                                        <span>Meters / sec (m/s)</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Preference: Temperature Units */}
+                        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="space-y-1 max-w-xl">
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
+                                        Temperature Units
+                                    </h3>
+                                </div>
+                                <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
+                                    Choose whether static air temperature (OAT/TAT) and environmental metrics are formatted in Celsius (°C) or Fahrenheit (°F).
+                                </p>
+                            </div>
+
+                            <div className="shrink-0 flex items-center">
+                                <div className="inline-flex items-center rounded-sm overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline p-0.5 gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            await setTemperatureUnit("c");
+                                            notifySaved();
+                                        }}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
+                                            temperatureUnit === "c"
+                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
+                                                : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                                        }`}
+                                    >
+                                        <span>Celsius (°C)</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            await setTemperatureUnit("f");
+                                            notifySaved();
+                                        }}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
+                                            temperatureUnit === "f"
+                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
+                                                : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                                        }`}
+                                    >
+                                        <span>Fahrenheit (°F)</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </section>
+                </div>
+            )}
 
-                {/* Section Divider */}
-                <hr className="border-neutral-200 dark:border-geist-hairline" />
-
-                {/* Section 2: Flight Recording Lifecycle Rules */}
-                <section id="settings-recording" className="space-y-4 scroll-mt-6">
-                    <div className="flex items-center gap-2">
-                        <Sliders className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
-                        <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
-                            Flight Recording Lifecycle Rules
-                        </h2>
-                    </div>
-
+            {/* Section 2: Flight Recording Lifecycle Rules */}
+            {activeSection === "settings-recording" && (
+                <div className="space-y-4">
                     <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm divide-y divide-neutral-200 dark:divide-geist-hairline shadow-xs">
                         {/* Preference: Detailed Telemetry Option (Phase 12) */}
                         <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -721,20 +868,12 @@ export const SettingsView: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                </section>
+                </div>
+            )}
 
-                {/* Section Divider */}
-                <hr className="border-neutral-200 dark:border-geist-hairline" />
-
-                {/* Section 3: Database & Aerodrome Datasets */}
-                <section id="settings-database" className="space-y-4 scroll-mt-6">
-                    <div className="flex items-center gap-2">
-                        <Database className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
-                        <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
-                            Database & Aerodrome Datasets
-                        </h2>
-                    </div>
-
+            {/* Section 3: Database & Aerodrome Datasets */}
+            {activeSection === "settings-database" && (
+                <div className="space-y-4">
                     <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm divide-y divide-neutral-200 dark:divide-geist-hairline shadow-xs">
                         {/* Preference: OurAirports Global Sync */}
                         <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -856,20 +995,12 @@ export const SettingsView: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                </section>
+                </div>
+            )}
 
-                {/* Section Divider */}
-                <hr className="border-neutral-200 dark:border-geist-hairline" />
-
-                {/* Section: EFB Companion */}
-                <section id="settings-efb" className="space-y-4 scroll-mt-6">
-                    <div className="flex items-center gap-2">
-                        <Tablet className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
-                        <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
-                            EFB Companion
-                        </h2>
-                    </div>
-
+            {/* Section 4: EFB Companion */}
+            {activeSection === "settings-efb" && (
+                <div className="space-y-4">
                     <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm divide-y divide-neutral-200 dark:divide-geist-hairline shadow-xs">
                         {/* Preference: EFB Server State & Mode */}
                         <div className={`p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4`}>
@@ -1075,20 +1206,12 @@ export const SettingsView: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                </section>
+                </div>
+            )}
 
-                {/* Section Divider */}
-                <hr className="border-neutral-200 dark:border-geist-hairline" />
-
-                {/* Section: Documentation Options */}
-                <section id="settings-documentation" className="space-y-4 scroll-mt-6">
-                    <div className="flex items-center gap-2">
-                        <BookOpen className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
-                        <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
-                            Documentation Options
-                        </h2>
-                    </div>
-
+            {/* Section 5: Documentation Options */}
+            {activeSection === "settings-documentation" && (
+                <div className="space-y-4">
                     <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm divide-y divide-neutral-200 dark:divide-geist-hairline shadow-xs">
                         {/* Live Update Toggle */}
                         <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1252,20 +1375,12 @@ export const SettingsView: React.FC = () => {
                             )}
                         </div>
                     </div>
-                </section>
+                </div>
+            )}
 
-                {/* Section Divider */}
-                <hr className="border-neutral-200 dark:border-geist-hairline" />
-
-                {/* Section: Data Backup, Export & Import */}
-                <section id="settings-data" className="space-y-4 scroll-mt-6">
-                    <div className="flex items-center gap-2">
-                        <Archive className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
-                        <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
-                            Data Management, Backup & Export
-                        </h2>
-                    </div>
-
+            {/* Section 6: Data Management, Backup & Export */}
+            {activeSection === "settings-data" && (
+                <div className="space-y-4">
                     <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm divide-y divide-neutral-200 dark:divide-geist-hairline shadow-xs">
                         {/* Preference: Export Data */}
                         <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -1488,20 +1603,12 @@ export const SettingsView: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                </section>
+                </div>
+            )}
 
-                {/* Section Divider */}
-                <hr className="border-neutral-200 dark:border-geist-hairline" />
-
-                {/* Section 6: About Apollo Flight */}
-                <section id="settings-about" className="space-y-4 scroll-mt-6">
-                    <div className="flex items-center gap-2">
-                        <Info className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
-                        <h2 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
-                            About Apollo Flight
-                        </h2>
-                    </div>
-
+            {/* Section 7: About Apollo Flight */}
+            {activeSection === "settings-about" && (
+                <div className="space-y-4">
                     <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm divide-y divide-neutral-200 dark:divide-geist-hairline shadow-xs">
                         {/* Preference: Application Version */}
                         <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1685,47 +1792,11 @@ export const SettingsView: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                </section>
-            </div>
-
-            {/* Right Rail: Sticky Glossary Navigation */}
-            <aside className="hidden lg:block w-48 xl:w-56 shrink-0 self-stretch">
-                <div className="sticky top-6 space-y-3">
-                    <div className="flex items-center gap-2 px-2 text-[10px] font-semibold tracking-wider uppercase text-neutral-400 dark:text-neutral-500 select-none">
-                        <span>On This Page</span>
-                    </div>
-
-                    <nav className="space-y-0.5 border-l border-neutral-200 dark:border-geist-hairline">
-                        {SETTINGS_SECTIONS.map((sec) => {
-                            const Icon = sec.icon;
-                            const isActive = activeSection === sec.id;
-                            return (
-                                <button
-                                    key={sec.id}
-                                    type="button"
-                                    onClick={() => handleScrollTo(sec.id)}
-                                    className={`group -ml-[1px] w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left transition-colors cursor-pointer border-l-2 select-none ${
-                                        isActive
-                                            ? "border-neutral-900 dark:border-white text-neutral-900 dark:text-white bg-neutral-100/60 dark:bg-neutral-900/60 rounded-r-xs"
-                                            : "border-transparent text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:border-neutral-300 dark:hover:border-neutral-700"
-                                    }`}
-                                >
-                                    <Icon
-                                        className={`w-3.5 h-3.5 shrink-0 transition-colors ${
-                                            isActive
-                                                ? "text-neutral-900 dark:text-white"
-                                                : "text-neutral-400 group-hover:text-neutral-700 dark:text-neutral-500 dark:group-hover:text-neutral-300"
-                                        }`}
-                                    />
-                                    <span className="truncate">{sec.shortLabel}</span>
-                                </button>
-                            );
-                        })}
-                    </nav>
                 </div>
-            </aside>
+            )}
         </div>
     </div>
+</div>
 
             <ImportModal
                 isOpen={isImportModalOpen}

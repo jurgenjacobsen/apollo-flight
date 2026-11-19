@@ -1,54 +1,79 @@
 # Product Specification & Architecture Document: Apollo Flight (MSFS Companion & IFR Trainer)
 
 ## 1. System Overview
-**Apollo Flight** (from the Apollo flight application suite) is an offline-first desktop application designed for Microsoft Flight Simulator 2020 & 2024. It interfaces with the simulator via **FSUIPC7**, logs flight telemetry into an embedded local SQLite database (`aerotrack.db`), renders past flights and visited destinations on an interactive map, features a realistic procedural Route & Multi-Sector Dispatch Generator, provides multi-touchdown analysis with oleo-pneumatic G-force load factor physics, and includes an interactive IFR Navigation and Holding Pattern procedural trainer.
+**Apollo Flight** (from the Apollo flight application suite) is an offline-first desktop application designed for Microsoft Flight Simulator 2020 & 2024. It interfaces with the simulator via **FSUIPC7**, logs high-fidelity flight telemetry into an embedded SQLite database architecture (`logbook.db` and `navdata.db`), renders flights and visited destinations on interactive high-resolution satellite maps (ArcGIS World Imagery), provides deep touchdown analysis with oleo-pneumatic G-force load factor physics and crosswind/sideslip decomposition, features a realistic procedural Route & Multi-Sector Dispatch Generator with terrain-aware minimum safe altitude (MSA) clamping, offers an interactive IFR Navigation and Holding Pattern procedural trainer, serves an Electronic Flight Bag (EFB) companion web application over local Wi-Fi, provides an aircraft checklists flow engine, indexes flight briefings and SOP documentation (Markdown & PDF), and includes a gamified Pilot Profile with fleet statistics and achievement badges.
 
 ---
 
 ## 2. Tech Stack & Architecture
 
 ### Backend & Middleware (Rust / Tauri v2)
-- **Framework:** Tauri v2 (Rust-backed desktop runtime)
+- **Framework:** Tauri v2 (Rust-backed desktop runtime).
 - **IPC / Sim Bridge:** FSUIPC7 via Windows Message/Shared Memory IPC (`fsuipc` crate v0.5.1).
-- **Database:** SQLite via `rusqlite` (embedded, file-based: `aerotrack.db`).
-- **Async Runtime:** `tokio` for background FSUIPC polling and non-blocking database flushing.
+- **Database Architecture:** Partitioned SQLite database via `rusqlite` with Write-Ahead Logging (`PRAGMA journal_mode = WAL`):
+  - `logbook.db`: Stores flights, telemetry points, visited stats, saved routes, user settings, document metadata, and schema migrations.
+  - `navdata.db`: Stores OurAirports global navigation data (86,000+ aerodromes, runways, dimensions, lighting, and surfaces).
+  - *Automated Partitioning:* Automatically migrates and splits legacy single-file `aerotrack.db` into `logbook.db` and `navdata.db` upon launch.
+- **Embedded EFB Web Server:** Lightweight asynchronous HTTP & WebSocket server built with `tokio` and `axum`, running on a configurable dynamic port (default 24820; random range 24000–29999).
+- **Async Runtime:** `tokio` for background FSUIPC polling, EFB WebSocket broadcasting, and non-blocking database operations.
 - **Serialization:** `serde`, `serde_json` for crossing the Tauri IPC bridge.
-- **Native OS Dialogs:** Native Explorer save dialogs for multi-format flight track exports.
-- **Backward Compatibility:** All system updates accommodate older app versions and databases via non-destructive migrations, graceful payload degradation, and automated legacy data backfills.
+- **Native OS Dialogs:** Native Explorer save dialogs for multi-format flight track exports (GPX, KML, GeoJSON, CSV).
+- **Backward Compatibility:** All system updates accommodate older app versions and databases via non-destructive migrations (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN`), graceful payload degradation, and automated legacy data backfills.
 
 ### Frontend (Desktop UI)
-- **Framework:** React 19 + TypeScript + Vite
-- **Styling:** Tailwind CSS + custom accessible UI components (`Select`, collapsible accordions) following Vercel Geist design system guidelines.
-- **Mapping:** Leaflet (`react-leaflet`) with GeoJSON vector boundaries, altitude-gradient polyline tracks, and dark/light tile layers.
-- **Charts:** Recharts for flight profiles (Altitude/Speed vs Time) with crosshair scrubbing.
+- **Framework:** React 19 + TypeScript + Vite.
+- **Styling:** Tailwind CSS + custom accessible UI components (`Select`, `Checkbox`, `Tooltip`, collapsible accordions) following Vercel Geist design system guidelines.
+- **Mapping:** Leaflet (`react-leaflet`) with **ArcGIS World Imagery** satellite tiles (`https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`), GeoJSON vector boundaries, altitude-gradient polyline tracks, and custom plane markers.
+- **Charts:** Recharts for flight profiles (Altitude MSL and Ground Speed vs Time) with crosshair scrubbing.
 - **Canvas / Vector Rendering:** HTML5 Canvas for real-time instrument, Navaid (NAV1, NAV2, ADF), and Holding Pattern procedural visualizations.
-- **State Management:** Zustand for live telemetry, route generation, and UI states. Full telemetry coordinate trajectories are loaded lazily on demand from SQLite via `get_flight_details` to optimize logbook performance.
+- **State Management:** Zustand with persistence (`zustand/middleware`). Full telemetry coordinate trajectories are loaded lazily on demand from SQLite via `get_flight_details` to optimize logbook and startup performance.
 
 ---
 
 ## 3. Data Ingestion & FSUIPC Telemetry Bridge
 
-### Polling Engine
-- Background thread running a dedicated loop at **1 Hz (cruising/stationary on-ground)** and **4 Hz (takeoff/approach/climb/descent/active flight)**.
-- Telemetry buffer writes to the active SQLite flight record in batches (every 5 seconds or ~20 points) to eliminate disk I/O bottlenecks and protect UI responsiveness.
+### Adaptive Dynamic Telemetry Polling Engine
+To balance storage efficiency at high altitudes with maximum fidelity during takeoff and landing flare, Apollo Flight employs an adaptive dynamic polling algorithm in Rust (`src-tauri/src/fsuipc.rs`):
+- **High-Altitude Cruise (> 10,000 ft MSL):** 1000ms (1 Hz) sleep interval. High-altitude enroute flight requires minimal sample density.
+- **Intermediate Flight (Airborne, 1,000 ft to 10,000 ft MSL):** 500ms (2 Hz) sleep interval for climb, descent, and initial approach.
+- **Final Approach & Flare (Airborne, < 1,000 ft AGL):** Graduated linear interpolation scaling from 500ms at 1,000 ft AGL down to **20ms (50 Hz)** at touchdown:
+  $$\text{Interval (ms)} = 20 + \left(\frac{\text{clamp}(\text{AGL}, 0, 1000)}{1000}\right) \times (500 - 20)$$
+  This captures exact wheel touchdown timing, pitch/bank attitude, lateral drift, and instantaneous vertical sink rates.
+- **On Ground:**
+  - Parked / slow taxiing ($< 10\text{ kt}$): 1000ms (1 Hz).
+  - High-speed takeoff run or touchdown rollout ($\ge 10\text{ kt}$): 100ms (10 Hz).
+- **Batch Telemetry Flusher:** Buffers telemetry points in memory and commits batches to SQLite every 5 seconds (or ~20 points), preventing disk I/O bottlenecks.
 
 ### Core FSUIPC Offsets Extracted
 | Parameter | Offset | Size | Type | Scaling / Unit Conversion |
 | :--- | :--- | :--- | :--- | :--- |
 | **Sim Connected / Ready** | `0x3364` | 1 Byte | Byte | Bitfield check |
+| **In-Menu Flag** | `0x3365` | 1 Byte | Byte | `0` = In Sim, `1` = Main Menu |
+| **Flight Reset / Load Count** | `0x3F02` | 2 Bytes | UInt16 | Monotonically increments when flight reloads |
 | **Latitude** | `0x0560` | 8 Bytes | Int64 | `Value * (90.0 / (10001750.0 * 65536.0 * 65536.0))` |
 | **Longitude** | `0x0568` | 8 Bytes | Int64 | `Value * (360.0 / (65536.0 * 65536.0 * 65536.0 * 65536.0))` |
 | **Altitude (MSL)** | `0x0570` | 8 Bytes | Int64 | `(Value / (65536.0 * 65536.0)) * 3.28084` (ft) |
-| **Altitude (Radio / AGL)** | `0x31E4` | 4 Bytes | Int32 | `Value / 65536` (ft) |
+| **Altitude (Radio / AGL)** | `0x31E4` | 4 Bytes | Int32 | `Value / 65536.0` (ft) |
 | **Indicated Airspeed (IAS)** | `0x02BC` | 4 Bytes | Int32 | `Value / 128.0` (knots) |
 | **True Airspeed (TAS)** | `0x02B8` | 4 Bytes | Int32 | `Value / 128.0` (knots) |
 | **Ground Speed (GS)** | `0x02B4` | 4 Bytes | Int32 | `(Value * 3600.0) / (65536.0 * 1852.0)` (knots) |
-| **Vertical Speed** | `0x02C8` | 4 Bytes | Int32 | `Value * 60 * 3.28084 / 256` (ft/min) |
+| **Vertical Speed** | `0x02C8` | 4 Bytes | Int32 | `Value * 60 * 3.28084 / 256.0` (ft/min) |
 | **Pitch** | `0x0578` | 4 Bytes | Int32 | `Value * 360.0 / (65536.0 * 65536.0)` (deg) |
 | **Bank / Roll** | `0x057C` | 4 Bytes | Int32 | `Value * 360.0 / (65536.0 * 65536.0)` (deg) |
 | **Magnetic Heading** | `0x0580` | 4 Bytes | UInt32 | `Value * 360.0 / (65536.0 * 65536.0)` (deg) |
-| **Aircraft Title / Model** | `0x3D00` | 256 Bytes| String | Null-terminated ASCII string |
 | **On Ground Flag (WOW)** | `0x0366` | 2 Bytes | UInt16 | `1` = On Ground, `0` = In Flight |
+| **Engine 1 Combustion** | `0x0894` | 2 Bytes | Int16 | `1` = Combustion active |
+| **Engine 2 Combustion** | `0x092C` | 2 Bytes | Int16 | `1` = Combustion active |
+| **Outside Air Temp (OAT)** | `0x0E8C` | 2 Bytes | Int16 | `Value / 256.0` (°C) |
+| **Total Air Temp (TAT)** | `0x11D0` | 2 Bytes | Int16 | `Value / 256.0` (°C) |
+| **Ambient Wind Speed** | `0x0E90` | 2 Bytes | UInt16 | Knots |
+| **Ambient Wind Direction** | `0x0E92` | 2 Bytes | UInt16 | `Value * 360.0 / 65536.0` (deg) |
+| **Atmospheric Visibility** | `0x0E8A` | 2 Bytes | UInt16 | `Value / 100.0` (Statute Miles) |
+| **Aircraft Gross Weight** | `0x30C0` | 4 Bytes | UInt32 | Pounds (lbs) |
+| **Normal G-Force** | `0x11BA` | 2 Bytes | Int16 | `Value / 625.0` (G) |
+| **Touchdown Sink Rate** | `0x030C` | 4 Bytes | Int32 | `Value * 60.0 * 3.28084 / 256.0` (ft/min) |
+| **Body Velocity X (Lateral)**| `0x31D0`| 8 Bytes | Float64| ft/sec (used for sideslip / drift angle) |
+| **Body Velocity Z (Long)** | `0x31E0` | 8 Bytes | Float64| ft/sec |
 | **NAV 1 OBS Selected** | `0x0C4E` | 2 Bytes | UInt16 | Selected OBS course degrees (0–359°) |
 | **NAV 1 Radial** | `0x0C50` | 2 Bytes | UInt16 | Magnetic radial from station: `Value * 360.0 / 65536.0` |
 | **NAV 1 Relative Bearing** | `0x0C56` | 2 Bytes | Int16 | Relative degrees to station: `Value * 360.0 / 65536.0` |
@@ -60,34 +85,82 @@
 | **NAV 2 DME Distance** | `0x0306` | 2 Bytes | UInt16 | BCD or integer / 10 (NM) |
 | **NAV 2 DME Speed** | `0x0308` | 2 Bytes | UInt16 | BCD knots |
 | **ADF 1 Relative Bearing** | `0x02C0` | 2 Bytes | Int16 | Relative degrees to station: `Value * 360.0 / 65536.0` |
+| **Aircraft Title / Model** | `0x3D00` | 256 Bytes| String | Null-terminated ASCII string |
 
 ---
 
 ## 4. Database Schema & Tauri IPC Architecture
 
-### SQLite Schema (`aerotrack.db`)
+### 1. Navdata Database (`navdata.db`)
+Pre-populated with global OurAirports data and updated via automated or on-demand synchronization:
+```sql
+CREATE TABLE IF NOT EXISTS airports (
+    icao TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    elevation_ft INTEGER,
+    country_code TEXT NOT NULL,
+    country_name TEXT NOT NULL,
+    municipality TEXT,
+    airport_type TEXT DEFAULT 'medium_airport',
+    continent TEXT DEFAULT 'EU',
+    max_runway_length_ft INTEGER,
+    max_paved_runway_length_ft INTEGER,
+    max_unpaved_runway_length_ft INTEGER,
+    has_paved BOOLEAN DEFAULT 1,
+    has_unpaved BOOLEAN DEFAULT 0,
+    all_runways_closed BOOLEAN DEFAULT 0
+);
 
+CREATE TABLE IF NOT EXISTS runways (
+    id INTEGER PRIMARY KEY,
+    airport_ident TEXT NOT NULL,
+    length_ft INTEGER,
+    width_ft INTEGER,
+    surface TEXT,
+    is_paved BOOLEAN NOT NULL DEFAULT 1,
+    is_unpaved BOOLEAN NOT NULL DEFAULT 0,
+    lighted BOOLEAN NOT NULL DEFAULT 0,
+    closed BOOLEAN NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_airports_coords ON airports(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_airports_type ON airports(airport_type);
+CREATE INDEX IF NOT EXISTS idx_airports_continent ON airports(continent);
+CREATE INDEX IF NOT EXISTS idx_runways_ident ON runways(airport_ident);
+```
+
+### 2. Logbook Database (`logbook.db`)
+Personal user data, flight telemetry, routes, and application configuration:
 ```sql
 CREATE TABLE IF NOT EXISTS flights (
     id TEXT PRIMARY KEY,                       -- UUID v4
     aircraft_type TEXT NOT NULL,
     departure_icao TEXT,
     arrival_icao TEXT,
-    start_time DATETIME NOT NULL,
-    end_time DATETIME,
+    start_time TEXT NOT NULL,
+    end_time TEXT,
     flight_time_seconds INTEGER DEFAULT 0,
     max_altitude INTEGER DEFAULT 0,
     max_ground_speed INTEGER DEFAULT 0,
     distance_flown_nm REAL DEFAULT 0.0,
     landing_rate_fpm REAL,
-    touchdowns TEXT,                           -- JSON array of TouchdownEvent records
-    status TEXT CHECK(status IN ('RECORDING', 'COMPLETED', 'DISCARDED')) DEFAULT 'RECORDING'
+    status TEXT CHECK(status IN ('RECORDING', 'COMPLETED', 'DISCARDED')) DEFAULT 'RECORDING',
+    min_oat REAL,
+    max_oat REAL,
+    min_visibility REAL,
+    avg_cruise_wind_speed REAL,
+    avg_cruise_wind_direction REAL,
+    max_wind_speed REAL,
+    max_wind_direction REAL,
+    total_weight REAL
 );
 
 CREATE TABLE IF NOT EXISTS flight_telemetry (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     flight_id TEXT NOT NULL,
-    timestamp DATETIME NOT NULL,
+    timestamp TEXT NOT NULL,
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
     altitude_msl REAL NOT NULL,
@@ -99,6 +172,11 @@ CREATE TABLE IF NOT EXISTS flight_telemetry (
     bank REAL,
     vertical_speed REAL,
     is_on_ground BOOLEAN NOT NULL,
+    wind_speed REAL,
+    wind_direction REAL,
+    oat REAL,
+    tat REAL,
+    visibility REAL,
     FOREIGN KEY (flight_id) REFERENCES flights(id) ON DELETE CASCADE
 );
 
@@ -109,34 +187,40 @@ CREATE TABLE IF NOT EXISTS visited_airports (
     country_name TEXT NOT NULL,
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
-    first_visited DATETIME NOT NULL,
-    last_visited DATETIME NOT NULL,
+    first_visited TEXT NOT NULL,
+    last_visited TEXT NOT NULL,
     visit_count INTEGER DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS visited_countries (
     iso_a2 TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    first_visited DATETIME NOT NULL,
-    last_visited DATETIME NOT NULL,
+    first_visited TEXT NOT NULL,
+    last_visited TEXT NOT NULL,
     flight_count INTEGER DEFAULT 1
 );
 
--- Embedded Global Aerodromes Database (Read-Only / Pre-populated & Synced with OurAirports)
-CREATE TABLE IF NOT EXISTS airports (
-    icao TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS saved_routes (
+    id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    latitude REAL NOT NULL,
-    longitude REAL NOT NULL,
-    elevation_ft INTEGER,
-    country_code TEXT NOT NULL,
-    country_name TEXT NOT NULL,
-    municipality TEXT,
-    airport_type TEXT,
-    continent TEXT,
-    max_runway_length_ft INTEGER,
-    has_paved BOOLEAN DEFAULT 0,
-    has_unpaved BOOLEAN DEFAULT 0
+    aircraft_name TEXT NOT NULL,
+    aircraft_category TEXT NOT NULL,
+    departure_icao TEXT NOT NULL,
+    arrival_icao TEXT NOT NULL,
+    sector_count INTEGER NOT NULL,
+    total_distance_nm REAL NOT NULL,
+    total_airborne_minutes INTEGER NOT NULL,
+    total_duration_minutes INTEGER NOT NULL,
+    total_ground_minutes INTEGER DEFAULT 0,
+    include_ground_time BOOLEAN NOT NULL DEFAULT 1,
+    is_round_trip BOOLEAN NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'draft',       -- 'draft' | 'flown'
+    is_favorite BOOLEAN NOT NULL DEFAULT 0,
+    sectors_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    flown_at TEXT,
+    linked_flight_id TEXT,
+    FOREIGN KEY (linked_flight_id) REFERENCES flights(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS user_settings (
@@ -145,498 +229,214 @@ CREATE TABLE IF NOT EXISTS user_settings (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS document_metadata (
+    file_path TEXT PRIMARY KEY,
+    title TEXT,
+    last_seen TEXT,
+    tags TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_telemetry_flight_id ON flight_telemetry(flight_id);
 CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON flight_telemetry(timestamp);
-CREATE INDEX IF NOT EXISTS idx_airports_coords ON airports(latitude, longitude);
-CREATE INDEX IF NOT EXISTS idx_airports_runway ON airports(max_runway_length_ft, has_paved);
+CREATE INDEX IF NOT EXISTS idx_saved_routes_status ON saved_routes(status);
+CREATE INDEX IF NOT EXISTS idx_saved_routes_favorite ON saved_routes(is_favorite);
 ```
 
 ### Tauri IPC Commands Interface
-The Rust backend exposes the following IPC commands registered in `tauri::generate_handler!`:
+Registered in `src-tauri/src/lib.rs` and consumed via `safeInvoke`:
 * `get_connection_status() -> bool`: Returns active FSUIPC connection state.
 * `start_polling() -> Result<String, String>`: Manually activates or resumes telemetry polling.
 * `stop_polling() -> Result<String, String>`: Pauses FSUIPC background worker.
 * `get_close_to_tray() -> bool`: Returns current tray minimize preference.
-* `set_close_to_tray(enabled: bool) -> Result<(), String>`: Updates close-to-tray preference in both memory and `user_settings` table in `logbook.db`.
-* `get_user_setting(key: String) -> Result<Option<String>, String>`: Fetches user setting value from SQLite.
-* `set_user_setting(key: String, value: String) -> Result<(), String>`: Persists user setting key-value pair to `user_settings` in `logbook.db`.
-* `get_all_user_settings() -> Result<HashMap<String, String>, String>`: Fetches all stored configuration settings from `logbook.db`.
-* `get_flights() -> Result<Vec<FlightRecord>, String>`: Fetches list of all logged flight headers ordered by `start_time DESC`.
-* `get_flight_details(flight_id: String) -> Result<FlightDetails, String>`: Lazily fetches a flight with its complete array of `flight_telemetry` coordinates and touchdown events for detailed profile and map rendering.
-* `delete_flight(flight_id: String) -> Result<(), String>`: Deletes a flight and cascades associated telemetry points.
-* `export_flight(flight_id: String, format: String) -> Result<String, String>`: Generates and returns a GPX, KML, GeoJSON, or CSV formatted track. Prompts user via native OS Explorer save dialog.
-* `export_logbook(format: String) -> Result<String, String>`: Exports the complete flight logbook (flight summary details without raw telemetry) in CSV or JSON format.
-* `search_airports_near(lat: f64, lon: f64, radius_nm: f64) -> Result<Option<Airport>, String>`: Queries embedded `airports` table for the nearest aerodrome within `radius_nm` (default 3.0 NM).
-* `get_visited_stats() -> Result<VisitedStats, String>`: Returns aggregated visited airport and country counts directly from SQLite.
-* `get_airports_count() -> Result<i64, String>`: Returns total number of indexed aerodromes in the SQLite `airports` database.
-* `sync_ourairports() -> Result<OurAirportsSyncResult, String>`: Downloads and indexes the latest global dataset from OurAirports (86,000+ aerodromes, runway surfaces, lengths, and country metadata).
-
-### Backward Compatibility & Database Migration Policy
-All future application and system updates must accommodate older application versions and existing user databases (`aerotrack.db`):
-1. **Non-Destructive Database Schema Evolution:**
-   - Any database modifications must be non-destructive. Never drop or rename existing tables or columns without backward-compatible fallback aliases.
-   - Use idempotent schema migrations (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN`, `CREATE INDEX IF NOT EXISTS`) with default column values so legacy databases upgrade smoothly without manual intervention or data loss.
-2. **Automated Legacy Data Backfill & Self-Healing:**
-   - When new derived metrics, indices, or calculated fields are introduced (e.g. solved flight distances, touchdown physics, or visited statistics), database initialization must execute self-healing reconciliation queries to backfill legacy records where those fields were previously missing or zeroed.
-3. **Graceful IPC & Payload Degradation:**
-   - The Tauri IPC bridge and TypeScript state models must remain tolerant of missing, null, or newly added fields.
-   - Data serializers and deserializers (`serde`, `JSON.parse`) must use optional types (`Option<T>`, `?`), default fallbacks, and null-coalescing operators so an updated client running against an older database (or an older client encountering new fields) operates without runtime crashes.
-4. **Updater Package & Signature Compatibility:**
-   - The auto-updater packaging pipeline must maintain artifact compatibility with previously installed client versions (e.g. `createUpdaterArtifacts: true`), ensuring older app installs can reliably discover, verify signatures for, and apply incoming release updates.
+* `set_close_to_tray(enabled: bool) -> Result<(), String>`: Persists tray preference to SQLite.
+* `get_user_setting(key: String) -> Result<Option<String>, String>`: Fetches user setting from `user_settings`.
+* `set_user_setting(key: String, value: String) -> Result<(), String>`: Persists setting key-value pair.
+* `get_all_user_settings() -> Result<HashMap<String, String>, String>`: Hydrates client settings on launch.
+* `get_flights() -> Result<Vec<FlightRecord>, String>`: Fetches flight summary headers ordered by `start_time DESC`.
+* `get_flight_details(flight_id: String) -> Result<FlightDetails, String>`: Lazily fetches a flight with full `flight_telemetry` coordinates, environmental summaries, and touchdown events.
+* `delete_flight(flight_id: String) -> Result<(), String>`: Permanently deletes flight or moves to trash.
+* `export_flight(flight_id: String, format: String) -> Result<String, String>`: Prompts native file save dialog and exports GPX, KML, GeoJSON, or CSV track.
+* `export_logbook(format: String) -> Result<String, String>`: Exports logbook summaries without telemetry.
+* `search_airports_near(lat: f64, lon: f64, radius_nm: f64) -> Result<Option<Airport>, String>`: Proximity detection within `radius_nm` (default 3.0 NM).
+* `get_visited_stats() -> Result<VisitedStats, String>`: Returns aggregated aerodrome and sovereign country stats.
+* `get_airports_count() -> Result<i64, String>`: Total count of indexed aerodromes.
+* `sync_ourairports() -> Result<OurAirportsSyncResult, String>`: In-process asynchronous download and indexing of OurAirports database with live progress notifications.
+* `save_document_metadata(file_path: String, title: Option<String>, tags: Vec<String>) -> Result<(), String>`: Persists custom documentation titles and tags.
 
 ---
 
 ## 5. Functional Modules & UI Specifications
 
-### Module 1: Flight Tracking & Flight Logbook
+### Module 1: Flight Tracking, Touchdown Analysis & Flight Logbook
 
 #### 1. Discrete 7-Stage Flight Lifecycle State Machine
-To guarantee accurate detection without false starts or premature completions, telemetry triggers transition through 7 explicit states:
-1. `BOARDING`: Simulator connected, aircraft stationary on ground, engines off or starting.
+1. `BOARDING`: Sim connected, aircraft stationary on ground, engines off or starting.
 2. `TAXI_OUT`: On ground, ground speed between 3 kts and 35 kts.
 3. `TAKEOFF_CLIMB`: `is_on_ground` transitions `1 -> 0` with IAS > 45 kts.
    - Triggers `flights` record insertion (`status: 'RECORDING'`).
-   - Automatically resolves Origin ICAO from nearest airport threshold within 3 NM.
-4. `ENROUTE_CRUISE`: Airborne, vertical speed stabilizes within ±150 fpm for > 60 seconds at cruise altitude.
-5. `DESCENT_APPROACH`: Sustained negative vertical speed (< -300 fpm) descending below cruise level toward destination.
+   - Resolves Origin ICAO from nearest airport threshold within 3 NM.
+4. `ENROUTE_CRUISE`: Airborne, vertical speed within ±150 fpm for > 60 seconds at cruise altitude.
+5. `DESCENT_APPROACH`: Sustained negative vertical speed (< -300 fpm) descending toward destination.
 6. `TOUCHDOWN_ROLLOUT`: `is_on_ground` transitions `0 -> 1`.
-   - Captures instantaneous vertical speed, ground speed, pitch, bank, and GPS coordinates into `touchdowns: TouchdownEvent[]`.
-   - Debounces micro-gear bounces (4-second threshold) while recording multiple landings (e.g. touch-and-goes, bounces).
-   - Computes overall flight touchdown rate as the average of all recorded landings.
-7. `ARRIVED`: Aircraft stationary (< 2.0 kts) for > 30 seconds AND one or more engines cut off.
-   - Resolves Destination ICAO within 3 NM.
-   - Marks flight `status: 'COMPLETED'`.
-   - Flushes remaining buffered telemetry and updates visited airports and countries.
+   - Fires real-time `TouchdownFlyoutBanner` with instantaneous metrics.
+   - Captures vertical sink rate, ground speed, pitch, bank, G-force, wind vectors, and sideslip drift.
+   - Debounces micro-gear bounces (4-second threshold) while supporting multi-touchdown flights (touch-and-goes).
+7. `ARRIVED`: Aircraft stationary (< 2.0 kts) for > 30 seconds AND one or more engines shut down.
+   - If stopped at an intermediate airport of a saved multi-sector route, prompts user with continuation safeguard before finalizing.
+   - Resolves Destination ICAO, marks `status: 'COMPLETED'`, and updates visited records.
 
-#### 2. Logbook List View
-- Searchable and filterable table (by ICAO route, aircraft model, date range, or duration).
-- Displays Route, Aircraft, Date, Duration, Distance, Max Altitude, Peak GS, Landing Rate, and Status badge.
-- **Dynamic KPI Aggregation:** Accurately computes total block hours, total nautical miles, and average touchdown rate across all logged operations directly from SQLite.
-- **Universal Flight Export Action:** 256px rich dropdown menu per flight row exporting to **GPX**, **KML**, **GeoJSON**, or **CSV** with format badges, descriptions, and native explorer save destinations.
+#### 2. Touchdown Analysis & Physics Model
+- **Instantaneous Banner (`TouchdownFlyoutBanner.tsx`):**
+  - Displays grade badge (**Butter** $\le 120\text{ fpm}$, **Smooth** $120\text{–}180\text{ fpm}$, **Firm** $180\text{–}300\text{ fpm}$, **Hard** $> 300\text{ fpm}$).
+  - Shows vertical sink rate, calculated G-force load factor, IAS/GS, headwind/tailwind & crosswind components, and sideslip drift angle.
+  - Auto-dismisses after 12 seconds with manual close button.
+- **Oleo-Pneumatic G-Force Normal Load Factor Model:**
+  $$v_{fps} = \frac{|V_{vertical}|}{60}, \quad a_z = \frac{v_{fps}^2}{2 \cdot s \cdot \eta}, \quad G_z = 1.0 + \frac{a_z}{g}$$
+  ($s = 1.125\text{ ft}$ nominal stroke, $\eta = 0.78$ efficiency factor, $g = 32.174\text{ ft/s}^2$).
 
-#### 3. Flight Detail View & Map Visualizer
-- **Summary Stat Cards:** Total distance, block time, max altitude, peak ground speed, average touchdown landing rate, and normal load factor (+X.XX G).
-- **Altitude-Gradient GPS Track (Leaflet):**
-  - Renders GPS trajectory with smooth 250 ft quantized color gradient:
-    - `0 ft`: Vibrant Green (`#22c55e`)
-    - `10,000 ft`: Lime / Yellow-Green (`#84cc16`)
-    - `20,000 ft`: Yellow (`#eab308`)
-    - `32,000 ft`: Orange (`#f97316`)
-    - `45,000+ ft`: Red (`#ef4444`)
-  - Interactive markers with rich popups:
-    - **Origin & Destination Aerodromes**
-    - **Top of Climb (TOC):** Waypoint where aircraft reaches 95% of peak cruise altitude.
-    - **Top of Descent (TOD):** Waypoint where aircraft initiates sustained descent toward arrival.
-    - **Touchdown Markers (TD #1, TD #2...):** Monospace rate and impact G-force badges.
-- **Synchronized Telemetry Scrubbing:**
-  - Synchronized Recharts dual-axis chart (Altitude MSL and Ground Speed vs Time).
-  - Hovering across the chart dynamically positions an aircraft marker on the Leaflet map showing instantaneous altitude, speed, and heading.
-- **Touchdown & Landing Analysis:**
-  - Multi-touchdown cards for all recorded landings displaying vertical sink rate (`-XXX fpm`), landing rating badge, ground speed, pitch/bank attitude, and calculated G-force load factor.
-  - Overall flight average rate and G-force indicator.
+#### 3. Logbook & Debrief Visualizer
+- **Logbook View:** Filterable table with dynamic KPI totals (block hours, nautical miles, average landing rate), pagination (25, 50, 100), and multi-format track exports.
+- **Flight Detail View:**
+  - High-resolution Leaflet map rendered with **ArcGIS World Imagery** satellite tiles.
+  - 250 ft quantized continuous altitude gradient trajectory (`0 ft` Green $\rightarrow$ `45,000+ ft` Red).
+  - Top of Climb (TOC), Top of Descent (TOD), and Touchdown waypoint markers.
+  - Synchronized Recharts altitude/speed telemetry profile chart with interactive map cursor scrubbing.
+  - **Atmospheric & Environmental Totals Cards:** OAT Range (Min/Max), Lowest Visibility, Average Cruise Wind, and Peak Wind Encountered.
+  - **Recycle Bin:** Deleted flights are held in a 30-day trash bin with restoration and countdown warning chips before permanent purge.
 
-#### 4. Touchdown G-Force Normal Load Factor Physics Model
-Deceleration physics based on oleo-pneumatic shock absorber energy dissipation (CS / FAR 25.473):
-
-$$v_{fps} = \frac{|V_{vertical\text{ (fpm)}}|}{60}, \quad a_z = \frac{v_{fps}^2}{2 \cdot s \cdot \eta}, \quad G_z = 1.0 + \frac{a_z}{g}$$
-
-* $s$ = oleo strut stroke in feet (nominal 13.5" or 1.125 ft for commercial narrowbodies; 8"–18" across categories).
-* $\eta$ = shock absorption efficiency factor ($0.78$ nominal for oleo-pneumatic struts).
-* $g = 32.174\text{ ft/s}^2$ (standard gravitational acceleration).
-* Static weight baseline = $+1.00\text{ G}$.
-
-**Touchdown Rating Scale:**
-* $\le 120\text{ fpm}$ / $\le 1.15\text{ G}$ (**Butter**): Negligible airframe deceleration.
-* $120\text{–}200\text{ fpm}$ / $1.16\text{–}1.40\text{ G}$ (**Smooth / Normal**): Standard positive touchdown well within design envelope.
-* $200\text{–}350\text{ fpm}$ / $1.41\text{–}1.75\text{ G}$ (**Firm**): Positive landing recommended for wet/contaminated runways.
-* $350\text{–}500\text{ fpm}$ / $1.76\text{–}2.10\text{ G}$ (**Hard**): High deceleration near design limit load.
-* $> 500\text{ fpm}$ / $> 2.10\text{ G}$ (**Severe Hard Landing**): Exceeds operational envelope; AMM Chapter 05 conditional inspection advisory.
+#### 4. Measurement Units Customization
+Configurable via Settings and respected throughout the application:
+- **Aircraft Weight:** Pounds (`lbs`) or Kilograms (`kg`).
+- **Visibility:** Statute Miles (`sm`, e.g. `10+ SM`) or Metric (`metric`, e.g. `1,500 m`, `10.0 km`).
+- **Wind Speed:** Knots (`kt`) or Meters per second (`mps`, e.g. `7.2 m/s`).
+- **Temperature:** Celsius (`°C`) or Fahrenheit (`°F`).
 
 ---
 
-### Module 2: Visited Overview Page
-- **World Map Projection (Choropleth):**
-  - Leaflet GeoJSON layer highlighting sovereign territories with visit frequency heatmaps.
-  - Interactive hover tooltips showing country name, ISO code, total flight operations, and last visited date.
-  - Airport pins for all logged destinations with arrival/departure counters.
-- **Metrics Dashboard:**
-  - Total sovereign countries visited out of 195 (progress bar and percentage).
-  - Total logged aerodromes.
-  - Continental breakdown badges (Europe, North America, Asia, etc.).
+### Module 2: Pilot Profile & Visited Destinations (`ProfileView.tsx`)
+A unified pilot career dashboard organized into 4 primary sub-tabs:
+
+1. **Badges & Achievements:**
+   - Gamified milestone system evaluated dynamically against flight history via `src/data/badges.ts`.
+   - Badges across categories: First Flights, Landings (Butter Landings, Extreme Crosswinds), World Traveler, Endurance, and High Altitude.
+   - Visual progress bars, unlock timestamps, and lock status.
+2. **Career Flight Statistics:**
+   - Total Nautical Miles Flown, Total Airborne Flight Time, Total Block Time, Total Completed Operations.
+   - Lifetime Average Touchdown Sink Rate, Total Unique Aerodromes, Total Sovereign Nations Visited.
+3. **Pilot Fleet:**
+   - Exhaustive breakdown of all aircraft models flown.
+   - Per-airframe metrics: Total operations, airborne hours, percentage of total flight time, and average touchdown rate per aircraft type.
+4. **Visited Destinations Map Projection:**
+   - Interactive GeoJSON choropleth world map highlighting visited sovereign territories with visit frequency heatmaps.
+   - Continental breakdown progress chips and aerodrome pins with arrival/departure counts.
 
 ---
 
 ### Module 3: IFR Training Center
-
-#### Feature 3A: VOR / NDB Interception Trainer
-- **Multi-Source Navigation Receiver:**
-  - Toggle between **NAV1**, **NAV2**, and **ADF (NDB)** as active telemetry and display source.
-- **Dual Operating Modes:**
-  - **Live MSFS Sync Mode:** Ingests live NAV1/NAV2 OBS (`0x0C4E`/`0x0C5E`), relative bearings (`0x0C54`/`0x0C64`/`0x02C0`), DME distance (`0x0300`/`0x0306`), and aircraft heading (`0x0580`) straight from MSFS via FSUIPC. Automatically activates when simulator flight is ongoing.
-  - **Practice / Scenario Mode:** Interactive manual sliders for off-sim procedural training.
-- **Visual Display (Canvas):**
-  - 360° compass rose with rotating OBS needle, CDI (Course Deviation Indicator) needle deflection, TO/FROM flags, and aircraft orientation vector.
-- **Challenge Generator:**
-  - Generates inbound/outbound interception tasks (e.g., *"Intercept radial 120 Inbound"*).
-  - Displays computed recommended intercept heading (30° to 45° cut angle) and scores accuracy when radial is captured within ±2°.
-
-#### Feature 3B: Holding Pattern Procedural Trainer
-- **Multi-Source Navaid Selector:**
-  - Supports tracking holding fixes using NAV1, NAV2, or NDB (ADF).
-- **Dual Operating Modes:**
-  - **Live Track Following:** Follows live aircraft position relative to the holding fix and evaluates procedural entry and turn timing in real-time. Automatically switches to live sync when flight is ongoing.
-  - **Interactive Scenario Mode:** User sets or randomizes Inbound Course, Turn Direction (Standard Right / Non-Standard Left), and Aircraft Heading.
-- **Entry Sector Analysis (FAA / ICAO Standard):**
-  - Automatically classifies and highlights the appropriate entry sector:
-    - **Direct Entry:** 180° sector.
-    - **Teardrop Entry:** 70° sector.
-    - **Parallel Entry:** 110° sector.
-- **Interactive Visualizer:**
-  - Top-down canvas depicting holding fix, racetrack pattern, leg lengths, entry boundaries, and live/simulated flight track.
+- **VOR / NDB Interception Trainer:**
+  - Ingests live NAV1, NAV2, or ADF telemetry from MSFS (OBS course, radial, relative bearing, DME distance).
+  - HTML5 Canvas 360° compass rose with rotating OBS needle, CDI deflection, and TO/FROM flags.
+  - Procedural challenge generator with recommended 30°–45° intercept headings and capture scoring within ±2°.
+  - Dual modes: **Live MSFS Sync** and **Interactive Practice Scenario**.
+- **Holding Pattern Procedural Trainer:**
+  - Computes FAA / ICAO standard entry sectors (Direct 180°, Teardrop 70°, Parallel 110°).
+  - Canvas top-down racetrack visualizer with leg timing, wind drift compensation, and live aircraft track following.
 
 ---
 
 ### Module 4: Procedural Route & Multi-Sector Generator
 
-#### 1. Aircraft Category Performance Profiles
-Six standardized ICAO aircraft categories with realistic performance envelopes:
-* **Cat A (Light GA / Trainer):** 110 kt TAS, 700 fpm climb, 500 fpm descent, typical FL045 (e.g. C172 Skyhawk, Piper Archer).
-* **Cat B (High-Performance Single / Light Twin):** 165 kt TAS, 1,200 fpm climb, 1,000 fpm descent, typical FL095 (e.g. Beechcraft Bonanza, Cirrus SR22, Baron 58).
-* **Cat C (Turboprop / Light Jet):** 280 kt TAS, 2,200 fpm climb, 1,800 fpm descent, typical FL240 (e.g. King Air 350i, TBM 930, Citation Mustang).
-* **Cat D (Regional / Medium Jet):** 440 kt TAS, 2,800 fpm climb, 2,200 fpm descent, typical FL330 (e.g. A320neo, B737-800, CRJ-700, E190).
-* **Cat E (Long Haul Widebody):** 480 kt TAS, 2,400 fpm climb, 2,000 fpm descent, typical FL370 (e.g. B777-300ER, B787-9, A350-900, A330-900).
-* **Cat F (Heavy / Super):** 490 kt TAS, 1,800 fpm climb, 1,600 fpm descent, typical FL370 (e.g. A380-800, B747-8 Intercontinental, An-225).
-
-#### 2. Route Constraints & Multi-Sector Engine
-- **Sector Count:** Configurable from 1 to 6 consecutive legs with optional ground turnaround / taxi times.
-- **Limitation Modes:** Switch between limiting by **Total Flight** or **Per-Sector** for both Duration (15 min to 12 hrs) and Distance (20 NM to 8,000 NM).
-  - When limiting by duration with ground time enabled, taxi times are deducted from the flight time budget so that individual sectors do not exceed the user's selected limit.
-- **Corridor & Destination Routing Architecture:**
-  - **Destination-Locked Routing (Backwards Generation):** When an arrival airport is locked without a fixed origin, the engine generates legs backwards starting from the destination aerodrome. Every preceding sector is constrained within `[minSectorDist, maxSectorDist]`, ensuring the route terminates realistically at the destination without oversized final sectors.
-  - **Fixed Origin & Destination (Corridor Guidance):** When both departure and arrival are fixed, the algorithm verifies that the direct distance does not exceed the maximum cumulative capability ($N \times \text{maxSectorDist}$) and guides intermediate waypoints along the Great Circle corridor.
-- **Altitude & Flight Level Rules:**
-  - Semi-circular cruising levels (Eastbound odd thousands, Westbound even thousands).
-  - Short-hop parabolic climb/descent scaling when sector distance is shorter than unconstrained climb-to-descent distance.
-  - **Corridor Terrain-Aware Clamping (MSA / Grid MORA):**
-    - 10 NM cross-track buffer queries major worldwide mountain massifs and topography.
-    - **Mountainous Terrain Definition:** Classified as mountainous when terrain variation within 10 NM is $\ge 3,000\text{ ft}$ (ICAO PANS-OPS / FAA standard).
-    - **Altitude Clearance Margins:** 1,000 ft clearance margin in non-mountainous terrain; 2,000 ft clearance margin in mountainous terrain.
-    - **Flight Level & Altitude Formatting:** Altitudes $\le 3,000\text{ ft}$ are shown in feet (e.g. `2,500 ft`); altitudes $> 3,000\text{ ft}$ are formatted as 3-digit zero-padded flight levels (e.g. `FL060` for 6,000 ft, `FL100` for 10,000 ft, `FL600` for 60,000 ft).
-    - Recommended cruising altitude uses the category typical altitude as a baseline starting point (not a rigid ceiling cap) and is safely elevated to clear highest terrain peaks while complying with semi-circular IFR rules. Mountainous terrain advisories are issued specifically when traversing mountainous terrain.
-
-#### 3. Airport Filter Engine with Collapsible Accordions
-- Smooth animated collapsible sections (`Chevron` toggle with CSS transition).
-- **Runway Length & Surface:**
-  - Toggle between **Feet (ft)** and **Meters (m)** units.
-  - Optional **Minimum** AND/OR **Maximum** runway length inputs.
-  - Surface filter: Paved Only, Unpaved Only, Water/Seaplane Base, or Any.
-- **Geographic & Type Constraints:**
-  - Origin / Destination locks (ICAO input).
-  - Continental and Country filters.
-  - Airport classification (Large, Medium, Small).
-
-#### 4. Route Map & Briefing Brief
-- Great circle sector lines plotted on Leaflet map with bearing arrows and aerodrome pins.
-- Leg breakdown table: sector distance, initial bearing, climb/cruise/descent durations, flight level (e.g. `FL330`), and ground turnaround time.
-- One-click copy briefing package to clipboard formatted for flight simulator EFB/flight plan entry.
+1. **ICAO Aircraft Performance Categories:**
+   - Cat A (Light GA / Trainer, 110 kt TAS, FL045).
+   - Cat B (High-Perf Single / Light Twin, 165 kt TAS, FL095).
+   - Cat C (Turboprop / Light Jet, 280 kt TAS, FL240).
+   - Cat D (Regional / Medium Jet, 440 kt TAS, FL330).
+   - Cat E (Long Haul Widebody, 480 kt TAS, FL370).
+   - Cat F (Heavy / Super, 490 kt TAS, FL370).
+2. **Multi-Sector Engine & Corridor Routing:**
+   - 1 to 6 sectors with ground turnaround times. Limitation modes: Total Flight vs Per-Sector (Duration or Distance).
+   - Destination-locked backwards generation and corridor Great Circle waypoint guidance.
+   - **Terrain-Aware Minimum Safe Altitude (MSA / Grid MORA):** 10 NM cross-track buffer queries major worldwide topographic massifs; clamps cruising levels to guarantee 1,000 ft clearance in flat terrain and 2,000 ft in mountainous terrain ($\ge 3,000\text{ ft}$ relief).
+3. **Saved Routes Management (`SavedRoutesView.tsx`):**
+   - Filterable tabs: All, Favorites, Drafts, and Flown.
+   - Manual route entry, sector editing, and one-click flight dispatching when positioned within 25 NM of origin.
 
 ---
 
-## 6. Implementation Roadmap
-
-### Phase 1: Tauri Backend & FSUIPC Integration
-- [x] Initialize Tauri 2.0 workspace with React 19 + TypeScript + Vite.
-- [x] Implement Rust FSUIPC bridge worker thread to read core telemetry packet (`0x0560`, `0x0568`, `0x0570`, `0x02BC`, `0x0580`, `0x0366`, `0x0C4E`, `0x0C54`, `0x0300`, `0x02C0`, `0x3D00`).
-- [x] Implement auto-reconnection loop when MSFS or FSUIPC7 restarts.
-- [x] Expose Tauri IPC polling commands (`start_polling`, `stop_polling`, `get_connection_status`).
-
-### Phase 2: Local Persistence & Auto-Logging
-- [x] Initialize `aerotrack.db` SQLite connection inside Tauri runtime `setup()` (`lib.rs`).
-- [x] Expose SQLite Tauri IPC commands (`get_flights`, `get_flight_details`, `delete_flight`, `get_visited_stats`, `search_airports_near`, `save_telemetry_batch`, `export_flight`).
-- [x] Implement Rust background batch telemetry flusher (write every 5 seconds / 20 samples to `flight_telemetry`).
-- [x] Embed global airport database (integrated with OurAirports 86,000+ aerodromes & live sync) for lat/lon proximity auto-detection within 3 NM.
-- [x] Implement 7-stage flight lifecycle state machine (`BOARDING` -> `TAXI_OUT` -> `TAKEOFF_CLIMB` -> `ENROUTE_CRUISE` -> `DESCENT_APPROACH` -> `TOUCHDOWN_ROLLOUT` -> `ARRIVED`).
-- [x] Implement multi-touchdown detection with debouncing and overall flight landing rate averaging.
-- [x] Migrate frontend store from `localStorage` persistence to Tauri SQLite IPC queries with lazy coordinate loading.
-
-### Phase 3: Frontend Logbook & Visualizers
-- [x] Build Logbook dashboard: Flight cards, search filter, and flight deletion.
-- [x] Dynamic logbook KPI card calculations (exact total hours, distance, and true average touchdown rate).
-- [x] Implement Flight Detail view with Leaflet path rendering and Recharts profile charts.
-- [x] Implement synchronized telemetry scrubbing (hovering chart moves map position marker).
-- [x] Implement universal rich export dropdown (**GPX**, **KML**, **GeoJSON**, and **CSV**) with native explorer dialogs.
-- [x] Implement continuous altitude gradient route rendering (`0 ft` Green -> `45,000+ ft` Red) on Leaflet map.
-- [x] Add Top of Climb (TOC) and Top of Descent (TOD) marker calculations and map placement.
-- [x] Add multi-touchdown analysis cards with oleo-pneumatic G-force normal acceleration calculations.
-
-### Phase 4: Visited Overview Module
-- [x] Aggregate unique airports and country codes from completed flights.
-- [x] Render world map using GeoJSON country boundaries with interactive tooltips.
-- [x] Add country statistics, continent badges, and airport pin markers with visit counts.
-
-### Phase 5: IFR Interception & Hold Trainer
-- [x] Read NAV1 / NAV2 / ADF / DME offsets (`0x0C4E`, `0x0C54`, `0x0C5E`, `0x0C64`, `0x0300`, `0x0306`, `0x02C0`).
-- [x] Implement NAV1 / NAV2 / ADF navigation source selector across IFR and Hold trainers.
-- [x] Build 2D HTML5 Canvas rendering engine for aircraft position relative to NAVAID and holding patterns.
-- [x] Implement radial challenge algorithm with intercept heading recommendations and capture detection.
-- [x] Implement Hold Pattern Entry calculator (Direct, Teardrop, Parallel) with visual sector overlays.
-- [x] Add automatic **Live MSFS Sync** activation when simulator flight is active.
-
-### Phase 6: Procedural Route & Multi-Sector Generator
-- [x] Design 6 ICAO aircraft category performance envelopes (Cat A through Cat F).
-- [x] Build multi-sector procedural route engine with climb/cruise/descent physics and semi-circular cruising FLs.
-- [x] Implement total flight vs per-sector limitations for both duration and distance (15 min min, 30 min lowest max).
-- [x] Build collapsible filter accordion sections with smooth chevron animations.
-- [x] Implement runway surface, unit switching (ft / m), and optional minimum AND/OR maximum runway length filters.
-- [x] Render interactive great-circle route map with bearing indicators and clipboard briefing export.
-- [x] Replace native `<select>` dropdowns across the application with custom accessible `Select` component.
-
-### Phase 7: Architectural Enhancements
-- [x] Implement corridor terrain-aware minimum safe altitude (MSA / Grid MORA) query to clamp cruising flight levels over mountainous terrain.
-- [x] Add distance calculation for recorded flights solving the distance by the distance between recorded points and the dep/arr airports instead of solely using the dep/arr airports.
-    - [x] Make this distance (total) be calculated when the flight recording is saved, instead of solving this calc everytime the page is loaded, avoiding complex calculations on runtime.
-
-- [x] Add the possibility for the user to choose a polygon OR circle area in the map with the radius or size they want where the search route algorhythm will search for airfields.
-    - [x] This selector will be place in the section "4. Region or Country" of the search menu.
-
-### Phase 8: Route List
-This feature will allow users to save routes flown and the ones they want to fly, with a "favorite" option to tag their favorite ones.
-Currently when using the "new route" page/feature the users has the option to copy the flight briefing with all the details or to "Fly this route" 
-which will automatically start running that route and the recording of the flight, even when they don't have the FSUIPC bridge or MSFS running.
-
-The fix to this will be a rework and addition of a complemental feature:
-
-- [x] In the "New Route" page after the user has searched for a new route / flight, they will have the following options:
-    - [x] Copy - Which will maintain the current feature of copying the flight briefing;
-    - [x] Draft - Which will save this flight as a draft for the next explained feature;
-    - [x] Favorite ( which will only be a heart button ) - Which will already save the flight as a draft (same as the earlier feature) but will already tag that saved flight as a favorite one;
-- [x] A new sub-page will be create with a list view of all saved flights;
-    - [x] It shall have all the saved flight details:
-        - [x] Totals: Distance, Airborne flight time, Block time, Recommended altitude;
-        - [x] Aircraft category chosen for the flight and calculations;
-        - [x] If the flight is of one sector only, display departure and arrival airports;
-        - [x] If the flight has multiple sectors, each listed flight should have a dropdown drawer with a inside list of each sector with its own details such as the details on the "New Route" page;
-    - [x] Each listed flight will have three action buttons:
-        - [x] Fly - Which will only available and not disabled, if the user is connected to FSUIPC & MSFS, and the app detects that the user is within a reasonable distance (e.g 25 NM) from the first departure airport.
-        - [x] Favorite - Will toggle the flight from the favorite or not tag;
-        - [x] Delete - Will remove the flight from the saved list;
-    - [x] Each listed flight will have a stored status which will tell if the flight is:
-        - [x] Draft - The user only saved it for later but hasn't flown it;
-        - [x] Flown - The user has flown that route/saved flight already;
-    - [x] The saved flight will be considered "FLOWN" if (it should meet some of the conditions below):
-        - [x] The user clicked on the "Fly" action button, meeting all listed criterias to started, and that initiated flight has been completed to the final destination planned on that saved flight;
-        - [x] After the flight has been saved/drafted, the user has executed a flight (which was recorded into the logbook) and that flight meets the departure and arrival airports.
-            - [x] If that flight includes more than one segment and more than one airport, the user should have executed a touch and go OR full stop landing and then a take-off from those airports in between the first and last airport.
-            - [x] For this feature to fully work, make sure you can resolve the touchdowns of a recorded flight, being aware where each touchdown during a recorded flight was executed.
-    - [x] After a saved flight was "Flown" as marked as such, the user should have the possibility to "Draft" the same flight again, without unfavoritizing the flight, doing so for them to re-execute that flight if they really liked it.
-- [x] Fixes that should be made for the "Visited destinations" feature:
-    - [x] User visits should be accounted by each recorded flight when that airport was the depature, arrival or enroute visit (such as a touch-and-go or a full-stop landing and take-off) all during the same flight.
-        - [x] Currently visits are being counted for each take-off or touchdown made, even if the airport is the same;
-        - [x] If a flight departed and landed in the same airport, that should count as one visit.
-        - [x] Multiple touch-and-go's or landing and take-off or any sort of touchdowns during the same flight, should NOT be considered multiple visits or multiple operations.
-    - [x] The number of operations per country shouldn't also be considered multiple if the dep/arr of a recorded flight are both the same. Only consider in that case 1 operation.
-
-### Phase 9: Troubleshooting
-- [x] Currently when the user tries to update their dataset from OurAirports the apps open/closes a terminal window multiple times and then the app freezes;
-    - [x] The fix to be done would be to totally self-contain the fetch action from OurAirports dataset and monitor the update progress in there next to the update button;
-- [x] Currently if the user encounters any issue with their experience there is no way for them to report it
-    - [x] In the sidebar there should be a feedback button which allows the user to submit their feedback & bug reports;
-        - [x] The feedback action would trigger opening a feedback page where the user can write some contact information;
-        - [x] Describe their feedback/bug/error;
-        - [x] Choose from a select input the log files from the /log folder where the app stores the crash reports;
-        - [x] A privacy switch button where the user can choose to share their operating system information and app version and installation information;
-        - [x] A select input where the user can choose specific recorded flight from their logbook that will be submitted into the report as a source of info for analysis;
-        - [x] A select input for the user to choose a specific saved route for the same usage as the above;
-    - [x] Consider logging app crashes and errors that have occured throughout usage of the app, preferably in a "/log" folder (.txt files);
-    - [x] We should plan a way to report this issues from the app into something like Github Issues;
-
-### Phase 9.1: Fixes
-Currently if a user has a saved route with more than one sector and the app has automatically started the flight recording the app can automatically end the recording even thought the user has only completed one sector.
-To avoid that mistake, when the app is recording a flight, it should verify when the "stop-flight" criterias are met, which airport the user is stopped at. If the app resolves that the user is currently at one airport
-which is part of a multi-sector route, it should only ask the user if they want to stop the recording, and mention to the user that "we think you might be executing X route which was saved".
-
-Example problematic scenario:
-The user has a saved route which is EDDG -> LFSD -> LFTH. If the user has let the app automatically start the recording of that flight at EDDG, when the user lands at LFSD and shutdowns its engines and stays still for 30 seconds the app will stop the flight recording while the user was preparing to flight for the next airfield (LFTH). 
-
-Expected scenario:
-After the user of the previous example has stopped and parked the aircraft for the next sector of that flight, if the app notices it meets the criteria for auto-stopping the recording, it should resolve what airport the users is at
-if the apps notices the user is at LFSD it should look up for the recorded departure. The app notices that the departure was at EDDG and the "destination/arrival" was LFSD, BUT the app should see that there is a saved route which is 
-EDDG->LFSD PLUS LFTH, so instead of stopping the flight there, it should only prompt the user asking them if they want it to be stopped and it notices an existing planned route which so far is meeting the recorded flight.
-Allowing the user to continue the flight recording and connect and meet that with the planned route.
-
-Extra fixes to be done after this:
-- [x] When the flight recording is running and the duration of the flight is being displayed on the "Flight Logger" card, when the duration reaches 60 min format the time as 0h 00min 00s;
-- [x] When FSUIPC disconnects from the app, clean all the telemetry data displayed such as remaining showing altitude or nearest aerodrome;
-- [x] Think of a way to detect whenever the user returns to the menu or "restarts" the flight on MSFS, to make sure we stop getting the data for a flight recording in both cases;
-
-### Phase 10: Saved Flight Improvements
-- [x] Users should be able to edit saved flights (only drafted flight);
-- [x] Users can edit the single flight details such as aircraft category, dep/arr airports. (Recalculate times and distances);
-- [x] Allow users to edit individual sectors of each flight;
-- [x] Add a way for the users to entry their saved flights manually into the saved routes page/list;
-- [x] Add pagination to the saved routes and logbook pages:
-  - [x] The "table"/"list" of recorded flights or saved routes should have a limit of displayed flight per page view, the default would be 50 but the user can change it to 25 or up to 100.
-  - [x] The saved length will be saved inside the user settings, pagination should have two buttons to go to the first and last pages, a move backwards and forward pages, and a input where the user can write the page number.
-
-### Phase 11: Export / Import Data Rework
-The user must be able to export and import their own data for multiple reasons. They should be able to export their data in separated segments or even their whole logged data.
-For that we will apply these improvements:
-- [x] Export (JSON, and other viable file formats)
-    - [x] Let the user export their data as a whole (user information, settings, logbook including individual flight telemetry, saved routes, etc.)
-    - [x] The user should be able to individually export data individually:
-        - [x] Export user information + settings;
-        - [x] Export logbook including telemetry by default (make it optional)
-        - [x] Export saved routes;
-- [x] Import
-    - [x] Users must be able to import their data from multiple ways and segments;
-    - [x] Allow users to import the exported complete app/user data from any accepted file format;
-    - [x] Make it viable to import segmented data export files:
-        - [x] If the user has uniquely export their logbook, with or without telemetry, allow them to solely import that data;
-            - [x] If the user has imported their logbook without flight telemetry handle it correctly so the app doesn't brake because of missing data;
-    - [x] Make sure that imported user data and settings when imported won't brake or conflict with current data;
-            - [x] Conflicting data can be prompted to the user for them to choose between each data property;
-    - [-] Add OS file support for the app (Explicitly skipped per user direction - file association for .json avoided to prevent hijacking OS defaults; file picker & drag-and-drop used instead):
-        - [-] Files extensions such as JSON (and any other we decide is viable for this export/import feature) should have Apollo Flight option when they click on the "Open with" option in the context menu of the file;
-        - [-] When the user takes this action it will prompt the app to open (in case it is not running), after the app loads and window opens, prompt the user with a modal (confirmation) displaying to them:
-            - [-] Type of data (complete Apollo Flight user data / user logbook / specific flight / saved routes ) 
-            - [-] In case it is something like the user logbook, specific flight or saved route display the metadata and details and give the option to the user to import or cancel action
-- [x] Recycle Bin:
-  - [x] A recycle bin feature page should be added making it so when the user deletes a recorded flight instead of absolutely deleting it, that flight will be moved to the trash bin and after 30 days after deletion it will be actually deleted;
-  - [x] The user should be able to "recycle" the flight making it come back to the actual list;
-  - [x] Once the app is started OR before the user actually opens the recycle bin page the app should check the 30 day period status for each deleted flight, after the user has viewed and closed/moved from the page the app will actually delete it.
-  - [x] If the app knows that recycle bin item is about to be deleted (within 24h) add a small chip/badge to the listed item saying it will deleted soon.
-
-### Phase 12: Telemetry Update
-Add a detailed telemetry option to the settings page allowing the user to get as much as possible information recorded for their flight.
-
-Using FSUIPC information from the user's position such as :
-- [x] Wind information (Speed and direction);
-- [x] Temperature (OAT & TAT);
-- [x] Visibility;
-
-This will allow users to have more detailed information for their flights to be analyzed:
-- [x] In the telemetry graph, when the user is sliding through the recorded flight telemtry timeline in the information popup display this detailed information (wind, temp. and visibility);
-- [x] Add "totals" information such as statistics of:
-    - [x] Lowest/maximum OAT encountered;
-    - [x] Lowest visibility encountered;
-    - [x] Average wind during cruise (direction & speed);
-    - [x] Maximum wind speed encountered (direction & speed);
-
-This will be an optional feature, disabled by default so the user doesn't have to deal with excessive storage usage from the start.
-
-### Phase 13: EFB / WiFi Companion Add-on
-An embedded lightweight local HTTP & WebSocket server hosted by the Tauri Rust backend that serves a mobile-responsive Electronic Flight Bag (EFB) web page over the local network. Users can open the URL on an iPad, Android tablet, or smartphone with zero device installation.
-
-- [x] **Backend HTTP & WebSocket Service (Rust / Tokio / Axum):**
-    - [x] Implement lightweight embedded web server running on configurable dynamic random port (default safe range 24000–29999, avoiding collision-prone 8080).
-    - [x] Serve static web assets from `dist` bundle with SPA fallback.
-    - [x] Implement high-frequency WebSocket endpoint (`/ws`) broadcasting live sim telemetry (1–4 Hz).
-    - [x] Expose REST endpoints for active route briefing and server telemetry (`/api/status`, `/api/telemetry`, `/api/route`).
-- [x] **Device Discovery & QR Code Pairing:**
-    - [x] Add desktop "EFB Companion" view in sidebar displaying local network IP, LAN URL, and dynamic scannable QR Code.
-    - [x] Implement server start/stop/port toggle with random safe port generator and auto-start setting.
-- [x] **Mobile-Responsive EFB Frontend (Matching Desktop Geist Design):**
-    - [x] Mobile & tablet UI matching Apollo Flight desktop styling (Geist design system, surfaces, tabular telemetry, light/dark themes).
-    - [x] Responsive collapsible sidebar and slide-over drawer navigation.
-    - [x] TopHeader telemetry ribbon with real-time `ALT`, `GS`, `HDG`, `VS`, `WIND`, `OAT`, and `StatusPill`.
-    - [x] Implement Screen Wake Lock API (`navigator.wakeLock`) to keep display awake during flight.
-- [x] **Live Moving Map & Telemetry HUD:**
-    - [x] Responsive Leaflet map with plane position, heading rotation, flight trail breadcrumbs, and nearest airport badges.
-    - [x] Live instrument KPI cards: Altitude (MSL/AGL), IAS/TAS/GS, Vertical Speed, Wind component, and Atmosphere.
-- [x] **Active Route & OFP Tracker:**
-    - [x] Synchronize active or drafted multi-sector routes with live distance, course, cruise FL, and airport metadata.
-- [x] **IFR Trainer & Holding Pattern Repeater:**
-    - [x] Real-time NAV1/NAV2/ADF receiver readouts, selected OBS, radial deviation, DME distance/speed, and holding pattern entry visualizer with live aircraft track vector.
-- [x] **Pilot Scratchpad & Checklists:**
-    - [x] Quick-tap scratchpad for ATC clearances (Squawk, Altimeter, Runway, Heading, Altitude, and freeform taxi notes).
-    - [x] Interactive normal flight deck checklists with progress tracking and resets.
-
-### Phase 14: Overview page (DashboardView.tsx) & UI - Update
-- [x] Replace the "Flight Operations" button on the sidebar with the colapse sidebar action button, remove it from the branding header.
-- [x] Now that the "Flight Operations" button doesn't exist anymore, add a new status to the list in the StatusPill.tsx, which includes is the "Updating Navdata". It will be shown whenever the user prompts the app to a navigation data (airports, runways, etc.) update.
-- [x] Map Section
-    - [x] With the current overview page (DashboardView.tsx), fill the "Map" section with a map with the same tiles used in the app. When the user has the app connected to the MSFS display the aircraft of the user at the current position;
-    - [x] When the user isn't recording a flight display a layer with all airports listed in the database, the marker should be like a small dot, clickable with a popup which will display the airport name, country, and further information available such as runways and dimensions. Also display the airport metar/taf from [https://aviationweather.gov/api/data/metar](https://aviationweather.gov/api/data/metar);
-    - [x] The user is flying draw the flight path on this map and add the possibility to the user for the map to follow/focus them or not;
-- [x] Weather information Section
-    - [x] Weather information section will have a input field for the user to search for an airport by ICAO code;
-    - [x] Display the METAR/TAF, if available, from [https://aviationweather.gov/api/data/metar](https://aviationweather.gov/api/data/metar);
-- [x] Flight Control Section
-    - [x] Add a start recording button and all necessary flight/app controls shortcuts in this section.
-- [x] Change the page name to just "Overview", change file name to "Overview.tsx".
-
-### Phase 15: Checklists
-The checklists feature will allow users to create custom checklists, import and export it from different file formats such as JSON.
-It will add a list of checklists saved on the user database listed by a title (usually the aircraft to what it is related or a category as the user prefers).
-The checklists will be structurized in sections and items within. Each item will have their own name and a fill in space which will be the thing to be checked. The user might add a note to what should be checked there.
-
-- [x] Checklists page;
-- [x] When the user is editing or creating one checklist it should have a form input select menu which will list all of the aircraft the user has flown in their logbook so that checklist will be associated with the aircraft, when the user is in-game with that associated aircraft it will highlight the checklist on the list or move it to the top.
-**Later added features**:
-- [ ] Voice recognition for checklists: (Deferred to [Phase 99](#phase-99-eventual-changes-not-planned-in-short-future) – see technical design in [VOICE_CHECKLISTS_SPEC.md](VOICE_CHECKLISTS_SPEC.md))
-
---- 
-
-### Phase 18: Documentation
-Users might want to have their Markdown or PDF files accessible and readable for them directly on the app. Such as briefing documents, aircraft information, etc.
-
-Allowing them to select folders from where they want the app to find files, or even allowing them to import directly into the app folder specific `/user-docs`.
-
-- [x] Add "Documentation" page;
-    - [x] Add a list of all indexed files;
-    - [x] Make markdown files rendered into the app following the app UI style so it looks seamless within the UI;
-    - [x] Add support for PDF visualization (it should be as light on computer processing as possible);
-    - [x] Add a "customization" option where each indexed file will have some metadata associated and saved into the database:
-        - [x] Each indexed file will have a title (replacing the file name), lastSeen (used for sorting the list of files from latest seen), tag (option) (single or multiple) making it easier to sort, search and organize indexed files;
-- [x] Add two folders to be bundled with the installer or to be created when the app is installed:
-    - [x] `/user-docs` folder will be created with the app installed where the users can place .md or .pdf files that the app will live update and read.
-    - [x] `/docs` which is be the current app repo `/docs` folder which will be bundled with the app installer allowing the users to read some documentation that has been included in the app from development.
-- [x] Add a "Documentation Options" section in the settings page:
-    - [x] Allows users to select one or more directory from where the app will be given access to fetch files to read into the "Documentation" view page;
-    - [x] Switch to live update (keep the view and indexing live updated) or disabled will pause live update and only update the indexing and the rendering of documents in the "Documentation" page when the app is opened.
-    (Later we can add more options to this section, the most important one is the directory option)
+### Module 5: Electronic Flight Bag (EFB) Companion
+Embedded local Wi-Fi companion served by the Rust Axum web server:
+- **Device Pairing:** Desktop EFB view displays LAN IP, dynamic URL, and high-contrast QR code for instant tablet connection.
+- **Mobile Responsive HUD (`EfbHudView.tsx`):**
+  - Live ArcGIS satellite moving map with aircraft marker, heading rotation, and track trail.
+  - Real-time KPI ribbons: Speed (IAS/TAS/GS), Altitude (MSL/AGL), Heading, Vertical Speed, Wind & Crosswind, and Atmosphere (OAT & Visibility formatted to user preferences).
+  - Screen Wake Lock API integration to prevent tablet screen sleep.
+- **OFP Tracker & Clearances Scratchpad:** Synchronized flight plan legs, ATC clearance scratchpad (Squawk, Altimeter, Runway, Heading, Altitude), and interactive flow checklists.
 
 ---
 
-### Phase 17: User Profile Update
-Instead of only having the visited airports and countries as the user "profile". We can create a user profile, with user statistics such as total distance, flight time, visited airports, number of landings, etc. The visited countries/airports visited map should be moved into this page. Add a badges card which will be awarded like game achievements, which will be awarded when users check some information, for example, if they have visited a continent as a whole.
+### Module 6: Aircraft Checklists Engine (`ChecklistsView.tsx`)
+- Standard Operating Procedures (SOP) flow cards with collapsible procedure categories (Normal, Emergency, Abnormal).
+- Dynamic aircraft title association: Automatically detects active MSFS aircraft title and highlights or floats matching checklists to the top.
+- Full custom checklist creation, editing, and JSON import/export routines.
 
-Instead of the achivements be hard coded into the page itself a data file (.ts) should be used for this, so instead of having static achivements to be checked agaisnt data we will make use of an array list which will have the achivement data plus an expression which checks and returns boolean and progression (%) values.
+---
 
-Example:
-```typescript
-{
-    name: "Visited the Alps"
-    description: "Lorem ipsum... compact description.",
-    // user = all of the user data
-    expression: (user) => {
+### Module 7: Documentation & Briefings Reader (`DocumentationView.tsx`)
+- Dual-format viewing engine supporting Markdown (`.md`) and Portable Document Format (`.pdf`).
+- Pre-configured folders: Bundled app documentation (`/docs`) and user documents directory (`%APPDATA%/user-docs`).
+- Custom directory indexing with live filesystem change watcher (`notify`).
+- Document metadata customization: Inline title renaming and multi-tag filtering saved to `document_metadata`.
 
-        const alpenAirports = ["ZZZZ", "YYYY", "XXXX"]
+---
 
-        const completed = user.visitedAirports + alpenAirports // Match?
+### Module 8: Settings & Preferences (`SettingsView.tsx` - Rework V3)
+Redesigned with a master-detail sub-sidebar navigation deck and dedicated section pages:
+1. **General & Units:** Close to system tray toggle, dark/light theme, and measurement unit selectors (Weight: lbs/kg, Visibility: SM/m-km, Wind Speed: kt/mps, Temperature: °C/°F).
+2. **Recording Rules:** Auto-start recording triggers, detailed telemetry toggle, and flight stop rollout safeguards.
+3. **Datasets & Airports:** Global aerodromes database status, runway dimensions cache, and in-app OurAirports live synchronization.
+4. **EFB Companion:** Server mode (Off / On / Auto), dynamic listening port with randomizer, LAN URL, and QR code pairing drawer.
+5. **Documentation:** Custom indexed directories list, folder picker dialog, manual directory entry, and live file watching switch.
+6. **Backup & Export:** Logbook page size selector (25, 50, 100, 250), full/partial Apollo JSON bundle export, JSON import modal, and Recycle Bin quick-access.
+7. **About & Runtime:** Core application version, FSUIPC7 bridge connection diagnostics, integrated software update checker and installer, and MIT open-source license.
 
-        const progression = () // Amount
+---
 
-        return {
-            completed: true,
-            progression: 0.75
-        }
-    }
-}
-```
+### Module 9: Cockpit Overview & Quick-Controls (`Overview.tsx`)
+- Satellite moving map powered by ArcGIS World Imagery with live aircraft position, heading vector, and follow-plane toggle.
+- Interactive airport layer: Clickable aerodrome dots displaying runway dimensions, surface types, elevation, and live aviation weather (METAR and TAF fetched in real-time from `aviationweather.gov`).
+- Quick flight controls: Manual flight recording start/stop and FSUIPC status indicator pill.
 
-### Phase 19: Testing Unit & Error Management
-We should have a testing unit standalone application/script which allows the development team to test the app without being actually in the game, simulating a FSUIPC bridge.
-Implementation of UI usage testing should also be something to look into.
+---
 
-- [ ] Replace the default Vite error page with a custom error page or modal depending on the error. Any other error or issues such as handling problems at the backend should also be notified to the user as modals instead of banners inside the page UI;
+## 6. Implementation Roadmap & Status
 
-[ Feature description will be added here ]
+### Completed Phases
+- [x] **Phase 1:** Tauri v2 workspace, FSUIPC7 background polling worker, auto-reconnect engine.
+- [x] **Phase 2:** SQLite persistence, batch flusher, 7-stage flight state machine, debounced touchdown detection.
+- [x] **Phase 3:** Logbook table, dynamic KPIs, flight debrief visualizer, continuous altitude gradient tracks, GPX/KML/GeoJSON/CSV exports.
+- [x] **Phase 4:** Visited destinations choropleth world map and country statistics.
+- [x] **Phase 5:** IFR Interception & Holding Pattern trainer with live MSFS sync and scenario modes.
+- [x] **Phase 6:** Procedural Route & Multi-Sector dispatch generator with 6 ICAO performance categories and Great Circle math.
+- [x] **Phase 7:** Corridor terrain-aware MSA / Grid MORA clamping and polygon/radius airfield search.
+- [x] **Phase 8:** Saved Routes system (Draft / Flown / Favorite), multi-sector editing, and manual flight creation.
+- [x] **Phase 9:** Self-contained OurAirports live update synchronization and crash diagnostic logging.
+- [x] **Phase 10:** Saved flight pagination, route sector drawer inspector, and airport proximity detection.
+- [x] **Phase 11:** Apollo backup and restore bundles (JSON), segmented export/import, and 30-day Recycle Bin.
+- [x] **Phase 12:** Detailed environmental telemetry recording (wind vectors, OAT/TAT, visibility, cruise wind averaging).
+- [x] **Phase 13:** EFB WiFi Companion (Axum HTTP/WebSocket server, QR pairing, live HUD, tablet moving map).
+- [x] **Phase 14:** Cockpit Overview dashboard (`Overview.tsx`) with live METAR/TAF weather integration.
+- [x] **Phase 15:** Aircraft Checklists SOP flow cards (`ChecklistsView.tsx`) with active aircraft matching.
+- [x] **Phase 16:** Documentation reader (`DocumentationView.tsx`) for Markdown and PDF with live folder indexing.
+- [x] **Phase 17:** Pilot Profile (`ProfileView.tsx`) with gamified badge achievement engine, flight statistics, pilot fleet analysis, and visited maps.
+- [x] **Phase 18:** Map provider switch to ArcGIS World Imagery satellite tiles across all application maps.
+- [x] **Phase 19:** Gees landing analysis inspection, real-time `TouchdownFlyoutBanner`, and adaptive dynamic telemetry polling (1 Hz cruise down to 50 Hz on touchdown flare).
+- [x] **Phase 20:** Atmospheric & environmental weather unit preferences (Visibility: SM vs metric; Wind Speed: kt vs m/s; Temperature: °C vs °F; Weight: lbs vs kg).
+- [x] **Phase 21:** Settings UI Rework V3 (master-detail sub-sidebar navigation deck with dedicated section tabs).
 
-### Phase 20: Onboarding Update
-Before launching the app as totally ready for use, we should implement an onboarding page/flow which allow people to understand how the app works, where they can find information/settings, and how they could configure the app for better usage.
-
-### Phase 99: Eventual Changes (not planned in short future)
-- [ ] Abstract database repository layer using Rust traits (`FlightRepository`).
-- [ ] Plan JWT auth / Supabase / PostgreSQL schema alignment so local SQLite syncs transparently to remote backend.
-- [ ] Voice Recognition for Checklists (Virtual Co-Pilot): Interactive voice-driven co-pilot for checklists. Pilot calls checklist sections (e.g., *"Before take-off checklist"*), Apollo speaks challenges via TTS, recognizes verbal responses via STT, checks off completed items, and advances sections hands-free. (Detailed technical spec in [VOICE_CHECKLISTS_SPEC.md](VOICE_CHECKLISTS_SPEC.md)).
+### Future Roadmap
+- [ ] **Phase 22: Testing Unit & Error Management:** Standalone simulated FSUIPC test harness for offline development and end-to-end integration testing.
+- [ ] **Phase 23: Pilot Onboarding & First-Run Walkthrough:** Interactive introductory tour for first-time application configuration.
+- [ ] **Phase 99: Eventual Long-Term Architecture:**
+  - [ ] Rust trait-based abstract repository layer (`FlightRepository`).
+  - [ ] Voice Recognition for Checklists (Virtual Co-Pilot via local Web Speech / whisper.cpp – see [VOICE_CHECKLISTS_SPEC.md](VOICE_CHECKLISTS_SPEC.md)).
+  - [ ] Optional cloud sync alignment (PostgreSQL / Supabase) for multi-workstation pilot profiles.

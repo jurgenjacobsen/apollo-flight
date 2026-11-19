@@ -5,6 +5,12 @@ import {
     convertWeight,
 } from "../../store/flightStore";
 import {
+    formatVisibility,
+    formatWindSpeed,
+    formatWindVector,
+    formatTemperature,
+} from "../../utils/weatherUnits";
+import {
     ExportFormat,
     TouchdownEvent,
     Airport,
@@ -164,6 +170,9 @@ export const FlightDetailView: React.FC = () => {
         exportFlight,
         theme,
         weightUnit,
+        visibilityUnit,
+        windSpeedUnit,
+        temperatureUnit,
         loadFlightDetails,
         isLoadingFlightDetails,
     } = useFlightStore();
@@ -1239,16 +1248,19 @@ export const FlightDetailView: React.FC = () => {
                                         undefined && (
                                         <span className="border-l border-neutral-300 dark:border-neutral-700 pl-1.5 flex items-center gap-1">
                                             <Wind className="w-3 h-3 text-sky-500 shrink-0 inline" />
-                                            {activeScrubPoint.windDirection}°/
-                                            {activeScrubPoint.windSpeed}kt
+                                            {formatWindVector(
+                                                activeScrubPoint.windDirection,
+                                                activeScrubPoint.windSpeed,
+                                                windSpeedUnit,
+                                            )}
                                         </span>
                                     )}
                                 {activeScrubPoint.oat !== undefined && (
                                     <span className="border-l border-neutral-300 dark:border-neutral-700 pl-1.5">
-                                        {activeScrubPoint.oat > 0
-                                            ? `+${activeScrubPoint.oat}`
-                                            : activeScrubPoint.oat}
-                                        °C
+                                        {formatTemperature(
+                                            activeScrubPoint.oat,
+                                            temperatureUnit,
+                                        )}
                                     </span>
                                 )}
                             </span>
@@ -1522,14 +1534,11 @@ export const FlightDetailView: React.FC = () => {
                                                     undefined && (
                                                     <div>
                                                         <strong>Wind:</strong>{" "}
-                                                        {
-                                                            activeScrubPoint.windDirection
-                                                        }
-                                                        ° /{" "}
-                                                        {
-                                                            activeScrubPoint.windSpeed
-                                                        }{" "}
-                                                        kt
+                                                        {formatWindVector(
+                                                            activeScrubPoint.windDirection,
+                                                            activeScrubPoint.windSpeed,
+                                                            windSpeedUnit,
+                                                        )}
                                                     </div>
                                                 )}
                                             {(activeScrubPoint.oat !==
@@ -1540,11 +1549,17 @@ export const FlightDetailView: React.FC = () => {
                                                     <strong>Temp:</strong> OAT{" "}
                                                     {activeScrubPoint.oat !==
                                                     undefined
-                                                        ? `${activeScrubPoint.oat > 0 ? `+${activeScrubPoint.oat}` : activeScrubPoint.oat}°C`
+                                                        ? formatTemperature(
+                                                              activeScrubPoint.oat,
+                                                              temperatureUnit,
+                                                          )
                                                         : "--"}
                                                     {activeScrubPoint.tat !==
                                                     undefined
-                                                        ? ` · TAT ${activeScrubPoint.tat > 0 ? `+${activeScrubPoint.tat}` : activeScrubPoint.tat}°C`
+                                                        ? ` · TAT ${formatTemperature(
+                                                              activeScrubPoint.tat,
+                                                              temperatureUnit,
+                                                          )}`
                                                         : ""}
                                                 </div>
                                             )}
@@ -1552,10 +1567,10 @@ export const FlightDetailView: React.FC = () => {
                                                 undefined && (
                                                 <div>
                                                     <strong>Vis:</strong>{" "}
-                                                    {activeScrubPoint.visibility >=
-                                                    10
-                                                        ? "10+ SM"
-                                                        : `${activeScrubPoint.visibility} SM`}
+                                                    {formatVisibility(
+                                                        activeScrubPoint.visibility,
+                                                        visibilityUnit,
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -1908,22 +1923,19 @@ export const FlightDetailView: React.FC = () => {
                                                                     Wind:
                                                                 </span>
                                                                 <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
-                                                                    {
-                                                                        data.windDirection
-                                                                    }
-                                                                    ° /{" "}
-                                                                    {
-                                                                        data.windSpeed
-                                                                    }{" "}
-                                                                    kt
+                                                                    {formatWindVector(
+                                                                        data.windDirection,
+                                                                        data.windSpeed,
+                                                                        windSpeedUnit,
+                                                                    )}
                                                                     {windComp !==
                                                                         null && (
                                                                         <span className="text-[10px] text-neutral-400 font-normal ml-1">
                                                                             (
                                                                             {windComp >=
                                                                             0
-                                                                                ? `+${windComp} tail`
-                                                                                : `${windComp} head`}
+                                                                                ? `+${windSpeedUnit === "mps" ? (windComp * 0.514444).toFixed(1) : windComp} ${windSpeedUnit === "mps" ? "m/s tail" : "tail"}`
+                                                                                : `${windSpeedUnit === "mps" ? (windComp * 0.514444).toFixed(1) : windComp} ${windSpeedUnit === "mps" ? "m/s head" : "head"}`}
                                                                             )
                                                                         </span>
                                                                     )}
@@ -1941,11 +1953,17 @@ export const FlightDetailView: React.FC = () => {
                                                             <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
                                                                 {data.oat !==
                                                                 undefined
-                                                                    ? `${data.oat > 0 ? `+${data.oat}` : data.oat}°C`
+                                                                    ? formatTemperature(
+                                                                          data.oat,
+                                                                          temperatureUnit,
+                                                                      )
                                                                     : "--"}
                                                                 {data.tat !==
                                                                 undefined
-                                                                    ? ` / ${data.tat > 0 ? `+${data.tat}` : data.tat}°C`
+                                                                    ? ` / ${formatTemperature(
+                                                                          data.tat,
+                                                                          temperatureUnit,
+                                                                      )}`
                                                                     : ""}
                                                             </span>
                                                         </div>
@@ -1958,10 +1976,10 @@ export const FlightDetailView: React.FC = () => {
                                                                 Visibility:
                                                             </span>
                                                             <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
-                                                                {data.visibility >=
-                                                                10
-                                                                    ? "10+ SM (CAVOK)"
-                                                                    : `${data.visibility} SM`}
+                                                                {formatVisibility(
+                                                                    data.visibility,
+                                                                    visibilityUnit,
+                                                                )}
                                                             </span>
                                                         </div>
                                                     )}
@@ -2024,13 +2042,19 @@ export const FlightDetailView: React.FC = () => {
                             </div>
                             <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
                                 {weatherStats.minOat !== undefined
-                                    ? `${weatherStats.minOat > 0 ? `+${weatherStats.minOat}` : weatherStats.minOat}°C`
+                                    ? formatTemperature(
+                                          weatherStats.minOat,
+                                          temperatureUnit,
+                                      )
                                     : "--"}
                                 <span className="text-neutral-400 font-sans mx-1">
                                     /
                                 </span>
                                 {weatherStats.maxOat !== undefined
-                                    ? `${weatherStats.maxOat > 0 ? `+${weatherStats.maxOat}` : weatherStats.maxOat}°C`
+                                    ? formatTemperature(
+                                          weatherStats.maxOat,
+                                          temperatureUnit,
+                                      )
                                     : "--"}
                             </div>
                             <p className="text-[10px] text-neutral-400 leading-tight">
@@ -2045,11 +2069,7 @@ export const FlightDetailView: React.FC = () => {
                                 <span>Lowest Visibility</span>
                             </div>
                             <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
-                                {weatherStats.minVis !== undefined
-                                    ? weatherStats.minVis >= 10
-                                        ? "10+ SM (CAVOK)"
-                                        : `${weatherStats.minVis} SM`
-                                    : "N/A"}
+                                {formatVisibility(weatherStats.minVis, visibilityUnit)}
                             </div>
                             <p className="text-[10px] text-neutral-400 leading-tight">
                                 Minimum atmospheric visibility range
@@ -2063,10 +2083,11 @@ export const FlightDetailView: React.FC = () => {
                                 <span>Cruise Wind (Avg)</span>
                             </div>
                             <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
-                                {weatherStats.avgCruiseWindSpd !== undefined &&
-                                weatherStats.avgCruiseWindDir !== undefined
-                                    ? `${String(weatherStats.avgCruiseWindDir).padStart(3, "0")}° @ ${weatherStats.avgCruiseWindSpd} kt`
-                                    : "N/A"}
+                                {formatWindVector(
+                                    weatherStats.avgCruiseWindDir,
+                                    weatherStats.avgCruiseWindSpd,
+                                    windSpeedUnit,
+                                )}
                             </div>
                             <p className="text-[10px] text-neutral-400 leading-tight">
                                 Vector-averaged wind during cruise
@@ -2080,9 +2101,11 @@ export const FlightDetailView: React.FC = () => {
                                 <span>Max Wind Encountered</span>
                             </div>
                             <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
-                                {weatherStats.maxWindSpd !== undefined
-                                    ? `${weatherStats.maxWindDir !== undefined ? `${String(weatherStats.maxWindDir).padStart(3, "0")}° @ ` : ""}${weatherStats.maxWindSpd} kt`
-                                    : "N/A"}
+                                {formatWindVector(
+                                    weatherStats.maxWindDir,
+                                    weatherStats.maxWindSpd,
+                                    windSpeedUnit,
+                                )}
                             </div>
                             <p className="text-[10px] text-neutral-400 leading-tight">
                                 Peak wind velocity and direction recorded
@@ -2161,9 +2184,19 @@ export const FlightDetailView: React.FC = () => {
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700">
-                                                +{gVal.toFixed(2)} G
+                                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                            {td.bouncesCount && td.bouncesCount > 0 ? (
+                                                <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                                    {td.bouncesCount} {td.bouncesCount === 1 ? "Bounce" : "Bounces"}
+                                                </span>
+                                            ) : null}
+                                            {td.gForceSim !== undefined && (
+                                                <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700" title="MSFS Simulator Physics G-Force">
+                                                    +{td.gForceSim.toFixed(2)} G (Sim)
+                                                </span>
+                                            )}
+                                            <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700" title="Oleo Strut Calculated Deceleration Load">
+                                                +{gVal.toFixed(2)} G (Strut)
                                             </span>
                                         </div>
                                     </div>
@@ -2175,12 +2208,49 @@ export const FlightDetailView: React.FC = () => {
                                                 fpm
                                             </span>
                                         </span>
-                                        {td.groundSpeedKt !== undefined && (
-                                            <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                                                {td.groundSpeedKt} kt GS
-                                            </span>
-                                        )}
+                                        <span className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
+                                            {td.indicatedAirspeedKt !== undefined
+                                                ? `${td.indicatedAirspeedKt} kt IAS • `
+                                                : ""}
+                                            {td.groundSpeedKt !== undefined
+                                                ? `${td.groundSpeedKt} kt GS`
+                                                : ""}
+                                        </span>
                                     </div>
+
+                                    {/* Dynamics & Wind Vector */}
+                                    {(td.sideslipDeg !== undefined ||
+                                        td.headwindKt !== undefined ||
+                                        td.crosswindKt !== undefined) && (
+                                        <div className="flex items-center justify-between text-[11px] text-neutral-600 dark:text-neutral-400 border-t border-neutral-100 dark:border-geist-hairline pt-1 tabular-nums font-mono">
+                                            <span>
+                                                {td.sideslipDeg !== undefined
+                                                    ? `${Math.abs(td.sideslipDeg)}° ${
+                                                          td.sideslipDeg > 0
+                                                              ? "R Drift"
+                                                              : td.sideslipDeg < 0
+                                                              ? "L Drift"
+                                                              : "Aligned"
+                                                      }`
+                                                    : ""}
+                                            </span>
+                                            <span>
+                                                {td.headwindKt !== undefined && (
+                                                    <span>
+                                                        {td.headwindKt >= 0
+                                                            ? `${formatWindSpeed(td.headwindKt, windSpeedUnit)} HW`
+                                                            : `${formatWindSpeed(Math.abs(td.headwindKt), windSpeedUnit)} TW`}
+                                                    </span>
+                                                )}
+                                                {td.crosswindKt !== undefined && (
+                                                    <span className="ml-1">
+                                                        · {formatWindSpeed(Math.abs(td.crosswindKt), windSpeedUnit)}{" "}
+                                                        {td.crosswindKt >= 0 ? "R" : "L"}
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
+                                    )}
 
                                     <div className="flex items-center justify-between text-[10px] text-neutral-500 dark:text-geist-muted border-t border-neutral-200 dark:border-geist-hairline pt-1.5">
                                         <span>

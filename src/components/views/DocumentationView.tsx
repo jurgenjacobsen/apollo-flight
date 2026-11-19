@@ -418,6 +418,7 @@ export function DocumentationView() {
         docCustomDirs,
         docLiveUpdate,
         setActiveView,
+        setSettingsActiveTab,
         docActiveFilePath,
         setDocActiveFilePath,
         docContentCache,
@@ -760,7 +761,10 @@ export function DocumentationView() {
                     <Tooltip content="Configure custom documentation directories and live update preferences">
                         <button
                             type="button"
-                            onClick={() => setActiveView("settings")}
+                            onClick={() => {
+                                setSettingsActiveTab("settings-documentation");
+                                setActiveView("settings");
+                            }}
                             className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline shadow-xs transition-colors duration-150 select-none cursor-pointer"
                         >
                             <SlidersHorizontal className="w-3.5 h-3.5 text-neutral-500" />

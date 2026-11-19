@@ -16,6 +16,9 @@ import {
     ApolloExportBundle,
     WeightUnit,
     LengthUnit,
+    VisibilityUnit,
+    WindSpeedUnit,
+    TemperatureUnit,
 } from "../types/flight";
 import {
     Checklist,
@@ -983,6 +986,7 @@ export interface FlightState {
         | "feedback"
         | "recycle-bin"
         | "documentation";
+    settingsActiveTab: string;
     docCustomDirs: string[];
     docLiveUpdate: boolean;
     docActiveFilePath: string | null;
@@ -994,6 +998,9 @@ export interface FlightState {
     theme: "light" | "dark";
     weightUnit: WeightUnit;
     lengthUnit: LengthUnit;
+    visibilityUnit: VisibilityUnit;
+    windSpeedUnit: WindSpeedUnit;
+    temperatureUnit: TemperatureUnit;
     dbInitialized: boolean;
     airportsCount: number;
     isSyncingAirports: boolean;
@@ -1020,6 +1027,9 @@ export interface FlightState {
         updates: Partial<SavedRoute>,
     ) => Promise<SavedRoute | null>;
     showEndFlightPrompt: boolean;
+    latestTouchdown: TouchdownEvent | null;
+    showTouchdownBanner: boolean;
+    dismissTouchdownBanner: () => void;
     detectedMultiSectorRoute: {
         route: SavedRoute;
         currentAirportIcao: string;
@@ -1057,7 +1067,11 @@ export interface FlightState {
     toggleTheme: () => void;
     setWeightUnit: (unit: WeightUnit) => Promise<void>;
     setLengthUnit: (unit: LengthUnit) => Promise<void>;
+    setVisibilityUnit: (unit: VisibilityUnit) => Promise<void>;
+    setWindSpeedUnit: (unit: WindSpeedUnit) => Promise<void>;
+    setTemperatureUnit: (unit: TemperatureUnit) => Promise<void>;
     setActiveView: (view: FlightState["activeView"]) => void;
+    setSettingsActiveTab: (tab: string) => void;
     setSelectedFlightId: (id: string | null) => void;
     setScrubbedTelemetryIndex: (index: number | null) => void;
     setCloseToTray: (enabled: boolean) => Promise<void>;
@@ -1152,6 +1166,11 @@ const DEFAULT_TELEMETRY: TelemetryData = {
     nav2DmeSpeed: 0,
     adf1RelativeBearing: 0,
     totalWeight: 0,
+    gForce: 1.0,
+    touchdownNormalVelocity: 0,
+    sideslipAngle: 0,
+    headwindComponent: 0,
+    crosswindComponent: 0,
     timestamp: new Date().toISOString(),
 };
 
@@ -1342,6 +1361,7 @@ export const useFlightStore = create<FlightState>()(
             selectedFlightId: null,
             scrubbedTelemetryIndex: null,
             activeView: "dashboard",
+            settingsActiveTab: "settings-window",
             theme: (() => {
                 try {
                     if (typeof localStorage !== "undefined") {
@@ -1361,6 +1381,9 @@ export const useFlightStore = create<FlightState>()(
             })(),
             weightUnit: "kg",
             lengthUnit: "ft",
+            visibilityUnit: "sm",
+            windSpeedUnit: "kt",
+            temperatureUnit: "c",
             dbInitialized: false,
             pageSize: 50,
             airportsCount: 75,
@@ -1378,6 +1401,9 @@ export const useFlightStore = create<FlightState>()(
             updateMessage: null,
             updateDismissed: false,
             showEndFlightPrompt: false,
+            latestTouchdown: null,
+            showTouchdownBanner: false,
+            dismissTouchdownBanner: () => set({ showTouchdownBanner: false }),
             detectedMultiSectorRoute: null,
             nearestAirport: null,
             isLoadingFlightDetails: false,
@@ -1770,6 +1796,24 @@ export const useFlightStore = create<FlightState>()(
                             dbSettings.lengthUnit === "m"
                         ) {
                             set({ lengthUnit: dbSettings.lengthUnit });
+                        }
+                        if (
+                            dbSettings.visibilityUnit === "sm" ||
+                            dbSettings.visibilityUnit === "metric"
+                        ) {
+                            set({ visibilityUnit: dbSettings.visibilityUnit });
+                        }
+                        if (
+                            dbSettings.windSpeedUnit === "kt" ||
+                            dbSettings.windSpeedUnit === "mps"
+                        ) {
+                            set({ windSpeedUnit: dbSettings.windSpeedUnit });
+                        }
+                        if (
+                            dbSettings.temperatureUnit === "c" ||
+                            dbSettings.temperatureUnit === "f"
+                        ) {
+                            set({ temperatureUnit: dbSettings.temperatureUnit });
                         }
                         if (typeof dbSettings.docCustomDirs === "string") {
                             try {
@@ -2414,7 +2458,32 @@ export const useFlightStore = create<FlightState>()(
                 });
             },
 
+            setVisibilityUnit: async (unit: VisibilityUnit) => {
+                set({ visibilityUnit: unit });
+                await safeInvoke("set_user_setting", {
+                    key: "visibilityUnit",
+                    value: unit,
+                });
+            },
+
+            setWindSpeedUnit: async (unit: WindSpeedUnit) => {
+                set({ windSpeedUnit: unit });
+                await safeInvoke("set_user_setting", {
+                    key: "windSpeedUnit",
+                    value: unit,
+                });
+            },
+
+            setTemperatureUnit: async (unit: TemperatureUnit) => {
+                set({ temperatureUnit: unit });
+                await safeInvoke("set_user_setting", {
+                    key: "temperatureUnit",
+                    value: unit,
+                });
+            },
+
             setActiveView: (view) => set({ activeView: view }),
+            setSettingsActiveTab: (tab) => set({ settingsActiveTab: tab }),
             setSelectedFlightId: (id) => {
                 set({ selectedFlightId: id, scrubbedTelemetryIndex: null });
                 if (id) {
@@ -2815,18 +2884,43 @@ export const useFlightStore = create<FlightState>()(
                         const lastTdTime = lastTd
                             ? new Date(lastTd.timestamp).getTime()
                             : 0;
-                        // Debounce 4 seconds to prevent micro-gear bounces from registering as distinct landings
-                        if (now - lastTdTime > 4000) {
-                            const vsAtTouchdown =
-                                current.verticalSpeed !== undefined &&
-                                current.verticalSpeed < 0
-                                    ? current.verticalSpeed
-                                    : prev &&
-                                        prev.verticalSpeed !== undefined &&
-                                        prev.verticalSpeed < 0
-                                      ? prev.verticalSpeed
-                                      : -140;
 
+                        // Prefer true surface-normal impact velocity (0x030C / PLANE TOUCHDOWN NORMAL VELOCITY)
+                        const vsAtTouchdown =
+                            current.touchdownNormalVelocity &&
+                            current.touchdownNormalVelocity < 0
+                                ? current.touchdownNormalVelocity
+                                : current.verticalSpeed !== undefined &&
+                                  current.verticalSpeed < 0
+                                ? current.verticalSpeed
+                                : prev &&
+                                  prev.verticalSpeed !== undefined &&
+                                  prev.verticalSpeed < 0
+                                ? prev.verticalSpeed
+                                : -140;
+
+                        // BOUNCE DETECTION: If secondary contact occurs within 8 seconds
+                        if (lastTd && now - lastTdTime <= 8000) {
+                            lastTd.bouncesCount = (lastTd.bouncesCount || 0) + 1;
+
+                            // If bounce was a harder impact, record peak rate
+                            if (Math.abs(vsAtTouchdown) > Math.abs(lastTd.verticalSpeedFpm)) {
+                                lastTd.verticalSpeedFpm = Math.round(vsAtTouchdown);
+                                lastTd.gForce = calculateTouchdownGForce(vsAtTouchdown);
+                            }
+                            if (
+                                current.gForce &&
+                                (lastTd.gForceSim === undefined || current.gForce > lastTd.gForceSim)
+                            ) {
+                                lastTd.gForceSim = Number(current.gForce.toFixed(2));
+                            }
+
+                            set({
+                                latestTouchdown: { ...lastTd },
+                                showTouchdownBanner: true,
+                            });
+                        } else {
+                            // CLEAN INITIAL TOUCHDOWN: First ground contact
                             let tdIcao: string | undefined = undefined;
                             let tdName: string | undefined = undefined;
                             try {
@@ -2858,12 +2952,15 @@ export const useFlightStore = create<FlightState>()(
                                 }
                             } catch {}
 
-                            currentTouchdowns.push({
+                            const newTd: TouchdownEvent = {
                                 timestamp:
                                     current.timestamp ||
                                     new Date().toISOString(),
                                 verticalSpeedFpm: Math.round(vsAtTouchdown),
                                 groundSpeedKt: Math.round(current.groundSpeed),
+                                indicatedAirspeedKt: Math.round(
+                                    current.indicatedAirspeed || current.groundSpeed,
+                                ),
                                 pitchDeg:
                                     current.pitch !== undefined
                                         ? Number(current.pitch.toFixed(1))
@@ -2872,12 +2969,36 @@ export const useFlightStore = create<FlightState>()(
                                     current.bank !== undefined
                                         ? Number(current.bank.toFixed(1))
                                         : undefined,
+                                sideslipDeg:
+                                    current.sideslipAngle !== undefined
+                                        ? Number(current.sideslipAngle.toFixed(1))
+                                        : undefined,
+                                headwindKt:
+                                    current.headwindComponent !== undefined
+                                        ? Math.round(current.headwindComponent)
+                                        : undefined,
+                                crosswindKt:
+                                    current.crosswindComponent !== undefined
+                                        ? Math.round(current.crosswindComponent)
+                                        : undefined,
                                 latitude: current.latitude,
                                 longitude: current.longitude,
                                 altitudeMsl: Math.round(current.altitudeMsl),
                                 gForce: calculateTouchdownGForce(vsAtTouchdown),
+                                gForceSim:
+                                    current.gForce !== undefined
+                                        ? Number(current.gForce.toFixed(2))
+                                        : undefined,
+                                bouncesCount: 0,
                                 airportIcao: tdIcao,
                                 airportName: tdName,
+                            };
+
+                            currentTouchdowns.push(newTd);
+
+                            set({
+                                latestTouchdown: newTd,
+                                showTouchdownBanner: true,
                             });
                         }
                     }
@@ -3645,6 +3766,9 @@ export const useFlightStore = create<FlightState>()(
                         pageSize: String(get().pageSize),
                         weightUnit: get().weightUnit,
                         lengthUnit: get().lengthUnit,
+                        visibilityUnit: get().visibilityUnit,
+                        windSpeedUnit: get().windSpeedUnit,
+                        temperatureUnit: get().temperatureUnit,
                     };
                 }
 
@@ -3750,6 +3874,24 @@ export const useFlightStore = create<FlightState>()(
                                 (val === "ft" || val === "m")
                             ) {
                                 get().setLengthUnit(val);
+                            }
+                            if (
+                                key === "visibilityUnit" &&
+                                (val === "sm" || val === "metric")
+                            ) {
+                                get().setVisibilityUnit(val);
+                            }
+                            if (
+                                key === "windSpeedUnit" &&
+                                (val === "kt" || val === "mps")
+                            ) {
+                                get().setWindSpeedUnit(val);
+                            }
+                            if (
+                                key === "temperatureUnit" &&
+                                (val === "c" || val === "f")
+                            ) {
+                                get().setTemperatureUnit(val);
                             }
                             await safeInvoke("set_user_setting", {
                                 key,
@@ -4294,6 +4436,10 @@ export const useFlightStore = create<FlightState>()(
             name: "apollo-flight-store",
             partialize: (state) => ({
                 theme: state.theme,
+                weightUnit: state.weightUnit,
+                visibilityUnit: state.visibilityUnit,
+                windSpeedUnit: state.windSpeedUnit,
+                temperatureUnit: state.temperatureUnit,
                 closeToTray: state.closeToTray,
                 autoStartRecording: state.autoStartRecording,
                 recordDetailedTelemetry: state.recordDetailedTelemetry,

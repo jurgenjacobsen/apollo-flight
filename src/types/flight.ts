@@ -36,6 +36,11 @@ export interface TelemetryData {
     visibility?: number;
     totalWeight?: number;
     grossWeight?: number;
+    gForce?: number;
+    touchdownNormalVelocity?: number;
+    sideslipAngle?: number;
+    headwindComponent?: number;
+    crosswindComponent?: number;
     timestamp: string;
 }
 
@@ -56,6 +61,9 @@ export type LogbookExportFormat = "csv" | "json";
 
 export type WeightUnit = "kg" | "lbs";
 export type LengthUnit = "ft" | "m";
+export type VisibilityUnit = "sm" | "metric";
+export type WindSpeedUnit = "kt" | "mps";
+export type TemperatureUnit = "c" | "f";
 
 export interface Airport {
     icao: string;
@@ -95,8 +103,14 @@ export interface TouchdownEvent {
     timestamp: string;
     verticalSpeedFpm: number;
     groundSpeedKt?: number;
+    indicatedAirspeedKt?: number;
     pitchDeg?: number;
     bankDeg?: number;
+    sideslipDeg?: number;
+    headwindKt?: number;
+    crosswindKt?: number;
+    gForceSim?: number;
+    bouncesCount?: number;
     latitude: number;
     longitude: number;
     altitudeMsl?: number;

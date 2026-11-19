@@ -51,7 +51,7 @@ export const TopHeader: React.FC = () => {
     }, [checkUnread, isNewsOpen]);
 
     return (
-        <header className="h-11 bg-white/90 dark:bg-black/90 border-b border-neutral-200 dark:border-geist-hairline px-3 sm:px-4 flex items-center justify-between text-xs font-sans text-neutral-700 dark:text-neutral-200 z-10 flex-shrink-0 select-none transition-colors duration-150 gap-2 backdrop-blur-xs">
+        <header className="relative h-11 bg-white/90 dark:bg-black/90 border-b border-neutral-200 dark:border-geist-hairline px-3 sm:px-4 flex items-center justify-between text-xs font-sans text-neutral-700 dark:text-neutral-200 z-30 flex-shrink-0 select-none transition-colors duration-150 gap-2 backdrop-blur-xs">
             <div className="flex items-center gap-2 min-w-0">
                 {/* Real-time telemetry items */}
                 <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto text-xs no-scrollbar">

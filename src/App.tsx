@@ -23,6 +23,7 @@ import { isEfbMode } from "./services/efbService";
 import { useEfbStore } from "./store/efbStore";
 import { ImportModal } from "./components/modals/ImportModal";
 import { SimBridge } from "./components/bridge/SimBridge";
+import { TouchdownFlyoutBanner } from "./components/telemetry/TouchdownFlyoutBanner";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { safeInvoke } from "./store/flightStore";
 import { ApolloExportBundle } from "./types/flight";
@@ -165,7 +166,7 @@ export const App: React.FC = () => {
                 <TopHeader />
 
                 {/* Dynamic Viewports */}
-                <main className="flex-1 flex flex-col overflow-hidden">
+                <main className="flex-1 flex flex-col overflow-hidden relative z-0">
                     <ErrorBoundary key={activeView}>
                         {activeView === "dashboard" && <Overview />}
                         {activeView === "new-route" && <NewRouteView />}
@@ -193,6 +194,9 @@ export const App: React.FC = () => {
                 }}
                 initialBundle={droppedBundle}
             />
+
+            {/* Instant Touchdown Dynamics Flyout Banner */}
+            <TouchdownFlyoutBanner />
         </div>
     );
 };

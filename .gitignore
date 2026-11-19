@@ -61,3 +61,10 @@ coverage/
 /*.gpx
 /*.kml
 /*.geojson
+
+# Markdown Files (ignore all .md files except APP_SPEC.md and ROADMAP.md)
+*.md
+!APP_SPEC.md
+!**/APP_SPEC.md
+!ROADMAP.md
+!**/ROADMAP.md

@@ -44,6 +44,11 @@ pub struct TelemetryPacket {
     pub tat: f64,
     pub visibility: f64,
     pub total_weight: f64,
+    pub g_force: f64,
+    pub touchdown_normal_velocity: f64,
+    pub sideslip_angle: f64,
+    pub headwind_component: f64,
+    pub crosswind_component: f64,
     pub timestamp: String,
 }
 
@@ -84,6 +89,11 @@ impl Default for TelemetryPacket {
             tat: 15.0,
             visibility: 10.0,
             total_weight: 0.0,
+            g_force: 1.0,
+            touchdown_normal_velocity: 0.0,
+            sideslip_angle: 0.0,
+            headwind_component: 0.0,
+            crosswind_component: 0.0,
             timestamp: Utc::now().to_rfc3339(),
         }
     }
@@ -185,6 +195,10 @@ pub mod win {
         let mut raw_wind_dir: u16 = 0;
         let mut raw_vis: u16 = 0;
         let mut raw_gross_weight: f64 = 0.0;
+        let mut raw_g_force: i16 = 625;
+        let mut raw_td_rate: i32 = 0;
+        let mut raw_body_vx: f64 = 0.0;
+        let mut raw_body_vz: f64 = 0.0;
         let mut raw_aircraft_title = [0u8; 256];
 
         {
@@ -223,6 +237,10 @@ pub mod win {
             session.read(0x0E92, &mut raw_wind_dir)?;
             session.read(0x0E8A, &mut raw_vis)?;
             session.read(0x30C0, &mut raw_gross_weight)?;
+            session.read(0x11BA, &mut raw_g_force)?;
+            session.read(0x030C, &mut raw_td_rate)?;
+            session.read(0x31D0, &mut raw_body_vx)?;
+            session.read(0x31E0, &mut raw_body_vz)?;
             session.read_bytes(0x3D00, raw_aircraft_title.as_mut_ptr(), 256)?;
             session.process()?;
         }
@@ -267,6 +285,18 @@ pub mod win {
         let bank_deg = FsuipcConversions::parse_angle_32(raw_bank);
         let is_engine_running = raw_eng1_comb != 0 || raw_eng2_comb != 0;
 
+        let g_force = ((raw_g_force as f64 / 625.0) * 100.0).round() / 100.0;
+        let touchdown_normal_velocity = FsuipcConversions::parse_vertical_speed(raw_td_rate).round();
+        let sideslip_angle = if raw_body_vz.abs() > 1.0 {
+            ((raw_body_vx / raw_body_vz).atan().to_degrees() * 10.0).round() / 10.0
+        } else {
+            0.0
+        };
+        let wind_dir_deg = (((raw_wind_dir as f64 * 360.0 / 65536.0 + 360.0) % 360.0) * 10.0).round() / 10.0;
+        let angle_diff_rad = ((wind_dir_deg - heading_deg) as f64).to_radians();
+        let headwind_component = (raw_wind_spd as f64 * angle_diff_rad.cos() * 10.0).round() / 10.0;
+        let crosswind_component = (raw_wind_spd as f64 * angle_diff_rad.sin() * 10.0).round() / 10.0;
+
         Ok(TelemetryPacket {
             sim_connected: true,
             is_in_menu,
@@ -301,11 +331,16 @@ pub mod win {
             nav2_dme_speed: dme2_spd,
             adf1_relative_bearing: (FsuipcConversions::parse_relative_bearing(raw_adf1_rel_brg) * 10.0).round() / 10.0,
             wind_speed: raw_wind_spd as f64,
-            wind_direction: (((raw_wind_dir as f64 * 360.0 / 65536.0 + 360.0) % 360.0) * 10.0).round() / 10.0,
+            wind_direction: wind_dir_deg,
             oat: ((raw_oat as f64 / 256.0) * 10.0).round() / 10.0,
             tat: ((raw_tat as f64 / 256.0) * 10.0).round() / 10.0,
             visibility: ((raw_vis as f64 / 100.0) * 10.0).round() / 10.0,
             total_weight: if raw_gross_weight > 0.0 { (raw_gross_weight * 10.0).round() / 10.0 } else { 0.0 },
+            g_force,
+            touchdown_normal_velocity,
+            sideslip_angle,
+            headwind_component,
+            crosswind_component,
             timestamp: Utc::now().to_rfc3339(),
         })
     }
@@ -332,12 +367,12 @@ pub fn start_telemetry_loop(app: AppHandle, is_running: Arc<AtomicBool>) {
                                 let _ = app.emit("fsuipc-telemetry", &packet);
                                 crate::efb::update_telemetry(&packet);
 
-                                // Dynamic poll rate: 4Hz (250ms) when airborne/active, 1Hz (1000ms) when stationary on ground
-                                let sleep_ms = if packet.is_on_ground && packet.ground_speed < 10.0 {
-                                    1000
-                                } else {
-                                    250
-                                };
+                                // Dynamic adaptive poll rate:
+                                // - Above 10,000ft: 1000ms (1 Hz)
+                                // - Airborne, 1,000ft - 10,000ft: 500ms (2 Hz)
+                                // - Airborne, below 1,000ft AGL: gradual interpolation 500ms -> 20ms (50 Hz at touchdown)
+                                // - On ground: 1000ms (<10 kt taxi/parked), 100ms during high-speed rollout
+                                let sleep_ms = calculate_dynamic_sleep_ms(&packet);
                                 std::thread::sleep(Duration::from_millis(sleep_ms));
                             }
                             Err(err) => {
@@ -367,6 +402,36 @@ pub fn start_telemetry_loop(app: AppHandle, is_running: Arc<AtomicBool>) {
     });
 }
 
+/// Computes the adaptive dynamic telemetry poll sleep interval based on altitude and flight regime:
+/// - Above 10,000 ft MSL: 1000ms (1 Hz) - high altitude cruise does not require rapid polling.
+/// - Airborne, 1,000 ft to 10,000 ft: 500ms (2 Hz) - standard climb, cruise, and approach.
+/// - Airborne, below 1,000 ft AGL: Gradual linear progression from 500ms down to 20ms (50 Hz) at touchdown.
+///   Formula: 20 + (agl_ft.clamp(0.0, 1000.0) / 1000.0) * (500.0 - 20.0).
+/// - On ground: 1000ms (1 Hz) when parked or taxiing slowly (< 10 kt); 100ms during high-speed rollout.
+pub fn calculate_dynamic_sleep_ms(packet: &TelemetryPacket) -> u64 {
+    if packet.is_on_ground {
+        if packet.ground_speed < 10.0 {
+            1000
+        } else {
+            // High-speed rollout immediately after touchdown
+            100
+        }
+    } else {
+        // Airborne flight regimes
+        if packet.altitude_msl > 10000.0 {
+            1000
+        } else if packet.altitude_agl >= 1000.0 {
+            500
+        } else {
+            // Below 1000 ft AGL: gradual interpolation from 500ms at 1000ft down to 20ms at 0ft
+            let agl_clamped = packet.altitude_agl.max(0.0).min(1000.0);
+            let factor = agl_clamped / 1000.0;
+            let ms = 20.0 + factor * (500.0 - 20.0);
+            ms.round() as u64
+        }
+    }
+}
+
 /// Fallback telemetry worker for macOS / Linux platforms where FSUIPC is unavailable
 #[cfg(not(windows))]
 pub fn start_telemetry_loop(_app: AppHandle, is_running: Arc<AtomicBool>) {
@@ -376,4 +441,52 @@ pub fn start_telemetry_loop(_app: AppHandle, is_running: Arc<AtomicBool>) {
             std::thread::sleep(Duration::from_millis(2000));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dynamic_sleep_intervals() {
+        let mut pkt = TelemetryPacket::default();
+        pkt.is_on_ground = false;
+
+        // Above 10,000 ft MSL: 1000ms
+        pkt.altitude_msl = 35000.0;
+        pkt.altitude_agl = 33000.0;
+        assert_eq!(calculate_dynamic_sleep_ms(&pkt), 1000);
+
+        // Airborne between 1,000 ft and 10,000 ft: 500ms
+        pkt.altitude_msl = 5000.0;
+        pkt.altitude_agl = 3500.0;
+        assert_eq!(calculate_dynamic_sleep_ms(&pkt), 500);
+
+        // Exactly 1,000 ft AGL: 500ms
+        pkt.altitude_msl = 1500.0;
+        pkt.altitude_agl = 1000.0;
+        assert_eq!(calculate_dynamic_sleep_ms(&pkt), 500);
+
+        // 500 ft AGL -> 20 + 0.5 * 480 = 260ms
+        pkt.altitude_msl = 1000.0;
+        pkt.altitude_agl = 500.0;
+        assert_eq!(calculate_dynamic_sleep_ms(&pkt), 260);
+
+        // 100 ft AGL -> 20 + 0.1 * 480 = 68ms
+        pkt.altitude_agl = 100.0;
+        assert_eq!(calculate_dynamic_sleep_ms(&pkt), 68);
+
+        // 0 ft AGL (touchdown) -> 20ms (50 Hz)
+        pkt.altitude_agl = 0.0;
+        assert_eq!(calculate_dynamic_sleep_ms(&pkt), 20);
+
+        // On ground stationary / taxiing < 10 kt: 1000ms
+        pkt.is_on_ground = true;
+        pkt.ground_speed = 5.0;
+        assert_eq!(calculate_dynamic_sleep_ms(&pkt), 1000);
+
+        // On ground high-speed rollout >= 10 kt: 100ms
+        pkt.ground_speed = 120.0;
+        assert_eq!(calculate_dynamic_sleep_ms(&pkt), 100);
+    }
 }

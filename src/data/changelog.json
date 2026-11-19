@@ -1,5 +1,12 @@
 [
   {
+    "title": "Profile, Documentation & Checklists - Update",
+    "description": "• **Pilot Profile**: Comprehensive career dashboard with lifetime flight statistics, 18 achievement badges with real-time progression, dedicated aircraft fleet analytics, and an interactive World Passport with aerodrome markers and route lines.\n• **Interactive Checklists**: Standard operating procedures with clickable items, progress tracking, audio feedback, and full EFB companion integration.\n• **Documentation & Guides**: Built-in developer and pilot documentation browser with release workflows, SimConnect/FSUIPC specifications, and operation guides.\n• **ArcGIS World Imagery**: Upgraded all application map views to high-resolution satellite imagery.",
+    "badge": "0.0.6",
+    "date": "19-11-2026@13:33",
+    "type": "version"
+  },
+  {
     "title": "EFB & Data Management - Update",
     "description": "• **EFB Companion**: Integrated tablet & mobile companion server with QR code pairing and live telemetry streaming.\n• **Export User Data**: Single select menu with full backup and segment exports.\n• Improved dark mode contrast and accessibility.",
     "badge": "0.0.5",
