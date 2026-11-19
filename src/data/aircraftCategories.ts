@@ -1,5 +1,4 @@
 import { AircraftCategory, AircraftCategoryProfile } from "../types/route";
-import { clampToSemiCircularRule } from "../services/terrainMora";
 
 export const AIRCRAFT_CATEGORIES: Record<
     AircraftCategory,
@@ -146,11 +145,8 @@ export const AIRCRAFT_CATEGORIES: Record<
 };
 
 /**
- * Calculates sector duration with precision physics:
- * - Climb phase time & distance
- * - Descent phase time & distance
- * - Level-off altitude adjustment if sector is too short to reach standard FL
- * - Cruise phase at category TAS
+ * Calculates sector duration based on direct distance and category TAS:
+ * - Direct cruise time = (distanceNm / cruiseSpeedTasKt) * 60
  * - Optional taxi-out / taxi-in ground time
  */
 export function calculateSectorFlightProfile(
@@ -160,82 +156,28 @@ export function calculateSectorFlightProfile(
     originElevationFt: number = 0,
     destElevationFt: number = 0,
     corridorMsaFt: number = 1500,
-    initialBearingDeg: number = 0,
     peakTerrainFt: number = 0,
     requiredMarginFt: number = 1000,
 ) {
     const profile = AIRCRAFT_CATEGORIES[category];
 
-    // Base altitudes
+    // Base cruise altitude
     const baseCruiseAlt = profile.typicalCruiseAltFt;
-    const netClimbFt = Math.max(1000, baseCruiseAlt - originElevationFt);
-    const netDescentFt = Math.max(1000, baseCruiseAlt - destElevationFt);
 
-    // Unconstrained climb & descent estimates
-    const climbMinutes = netClimbFt / profile.climbRateFpm;
-    const climbDistanceNm = (climbMinutes / 60) * profile.climbSpeedTasKt;
-
-    const descentMinutes = netDescentFt / profile.descentRateFpm;
-    const descentDistanceNm = (descentMinutes / 60) * profile.descentSpeedTasKt;
-
-    const minTripDistance = climbDistanceNm + descentDistanceNm;
-
-    let computedCruiseAlt = baseCruiseAlt;
-
-    if (distanceNm < minTripDistance) {
-        // Short hop: Scale altitude parabolically
-        const scale = Math.max(
-            0.25,
-            Math.min(0.95, distanceNm / minTripDistance),
-        );
-        computedCruiseAlt = Math.round((baseCruiseAlt * scale) / 1000) * 1000;
-    }
-
-    // Terrain-Aware Clamping & Semi-Circular Rule Alignment:
-    // Must ensure altitude margin between cruise altitude and terrain is at least requiredMarginFt
-    // (1,000 ft in non-mountainous, 2,000 ft in mountainous where variation within 10 NM >= 3,000 ft)
+    // Terrain-Aware minimum safe altitude
     const minSafeAlt = Math.max(
         corridorMsaFt,
         peakTerrainFt + requiredMarginFt,
     );
-    const targetAlt = Math.max(computedCruiseAlt, minSafeAlt);
-    const clampedCruiseAlt = clampToSemiCircularRule(
-        targetAlt,
-        initialBearingDeg,
-    );
-    const isAltitudeTerrainClamped = clampedCruiseAlt > computedCruiseAlt;
+    const targetAlt = Math.max(baseCruiseAlt, minSafeAlt);
+    // Align to standard thousand-foot cruising altitude
+    const assignedCruiseAlt = Math.round(targetAlt / 1000) * 1000;
+    const isAltitudeTerrainClamped = assignedCruiseAlt > baseCruiseAlt;
 
-    // Recalculate climb and descent phases for actual assigned cruising altitude
-    const actualClimbFt = Math.max(1000, clampedCruiseAlt - originElevationFt);
-    const actualDescentFt = Math.max(1000, clampedCruiseAlt - destElevationFt);
-
-    let finalClimbMinutes = actualClimbFt / profile.climbRateFpm;
-    let finalDescentMinutes = actualDescentFt / profile.descentRateFpm;
-
-    const actualClimbDistNm =
-        (finalClimbMinutes / 60) * profile.climbSpeedTasKt;
-    const actualDescentDistNm =
-        (finalDescentMinutes / 60) * profile.descentSpeedTasKt;
-    const totalClimbDescentDist = actualClimbDistNm + actualDescentDistNm;
-
-    let cruiseDistanceNm = 0;
-    let cruiseMinutes = 0;
-
-    if (distanceNm >= totalClimbDescentDist) {
-        cruiseDistanceNm = distanceNm - totalClimbDescentDist;
-        cruiseMinutes = (cruiseDistanceNm / profile.cruiseSpeedTasKt) * 60;
-    } else {
-        // High mountain crossing on a short sector:
-        // Scale climb and descent phases to fit the distance
-        const distScale = Math.max(0.5, distanceNm / totalClimbDescentDist);
-        finalClimbMinutes *= distScale;
-        finalDescentMinutes *= distScale;
-        cruiseDistanceNm = 0;
-        cruiseMinutes = 0;
-    }
-
-    const airborneMinutes = Math.round(
-        finalClimbMinutes + cruiseMinutes + finalDescentMinutes,
+    // Sector airborne time calculated directly from distance and cruise TAS
+    const airborneMinutes = Math.max(
+        5,
+        Math.round((distanceNm / profile.cruiseSpeedTasKt) * 60),
     );
     const groundMinutes = includeGroundTime
         ? profile.taxiOutMinutes + profile.taxiInMinutes
@@ -244,13 +186,13 @@ export function calculateSectorFlightProfile(
 
     return {
         distanceNm: Math.round(distanceNm * 10) / 10,
-        airborneMinutes: Math.max(5, airborneMinutes),
+        airborneMinutes,
         groundMinutes,
-        totalMinutes: Math.max(5, totalMinutes),
-        climbMinutes: Math.round(finalClimbMinutes),
-        cruiseMinutes: Math.round(cruiseMinutes),
-        descentMinutes: Math.round(finalDescentMinutes),
-        cruiseAltitudeFt: clampedCruiseAlt,
+        totalMinutes,
+        climbMinutes: 0,
+        cruiseMinutes: airborneMinutes,
+        descentMinutes: 0,
+        cruiseAltitudeFt: assignedCruiseAlt,
         cruiseSpeedKt: profile.cruiseSpeedTasKt,
         isAltitudeTerrainClamped,
     };

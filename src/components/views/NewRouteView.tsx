@@ -16,7 +16,11 @@ import {
     formatDurationHoursMinutes,
     formatFlightLevelOrAltitude,
 } from "../../data/aircraftCategories";
-import { generateRouteSuggestion } from "../../services/routeGenerator";
+import {
+    generateRouteSuggestion,
+    getCandidateAirports,
+} from "../../services/routeGenerator";
+import { Tooltip } from "../ui/Tooltip";
 import {
     MapContainer,
     TileLayer,
@@ -58,6 +62,8 @@ import {
     Undo2,
     Bookmark,
     Heart,
+    Dices,
+    Maximize2,
 } from "lucide-react";
 
 interface MapFocusTarget {
@@ -81,8 +87,9 @@ function MapController({
         lastHandledIdRef.current = focusTarget.id;
 
         if (focusTarget.bounds) {
+            // Apply 18-20% padding so departure, arrival, and corridors fit comfortably
             map.fitBounds(focusTarget.bounds, {
-                padding: [50, 50],
+                padding: [60, 60],
                 maxZoom: 10,
             });
         } else if (focusTarget.center) {
@@ -91,6 +98,28 @@ function MapController({
     }, [focusTarget, map]);
 
     return null;
+}
+
+// Fit route control button directly beneath Leaflet zoom controls (- button)
+function MapFitRouteControl({ onFit }: { onFit: () => void }) {
+    return (
+        <div className="leaflet-top leaflet-left !top-[74px]">
+            <div className="leaflet-control leaflet-bar">
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onFit();
+                    }}
+                    title="Fit Entire Route / Reset Zoom"
+                    className="w-[30px] h-[30px] flex items-center justify-center bg-white dark:bg-[#1a1a1a] hover:bg-neutral-100 dark:hover:bg-[#262626] text-neutral-700 dark:text-neutral-200 cursor-pointer transition-colors border-0 select-none shadow-xs"
+                >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+            </div>
+        </div>
+    );
 }
 
 // Map click event listener for custom area definition
@@ -152,19 +181,21 @@ const createAirportMarkerIcon = (
 ) => {
     const bgColor =
         type === "dep" ? "#10b981" : type === "arr" ? "#8b5cf6" : "#f59e0b";
+    const label = type === "dep" ? "DEP" : type === "arr" ? "ARR" : "WPT";
     return L.divIcon({
         className: "custom-route-marker",
         html: `
       <div style="display: flex; flex-direction: column; align-items: center; pointer-events: auto;">
-        <div style="background: ${bgColor}; color: #ffffff; font-family: monospace; font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 3px; border: 1.5px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.35); white-space: nowrap;">
-          ${icao}
+        <div style="background: ${bgColor}; color: #ffffff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; border: 1.5px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.35); white-space: nowrap; display: flex; align-items: center; gap: 3px;">
+          <span style="font-size: 8px; opacity: 0.9; text-transform: uppercase;">${label}</span>
+          <span>${icao}</span>
         </div>
         <div style="width: 2px; height: 6px; background: ${bgColor};"></div>
         <div style="width: 6px; height: 6px; border-radius: 50%; background: ${bgColor}; border: 1.5px solid #ffffff;"></div>
       </div>
     `,
-        iconSize: [40, 30],
-        iconAnchor: [20, 30],
+        iconSize: [52, 30],
+        iconAnchor: [26, 30],
         popupAnchor: [0, -30],
     });
 };
@@ -174,7 +205,7 @@ const createMountainPeakMarkerIcon = (peakFt: number) => {
         className: "custom-peak-marker",
         html: `
       <div style="display: flex; flex-direction: column; align-items: center; pointer-events: auto;">
-        <div style="background: #171717; color: #f59e0b; font-family: monospace; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; border: 1px solid #f59e0b; box-shadow: 0 2px 4px rgba(0,0,0,0.4); white-space: nowrap;">
+        <div style="background: #171717; color: #f59e0b; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; border: 1px solid #f59e0b; box-shadow: 0 2px 4px rgba(0,0,0,0.4); white-space: nowrap;">
           ▲ ${(peakFt / 1000).toFixed(1)}k ft
         </div>
       </div>
@@ -189,7 +220,7 @@ const createAreaCenterMarkerIcon = (radiusNm: number) => {
         className: "custom-area-marker",
         html: `
       <div style="display: flex; flex-direction: column; align-items: center; pointer-events: auto; cursor: grab; user-select: none;">
-        <div style="background: #0284c7; color: #ffffff; font-family: monospace; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1.5px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); white-space: nowrap;">
+        <div style="background: #0284c7; color: #ffffff; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1.5px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); white-space: nowrap;">
           ● Center (${radiusNm} NM)
         </div>
       </div>
@@ -203,7 +234,7 @@ const createVertexMarkerIcon = (index: number) => {
     return L.divIcon({
         className: "custom-vertex-marker",
         html: `
-      <div oncontextmenu="event.preventDefault();" title="Drag to move · Right-click to delete" style="display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; background: #7c3aed; color: #ffffff; font-family: monospace; font-size: 9px; font-weight: 700; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); cursor: grab; user-select: none;">
+      <div oncontextmenu="event.preventDefault();" title="Drag to move · Right-click to delete" style="display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; background: #7c3aed; color: #ffffff; font-size: 9px; font-weight: 700; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); cursor: grab; user-select: none;">
         ${index}
       </div>
     `,
@@ -216,7 +247,7 @@ const createMidpointMarkerIcon = () => {
     return L.divIcon({
         className: "custom-midpoint-marker",
         html: `
-      <div oncontextmenu="event.preventDefault();" style="display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: #9333ea; color: #ffffff; font-family: monospace; font-size: 11px; font-weight: 700; border-radius: 50%; border: 1.5px solid #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); cursor: grab; user-select: none; opacity: 0.9;" title="Drag or click to insert a vertex on this border">
+      <div oncontextmenu="event.preventDefault();" style="display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: #9333ea; color: #ffffff; font-size: 11px; font-weight: 700; border-radius: 50%; border: 1.5px solid #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); cursor: grab; user-select: none; opacity: 0.9;" title="Drag or click to insert a vertex on this border">
         +
       </div>
     `,
@@ -259,10 +290,15 @@ export const NewRouteView: React.FC = () => {
         nearestAirport,
         fetchNearestAirport,
         saveRoute,
+        deleteSavedRoute,
         savedRoutes,
         currentGeneratedRoute,
         setCurrentGeneratedRoute,
+        lengthUnit,
     } = useFlightStore();
+
+    // Length unit alias for runway calculations
+    const runwayUnit = lengthUnit;
 
     // Form State
     const [category, setCategory] = useState<AircraftCategory>("C");
@@ -270,7 +306,6 @@ export const NewRouteView: React.FC = () => {
         useState<AirportTypePreference>("all");
     const [runwaySurface, setRunwaySurface] =
         useState<RunwaySurfacePreference>("any");
-    const [runwayUnit, setRunwayUnit] = useState<"ft" | "m">("ft");
     const [customMinRunway, setCustomMinRunway] = useState<number | "">("");
     const [customMaxRunway, setCustomMaxRunway] = useState<number | "">("");
     const [region, setRegion] = useState<string>("random");
@@ -496,6 +531,86 @@ export const NewRouteView: React.FC = () => {
     const [arrivalIcao, setArrivalIcao] = useState<string>("");
     const [includeGroundTime, setIncludeGroundTime] = useState<boolean>(true);
 
+    const isCommercialJet = ["C", "D", "E", "F"].includes(category);
+
+    // Synchronize Runway Guard & Surface Filter States: Commercial jets automatically paved
+    useEffect(() => {
+        if (isCommercialJet) {
+            setRunwaySurface("paved");
+        }
+    }, [isCommercialJet]);
+
+    // Collapsible Advanced Constraints Accordion state
+    const [isAdvancedOpen, setIsAdvancedOpen] = useState<boolean>(false);
+
+    // Active advanced constraints count for badge display
+    const activeAdvancedCount = useMemo(() => {
+        let count = 0;
+        if (airportType !== "all") count++;
+        if (runwaySurface !== "any" && !isCommercialJet) count++;
+        if (customMinRunway !== "") count++;
+        if (customMaxRunway !== "") count++;
+        if (departureIcao.trim()) count++;
+        if (arrivalIcao.trim()) count++;
+        if (!includeGroundTime) count++;
+        return count;
+    }, [
+        airportType,
+        runwaySurface,
+        isCommercialJet,
+        customMinRunway,
+        customMaxRunway,
+        departureIcao,
+        arrivalIcao,
+        includeGroundTime,
+    ]);
+
+    // Quick-Randomize handlers for Fixed Aerodromes
+    const [isRandomizingDep, setIsRandomizingDep] = useState(false);
+    const [isRandomizingArr, setIsRandomizingArr] = useState(false);
+
+    const handleRandomizeDep = async () => {
+        setIsRandomizingDep(true);
+        try {
+            const candidates = await getCandidateAirports({
+                category,
+                airportTypePreference: airportType,
+                region,
+            });
+            if (candidates && candidates.length > 0) {
+                const pick =
+                    candidates[Math.floor(Math.random() * candidates.length)];
+                setDepartureIcao(pick.icao);
+            }
+        } catch {} finally {
+            setIsRandomizingDep(false);
+        }
+    };
+
+    const handleRandomizeArr = async () => {
+        setIsRandomizingArr(true);
+        try {
+            const candidates = await getCandidateAirports({
+                category,
+                airportTypePreference: airportType,
+                region,
+            });
+            const filtered = departureIcao
+                ? candidates.filter(
+                      (c) =>
+                          c.icao !== departureIcao.trim().toUpperCase(),
+                  )
+                : candidates;
+            if (filtered && filtered.length > 0) {
+                const pick =
+                    filtered[Math.floor(Math.random() * filtered.length)];
+                setArrivalIcao(pick.icao);
+            }
+        } catch {} finally {
+            setIsRandomizingArr(false);
+        }
+    };
+
     // Collapsible section states
     const [collapsedSections, setCollapsedSections] = useState<
         Record<string, boolean>
@@ -511,24 +626,16 @@ export const NewRouteView: React.FC = () => {
         setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
     };
 
-    // Unit conversion helper
-    const handleToggleRunwayUnit = (newUnit: "ft" | "m") => {
-        if (newUnit === runwayUnit) return;
-        setRunwayUnit(newUnit);
-        if (customMinRunway !== "") {
-            setCustomMinRunway(
-                newUnit === "m"
-                    ? Math.round(Number(customMinRunway) * 0.3048)
-                    : Math.round(Number(customMinRunway) * 3.28084),
-            );
-        }
-        if (customMaxRunway !== "") {
-            setCustomMaxRunway(
-                newUnit === "m"
-                    ? Math.round(Number(customMaxRunway) * 0.3048)
-                    : Math.round(Number(customMaxRunway) * 3.28084),
-            );
-        }
+    // Sector table row expansion state
+    const [expandedSectors, setExpandedSectors] = useState<
+        Record<number, boolean>
+    >({});
+
+    const toggleSectorExpanded = (sectorIndex: number) => {
+        setExpandedSectors((prev) => ({
+            ...prev,
+            [sectorIndex]: !prev[sectorIndex],
+        }));
     };
 
     // Generation state
@@ -643,6 +750,7 @@ export const NewRouteView: React.FC = () => {
             setRoute(result);
             setCurrentGeneratedRoute(result);
             setDraftSavedNotice(false);
+            setExpandedSectors({});
 
             // Only trigger a map auto-fit when a route is actually generated
             if (result && result.sectors.length > 0) {
@@ -676,7 +784,7 @@ export const NewRouteView: React.FC = () => {
         }
     };
 
-    const handleFocusRoute = () => {
+    const handleFocusRoute = React.useCallback(() => {
         if (!route || route.sectors.length === 0) return;
         const coords: [number, number][] = [
             [
@@ -694,7 +802,17 @@ export const NewRouteView: React.FC = () => {
                 id: Date.now(),
             });
         }
-    };
+    }, [route]);
+
+    // Automatically fit route bounding box on initial mount if a route exists
+    useEffect(() => {
+        if (route && route.sectors.length > 0) {
+            const timer = setTimeout(() => {
+                handleFocusRoute();
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [handleFocusRoute]);
 
     const handleFocusArea = () => {
         if (areaType === "circle") {
@@ -747,6 +865,14 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
 
     const handleSaveDraft = async () => {
         if (!route || route.sectors.length === 0) return;
+
+        // If route is already saved, clicking toggles it off and deletes it from saved routes
+        if (isDraftSaved && currentSavedRoute) {
+            await deleteSavedRoute(currentSavedRoute.id);
+            setDraftSavedNotice(false);
+            return;
+        }
+
         const firstLeg = route.sectors[0];
         const finalLeg = route.sectors[route.sectors.length - 1];
         const intermediateIcaos = route.sectors
@@ -849,37 +975,37 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
         route && route.sectors.length > 0 ? route.sectors[0].departure : null;
 
     return (
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-neutral-200 dark:border-geist-hairline gap-3">
-                <div className="flex items-center gap-2.5">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-geist-hairline">
+                <div className="flex items-center gap-3">
                     <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
                         <Route className="w-5 h-5 text-neutral-500 dark:text-neutral-300" />
                     </div>
                     <div>
-                        <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight">
+                        <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight flex items-center gap-2">
                             Route Generator & Flight Suggester
                         </h1>
-                        <p className="text-xs text-neutral-500 dark:text-geist-muted">
-                            Discover tailored IFR and VFR flight routes based on
-                            aircraft category performance, sector duration, and
-                            aerodrome suitability.
+                        <p className="text-xs text-neutral-500 dark:text-geist-muted mt-0.5">
+                            Discover tailored IFR and VFR flight routes based on aircraft category performance, sector duration, and aerodrome suitability.
                         </p>
                     </div>
                 </div>
 
-                <button
-                    onClick={handleGenerateRoute}
-                    disabled={isGenerating}
-                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-sm text-xs font-semibold bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors disabled:opacity-50 shadow-sm shrink-0"
-                >
-                    <Sparkles
-                        className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
-                    />
-                    <span>
-                        {isGenerating ? "Generating..." : "Generate New Route"}
-                    </span>
-                </button>
+                <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
+                    <button
+                        onClick={handleGenerateRoute}
+                        disabled={isGenerating}
+                        className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-sm text-xs font-medium bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black border border-neutral-900 dark:border-neutral-200 transition-colors duration-150 shadow-xs shrink-0 select-none disabled:opacity-50"
+                    >
+                        <Sparkles
+                            className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
+                        />
+                        <span>
+                            {isGenerating ? "Generating..." : "Generate New Route"}
+                        </span>
+                    </button>
+                </div>
             </div>
 
             {generationError && (
@@ -933,7 +1059,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                 triggerClassName="bg-neutral-50 dark:bg-black"
                             />
                             <div className="p-2 rounded bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline text-[11px] text-neutral-600 dark:text-neutral-400 space-y-0.5">
-                                <div className="flex justify-between font-mono">
+                                <div className="flex justify-between">
                                     <span>
                                         Cruise TAS:{" "}
                                         {selectedProfile.cruiseSpeedTasKt} kt
@@ -954,331 +1080,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                 </div>
                             </div>
                         </div>
-
-                        {/* 2. Airport Type Filter */}
-                        <div className="space-y-1.5 pt-2 border-t border-neutral-200 dark:border-geist-hairline">
-                            <button
-                                type="button"
-                                onClick={() => toggleSection("airportType")}
-                                className="w-full flex items-center justify-between text-left group cursor-pointer select-none py-0.5"
-                            >
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                                        2. Airport Type (Optional)
-                                    </span>
-                                    {isLocalAirportRestricted &&
-                                        airportType === "small_airport" && (
-                                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">
-                                                (Restricted)
-                                            </span>
-                                        )}
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    {collapsedSections.airportType && (
-                                        <span className="text-[10px] font-mono text-neutral-500 capitalize">
-                                            {airportType === "all"
-                                                ? "All"
-                                                : airportType.replace("_", " ")}
-                                        </span>
-                                    )}
-                                    <ChevronDown
-                                        className={`w-3.5 h-3.5 text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-200 transition-transform duration-200 ${
-                                            collapsedSections.airportType
-                                                ? "-rotate-90"
-                                                : ""
-                                        }`}
-                                    />
-                                </div>
-                            </button>
-
-                            <div
-                                className={`collapse-accordion ${
-                                    collapsedSections.airportType
-                                        ? "collapse-accordion-closed"
-                                        : "collapse-accordion-open"
-                                }`}
-                            >
-                                <div className="collapse-accordion-inner">
-                                    <div className="space-y-1.5 pt-1">
-                                        <Select
-                                            value={airportType}
-                                            onChange={(val) =>
-                                                setAirportType(
-                                                    val as AirportTypePreference,
-                                                )
-                                            }
-                                            options={[
-                                                {
-                                                    value: "all",
-                                                    label: "All Compatible Types (Category Recommended)",
-                                                },
-                                                {
-                                                    value: "large_airport",
-                                                    label: "International Hubs (Large Aerodromes)",
-                                                },
-                                                {
-                                                    value: "medium_airport",
-                                                    label: `Regional Airports (Medium Aerodromes)${["D", "E", "F"].includes(category) ? " — Incompatible" : ""}`,
-                                                    disabled:
-                                                        category === "D" ||
-                                                        category === "E" ||
-                                                        category === "F",
-                                                },
-                                                {
-                                                    value: "small_airport",
-                                                    label: `Local / General Aviation Airports${isLocalAirportRestricted ? " — Restricted for Transport Airframes" : ""}`,
-                                                    disabled:
-                                                        isLocalAirportRestricted,
-                                                },
-                                            ]}
-                                            className="w-full"
-                                            triggerClassName="bg-neutral-50 dark:bg-black"
-                                        />
-                                        {isLocalAirportRestricted && (
-                                            <p className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-tight">
-                                                <span className="font-semibold text-neutral-700 dark:text-neutral-300">
-                                                    Runway Guard:
-                                                </span>{" "}
-                                                Small unpaved / local airfields
-                                                are excluded for Cat {category}{" "}
-                                                airframes to ensure adequate
-                                                runway length and pavement
-                                                strength.
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 3. Runway Surface & Length Filter */}
-                        <div className="space-y-2 pt-2 border-t border-neutral-200 dark:border-geist-hairline">
-                            <button
-                                type="button"
-                                onClick={() => toggleSection("runway")}
-                                className="w-full flex items-center justify-between text-left group cursor-pointer select-none py-0.5"
-                            >
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                                        3. Runway Surface & Length
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
-                                        Req: ≥{" "}
-                                        {runwayUnit === "m"
-                                            ? Math.round(
-                                                  selectedProfile.minRunwayFt *
-                                                      0.3048,
-                                              ).toLocaleString()
-                                            : selectedProfile.minRunwayFt.toLocaleString()}{" "}
-                                        {runwayUnit}
-                                    </span>
-                                    <ChevronDown
-                                        className={`w-3.5 h-3.5 text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-200 transition-transform duration-200 ${
-                                            collapsedSections.runway
-                                                ? "-rotate-90"
-                                                : ""
-                                        }`}
-                                    />
-                                </div>
-                            </button>
-
-                            <div
-                                className={`collapse-accordion ${
-                                    collapsedSections.runway
-                                        ? "collapse-accordion-closed"
-                                        : "collapse-accordion-open"
-                                }`}
-                            >
-                                <div className="collapse-accordion-inner">
-                                    <div className="space-y-2.5 pt-1">
-                                        {/* Surface toggle buttons & Unit switch */}
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
-                                                Surface Requirement
-                                            </span>
-                                            {/* Unit Switcher: FT / M */}
-                                            <div className="flex items-center p-0.5 bg-neutral-100 dark:bg-neutral-800 rounded border border-neutral-200 dark:border-neutral-700 text-[10px] font-mono">
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleToggleRunwayUnit(
-                                                            "ft",
-                                                        )
-                                                    }
-                                                    className={`px-2 py-0.5 rounded transition-colors ${
-                                                        runwayUnit === "ft"
-                                                            ? "bg-neutral-900 text-white dark:bg-white dark:text-black font-semibold shadow-xs"
-                                                            : "text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-                                                    }`}
-                                                >
-                                                    FT
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleToggleRunwayUnit(
-                                                            "m",
-                                                        )
-                                                    }
-                                                    className={`px-2 py-0.5 rounded transition-colors ${
-                                                        runwayUnit === "m"
-                                                            ? "bg-neutral-900 text-white dark:bg-white dark:text-black font-semibold shadow-xs"
-                                                            : "text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-                                                    }`}
-                                                >
-                                                    M
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-3 gap-1.5">
-                                            {[
-                                                {
-                                                    value: "any",
-                                                    label: "Any Surface",
-                                                },
-                                                {
-                                                    value: "paved",
-                                                    label: "Paved Only",
-                                                },
-                                                {
-                                                    value: "unpaved",
-                                                    label: "Unpaved Only",
-                                                },
-                                            ].map((s) => {
-                                                const isUnpavedRestricted =
-                                                    s.value === "unpaved" &&
-                                                    [
-                                                        "C",
-                                                        "D",
-                                                        "E",
-                                                        "F",
-                                                    ].includes(category);
-                                                return (
-                                                    <button
-                                                        key={s.value}
-                                                        type="button"
-                                                        disabled={
-                                                            isUnpavedRestricted
-                                                        }
-                                                        onClick={() =>
-                                                            setRunwaySurface(
-                                                                s.value as RunwaySurfacePreference,
-                                                            )
-                                                        }
-                                                        title={
-                                                            isUnpavedRestricted
-                                                                ? `Unpaved runways incompatible with Category ${category}`
-                                                                : undefined
-                                                        }
-                                                        className={`h-7 rounded-sm text-[11px] font-medium border transition-colors ${
-                                                            runwaySurface ===
-                                                            s.value
-                                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black border-neutral-900 dark:border-white"
-                                                                : isUnpavedRestricted
-                                                                  ? "bg-neutral-100 dark:bg-neutral-900/40 text-neutral-400 dark:text-neutral-600 border-neutral-200 dark:border-neutral-800 cursor-not-allowed"
-                                                                  : "bg-neutral-50 dark:bg-geist-card text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100"
-                                                        }`}
-                                                    >
-                                                        {s.label}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {/* Runway Length: Min & Max side-by-side (both optional) */}
-                                        <div className="grid grid-cols-2 gap-2 pt-0.5">
-                                            <div>
-                                                <div className="flex items-center justify-between mb-0.5">
-                                                    <label className="block text-[10px] text-neutral-600 dark:text-neutral-400">
-                                                        Min Length ({runwayUnit}
-                                                        )
-                                                    </label>
-                                                    <span className="text-[9px] text-neutral-400">
-                                                        Optional
-                                                    </span>
-                                                </div>
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    step={
-                                                        runwayUnit === "m"
-                                                            ? 50
-                                                            : 100
-                                                    }
-                                                    value={customMinRunway}
-                                                    onChange={(e) =>
-                                                        setCustomMinRunway(
-                                                            e.target.value ===
-                                                                ""
-                                                                ? ""
-                                                                : Math.max(
-                                                                      0,
-                                                                      Number(
-                                                                          e
-                                                                              .target
-                                                                              .value,
-                                                                      ),
-                                                                  ),
-                                                        )
-                                                    }
-                                                    placeholder={`Req: ${runwayUnit === "m" ? Math.round(selectedProfile.minRunwayFt * 0.3048).toLocaleString() : selectedProfile.minRunwayFt.toLocaleString()}`}
-                                                    className="w-full h-7 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm px-2 text-xs font-mono text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400"
-                                                />
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center justify-between mb-0.5">
-                                                    <label className="block text-[10px] text-neutral-600 dark:text-neutral-400">
-                                                        Max Length ({runwayUnit}
-                                                        )
-                                                    </label>
-                                                    <span className="text-[9px] text-neutral-400">
-                                                        Optional
-                                                    </span>
-                                                </div>
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    step={
-                                                        runwayUnit === "m"
-                                                            ? 50
-                                                            : 100
-                                                    }
-                                                    value={customMaxRunway}
-                                                    onChange={(e) =>
-                                                        setCustomMaxRunway(
-                                                            e.target.value ===
-                                                                ""
-                                                                ? ""
-                                                                : Math.max(
-                                                                      0,
-                                                                      Number(
-                                                                          e
-                                                                              .target
-                                                                              .value,
-                                                                      ),
-                                                                  ),
-                                                        )
-                                                    }
-                                                    placeholder="No max limit"
-                                                    className="w-full h-7 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm px-2 text-xs font-mono text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <p className="text-[10px] text-neutral-400 dark:text-geist-muted leading-tight">
-                                            Verified via OurAirports runway
-                                            dataset. Aerodromes with all runways
-                                            closed are automatically excluded.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 4. Region or Country (Area Filter) */}
+                        {/* 2. Region or Country (Area Filter) */}
                         <div className="space-y-1.5 pt-2 border-t border-neutral-200 dark:border-geist-hairline">
                             <button
                                 type="button"
@@ -1286,11 +1088,11 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                 className="w-full flex items-center justify-between text-left group cursor-pointer select-none py-0.5"
                             >
                                 <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                                    4. Region or Country (Area Filter)
+                                    2. Region or Country (Area Filter)
                                 </span>
                                 <div className="flex items-center gap-1.5">
                                     {collapsedSections.region && (
-                                        <span className="text-[10px] font-mono text-neutral-500 capitalize">
+                                        <span className="text-[10px] text-neutral-500 capitalize">
                                             {areaType === "preset"
                                                 ? region === "random"
                                                     ? "Any Region"
@@ -1420,7 +1222,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                     <span className="font-semibold text-sky-900 dark:text-sky-200">
                                                         Circle Radius:
                                                     </span>
-                                                    <span className="font-mono font-bold text-sky-700 dark:text-sky-300">
+                                                    <span className="font-bold text-sky-700 dark:text-sky-300">
                                                         {circleRadiusNm} NM (
                                                         {Math.round(
                                                             circleRadiusNm *
@@ -1451,7 +1253,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 </div>
 
                                                 {/* Quick Radius Presets */}
-                                                <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                                                <div className="flex items-center gap-1.5 text-[10px]">
                                                     <span className="text-neutral-500">
                                                         Presets:
                                                     </span>
@@ -1480,7 +1282,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
 
                                                 {/* Center Point Info & Actions */}
                                                 <div className="pt-1.5 border-t border-sky-200/60 dark:border-sky-900/40 flex items-center justify-between text-[10px]">
-                                                    <div className="font-mono text-neutral-600 dark:text-neutral-300 truncate">
+                                                    <div className="text-neutral-600 dark:text-neutral-300 truncate">
                                                         Center:{" "}
                                                         {circleCenter[0].toFixed(
                                                             2,
@@ -1545,7 +1347,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                         Custom Polygon Boundary:
                                                     </span>
                                                     <span
-                                                        className={`font-mono text-[10px] font-semibold ${
+                                                        className={`text-[10px] font-semibold ${
                                                             polygonCoords.length >=
                                                             3
                                                                 ? "text-emerald-600 dark:text-emerald-400"
@@ -1632,7 +1434,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                             </div>
                         </div>
 
-                        {/* 5. Limit Route By & Sectors */}
+                        {/* 3. Route Limitation & Sectors */}
                         <div className="space-y-2.5 pt-2 border-t border-neutral-200 dark:border-geist-hairline">
                             <button
                                 type="button"
@@ -1640,11 +1442,11 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                 className="w-full flex items-center justify-between text-left group cursor-pointer select-none py-0.5"
                             >
                                 <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                                    5. Route Limitation & Sectors
+                                    3. Route Limitation & Sectors
                                 </span>
                                 <div className="flex items-center gap-1.5">
                                     {collapsedSections.limitations && (
-                                        <span className="text-[10px] font-mono text-neutral-500">
+                                        <span className="text-[10px] text-neutral-500">
                                             {sectorCount === -1
                                                 ? "Round-Trip"
                                                 : `${sectorCount} Leg`}{" "}
@@ -1748,7 +1550,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 <span className="text-[10px] font-medium text-neutral-600 dark:text-neutral-400">
                                                     Apply Limitation To:
                                                 </span>
-                                                <div className="flex items-center p-0.5 bg-neutral-200/60 dark:bg-neutral-800 rounded text-[10px] font-mono">
+                                                <div className="flex items-center p-0.5 bg-neutral-200/60 dark:bg-neutral-800 rounded text-[10px]">
                                                     <button
                                                         type="button"
                                                         onClick={() =>
@@ -1923,7 +1725,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                         }
                                                         step={25}
                                                         min={15}
-                                                        className="w-full h-7 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm px-2 text-xs font-mono"
+                                                        className="w-full h-7 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm px-2 text-xs"
                                                     />
                                                 </div>
                                                 <div>
@@ -1947,7 +1749,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                         }
                                                         step={50}
                                                         min={30}
-                                                        className="w-full h-7 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm px-2 text-xs font-mono"
+                                                        className="w-full h-7 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm px-2 text-xs"
                                                     />
                                                 </div>
                                             </div>
@@ -1957,31 +1759,30 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                             </div>
                         </div>
 
-                        {/* 6. Fixed / Optional Departure & Arrival */}
-                        <div className="space-y-2 pt-2 border-t border-neutral-200 dark:border-geist-hairline">
+                        {/* Collapsible Advanced Constraints Accordion */}
+                        <div className="pt-2 border-t border-neutral-200 dark:border-geist-hairline space-y-2">
                             <button
                                 type="button"
-                                onClick={() => toggleSection("fixedAerodromes")}
-                                className="w-full flex items-center justify-between text-left group cursor-pointer select-none py-0.5"
+                                onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                                className="w-full flex items-center justify-between text-left group cursor-pointer select-none py-2 px-2.5 rounded-sm bg-neutral-100/70 dark:bg-neutral-900/60 border border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors"
                             >
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                                        6. Fixed Aerodromes (ICAO Only)
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                                        Advanced Constraints
                                     </span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    {collapsedSections.fixedAerodromes && (
-                                        <span className="text-[10px] font-mono text-neutral-500">
-                                            {departureIcao || arrivalIcao
-                                                ? `${departureIcao || "Any"} ➔ ${arrivalIcao || "Any"}`
-                                                : "Random / Any"}
+                                    {activeAdvancedCount > 0 && (
+                                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-medium">
+                                            {activeAdvancedCount} active
                                         </span>
                                     )}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-neutral-500">
+                                        {isAdvancedOpen ? "Hide" : "Show"}
+                                    </span>
                                     <ChevronDown
                                         className={`w-3.5 h-3.5 text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-200 transition-transform duration-200 ${
-                                            collapsedSections.fixedAerodromes
-                                                ? "-rotate-90"
-                                                : ""
+                                            isAdvancedOpen ? "rotate-180" : ""
                                         }`}
                                     />
                                 </div>
@@ -1989,34 +1790,245 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
 
                             <div
                                 className={`collapse-accordion ${
-                                    collapsedSections.fixedAerodromes
+                                    !isAdvancedOpen
                                         ? "collapse-accordion-closed"
                                         : "collapse-accordion-open"
                                 }`}
                             >
-                                <div className="collapse-accordion-inner">
-                                    <div className="space-y-2 pt-0.5">
+                                <div className="collapse-accordion-inner space-y-3.5 pt-1">
+                                    {/* Airport Type Preference */}
+                                    <div className="space-y-1.5">
                                         <div className="flex items-center justify-between">
+                                            <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
+                                                Airport Type Preference
+                                            </span>
+                                            {isLocalAirportRestricted && (
+                                                <Tooltip content="Small unpaved / local airfields are excluded for Cat C+ airframes to ensure adequate runway length and pavement strength.">
+                                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 cursor-help">
+                                                        <AlertTriangle className="w-3 h-3" />
+                                                        <span>Runway Guard Active</span>
+                                                    </span>
+                                                </Tooltip>
+                                            )}
+                                        </div>
+                                        <Select
+                                            value={airportType}
+                                            onChange={(val) =>
+                                                setAirportType(
+                                                    val as AirportTypePreference,
+                                                )
+                                            }
+                                            options={[
+                                                {
+                                                    value: "all",
+                                                    label: "All Compatible Types (Category Recommended)",
+                                                },
+                                                {
+                                                    value: "large_airport",
+                                                    label: "International Hubs (Large Aerodromes)",
+                                                },
+                                                {
+                                                    value: "medium_airport",
+                                                    label: `Regional Airports (Medium Aerodromes)${["D", "E", "F"].includes(category) ? " — Incompatible" : ""}`,
+                                                    disabled:
+                                                        category === "D" ||
+                                                        category === "E" ||
+                                                        category === "F",
+                                                },
+                                                {
+                                                    value: "small_airport",
+                                                    label: `Local / General Aviation Airports${isLocalAirportRestricted ? " — Restricted for Transport Airframes" : ""}`,
+                                                    disabled:
+                                                        isLocalAirportRestricted,
+                                                },
+                                            ]}
+                                            className="w-full"
+                                            triggerClassName="bg-neutral-50 dark:bg-black"
+                                        />
+                                    </div>
+
+                                    {/* Runway Surface & Length Filter */}
+                                    <div className="space-y-2 pt-2 border-t border-neutral-200/60 dark:border-geist-hairline">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
+                                                Runway Surface & Length
+                                            </span>
                                             <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                                Leave empty for procedural route
-                                                generation
+                                                Req: ≥{" "}
+                                                {runwayUnit === "m"
+                                                    ? Math.round(
+                                                          selectedProfile.minRunwayFt *
+                                                              0.3048,
+                                                      ).toLocaleString()
+                                                    : selectedProfile.minRunwayFt.toLocaleString()}{" "}
+                                                {runwayUnit}
+                                            </span>
+                                        </div>
+
+                                        {/* Surface toggle buttons */}
+                                        <div>
+                                            <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 block mb-1">
+                                                Surface Requirement
+                                            </span>
+                                            <div className="grid grid-cols-3 gap-1.5">
+                                                {[
+                                                    {
+                                                        value: "any",
+                                                        label: "Any Surface",
+                                                    },
+                                                    {
+                                                        value: "paved",
+                                                        label: "Paved Only",
+                                                    },
+                                                    {
+                                                        value: "unpaved",
+                                                        label: "Unpaved Only",
+                                                    },
+                                                ].map((s) => {
+                                                    const isDisabled =
+                                                        isCommercialJet &&
+                                                        s.value !== "paved";
+                                                    const tooltipText = isDisabled
+                                                        ? `Cat ${category} commercial airframes require paved runways via Runway Guard`
+                                                        : undefined;
+                                                    const btn = (
+                                                        <button
+                                                            key={s.value}
+                                                            type="button"
+                                                            disabled={isDisabled}
+                                                            onClick={() =>
+                                                                setRunwaySurface(
+                                                                    s.value as RunwaySurfacePreference,
+                                                                )
+                                                            }
+                                                            className={`w-full h-7 rounded-sm text-[11px] font-medium border transition-colors ${
+                                                                runwaySurface ===
+                                                                s.value
+                                                                    ? "bg-neutral-900 text-white dark:bg-white dark:text-black border-neutral-900 dark:border-white"
+                                                                    : isDisabled
+                                                                      ? "bg-neutral-100 dark:bg-neutral-900/40 text-neutral-400 dark:text-neutral-600 border-neutral-200 dark:border-neutral-800 cursor-not-allowed opacity-60"
+                                                                      : "bg-neutral-50 dark:bg-geist-card text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100"
+                                                            }`}
+                                                        >
+                                                            {s.label}
+                                                        </button>
+                                                    );
+
+                                                    if (tooltipText) {
+                                                        return (
+                                                            <Tooltip
+                                                                key={s.value}
+                                                                content={tooltipText}
+                                                            >
+                                                                <div className="w-full">
+                                                                    {btn}
+                                                                </div>
+                                                            </Tooltip>
+                                                        );
+                                                    }
+                                                    return btn;
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Runway Length: Min & Max side-by-side */}
+                                        <div className="grid grid-cols-2 gap-2 pt-0.5">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-0.5">
+                                                    <label className="block text-[10px] text-neutral-600 dark:text-neutral-400">
+                                                        Min Length ({runwayUnit})
+                                                    </label>
+                                                    <span className="text-[9px] text-neutral-400">
+                                                        Optional
+                                                    </span>
+                                                </div>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    step={
+                                                        runwayUnit === "m"
+                                                            ? 50
+                                                            : 100
+                                                    }
+                                                    value={customMinRunway}
+                                                    onChange={(e) =>
+                                                        setCustomMinRunway(
+                                                            e.target.value === ""
+                                                                ? ""
+                                                                : Math.max(
+                                                                      0,
+                                                                      Number(
+                                                                          e.target
+                                                                              .value,
+                                                                      ),
+                                                                  ),
+                                                        )
+                                                    }
+                                                    placeholder={`Req: ${runwayUnit === "m" ? Math.round(selectedProfile.minRunwayFt * 0.3048).toLocaleString() : selectedProfile.minRunwayFt.toLocaleString()}`}
+                                                    className="w-full h-7 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm px-2 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center justify-between mb-0.5">
+                                                    <label className="block text-[10px] text-neutral-600 dark:text-neutral-400">
+                                                        Max Length ({runwayUnit})
+                                                    </label>
+                                                    <span className="text-[9px] text-neutral-400">
+                                                        Optional
+                                                    </span>
+                                                </div>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    step={
+                                                        runwayUnit === "m"
+                                                            ? 50
+                                                            : 100
+                                                    }
+                                                    value={customMaxRunway}
+                                                    onChange={(e) =>
+                                                        setCustomMaxRunway(
+                                                            e.target.value === ""
+                                                                ? ""
+                                                                : Math.max(
+                                                                      0,
+                                                                      Number(
+                                                                          e.target
+                                                                              .value,
+                                                                      ),
+                                                                  ),
+                                                        )
+                                                    }
+                                                    placeholder="No max limit"
+                                                    className="w-full h-7 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm px-2 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
+                                            Verified via OurAirports runway dataset. Aerodromes with closed runways are excluded.
+                                        </p>
+                                    </div>
+
+                                    {/* Fixed / Optional Departure & Arrival with Quick-Randomize */}
+                                    <div className="space-y-2 pt-2 border-t border-neutral-200/60 dark:border-geist-hairline">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
+                                                Fixed Aerodromes (ICAO Only)
                                             </span>
                                             {nearestAirport && (
                                                 <button
                                                     type="button"
-                                                    onClick={
-                                                        handleSetNearestDep
-                                                    }
-                                                    className="text-[10px] font-mono text-blue-600 dark:text-blue-400 hover:underline"
+                                                    onClick={handleSetNearestDep}
+                                                    className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline"
                                                 >
-                                                    Nearest (
-                                                    {nearestAirport.icao})
+                                                    Nearest ({nearestAirport.icao})
                                                 </button>
                                             )}
                                         </div>
 
-                                        <div className="flex items-center gap-2">
-                                            <div className="flex-1">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="relative flex-1">
                                                 <input
                                                     type="text"
                                                     maxLength={4}
@@ -2026,21 +2038,30 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                             e.target.value.toUpperCase(),
                                                         )
                                                     }
-                                                    placeholder="Dep ICAO (e.g. LOWI)"
-                                                    className="w-full h-8 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm px-2.5 text-xs font-mono uppercase text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400"
+                                                    placeholder="DEP ICAO"
+                                                    className="w-full h-8 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm pl-2.5 pr-8 text-xs uppercase text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400"
                                                 />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleRandomizeDep}
+                                                    disabled={isRandomizingDep}
+                                                    title="Quick-randomize departure aerodrome"
+                                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+                                                >
+                                                    <Dices className={`w-3.5 h-3.5 ${isRandomizingDep ? "animate-spin text-blue-500" : ""}`} />
+                                                </button>
                                             </div>
 
                                             <button
                                                 type="button"
                                                 onClick={handleSwapAirports}
                                                 title="Swap Departure and Destination"
-                                                className="p-1.5 rounded-sm hover:bg-neutral-100 dark:hover:bg-[#222] border border-neutral-200 dark:border-geist-hairline text-neutral-500 transition-colors"
+                                                className="p-1.5 rounded-sm hover:bg-neutral-100 dark:hover:bg-[#222] border border-neutral-200 dark:border-geist-hairline text-neutral-500 transition-colors shrink-0"
                                             >
                                                 <ArrowLeftRight className="w-3.5 h-3.5" />
                                             </button>
 
-                                            <div className="flex-1">
+                                            <div className="relative flex-1">
                                                 <input
                                                     type="text"
                                                     maxLength={4}
@@ -2050,57 +2071,65 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                             e.target.value.toUpperCase(),
                                                         )
                                                     }
-                                                    placeholder="Arr ICAO (e.g. EDDM)"
-                                                    className="w-full h-8 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm px-2.5 text-xs font-mono uppercase text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400"
+                                                    placeholder="ARR ICAO"
+                                                    className="w-full h-8 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm pl-2.5 pr-8 text-xs uppercase text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400"
                                                 />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleRandomizeArr}
+                                                    disabled={isRandomizingArr}
+                                                    title="Quick-randomize arrival aerodrome"
+                                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+                                                >
+                                                    <Dices className={`w-3.5 h-3.5 ${isRandomizingArr ? "animate-spin text-blue-500" : ""}`} />
+                                                </button>
                                             </div>
                                         </div>
-                                        <p className="text-[10px] text-neutral-400 dark:text-geist-muted">
-                                            Standard 4-letter ICAO designators
-                                            only. Local non-ICAO codes (e.g.
-                                            PT-02313) and helipads are excluded.
+                                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
+                                            Lock one aerodrome and roll random paired destinations, or leave empty for unconstrained generation.
+                                        </p>
+                                    </div>
+
+                                    {/* Ground Time Calculation Option */}
+                                    <div className="pt-2 border-t border-neutral-200/60 dark:border-geist-hairline">
+                                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                checked={includeGroundTime}
+                                                onChange={(e) =>
+                                                    setIncludeGroundTime(e.target.checked)
+                                                }
+                                                className="rounded border-neutral-300 dark:border-neutral-700 text-neutral-900 focus:ring-0"
+                                            />
+                                            <span className="text-xs text-neutral-700 dark:text-neutral-300 font-medium">
+                                                Include Ground / Taxi Time in Total Duration
+                                            </span>
+                                        </label>
+                                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 pl-5 leading-normal">
+                                            Accounts for taxi-out ({selectedProfile.taxiOutMinutes}m) and taxi-in ({selectedProfile.taxiInMinutes}m) per sector.
                                         </p>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* 7. Ground Time Calculation Option */}
-                        <div className="pt-2 border-t border-neutral-200 dark:border-geist-hairline">
-                            <label className="flex items-center gap-2 cursor-pointer select-none">
-                                <input
-                                    type="checkbox"
-                                    checked={includeGroundTime}
-                                    onChange={(e) =>
-                                        setIncludeGroundTime(e.target.checked)
-                                    }
-                                    className="rounded border-neutral-300 dark:border-neutral-700 text-neutral-900 focus:ring-0"
+                        {/* Sticky Primary CTA in Filter Panel */}
+                        <div className="sticky bottom-0 bg-white/95 dark:bg-geist-surface/95 backdrop-blur-xs pt-3 pb-1 border-t border-neutral-200 dark:border-geist-hairline z-10 -mx-4 px-4">
+                            <button
+                                onClick={handleGenerateRoute}
+                                disabled={isGenerating}
+                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-sm text-xs font-semibold bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors shadow-sm disabled:opacity-50"
+                            >
+                                <Sparkles
+                                    className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
                                 />
-                                <span className="text-xs text-neutral-700 dark:text-neutral-300 font-medium">
-                                    Include Ground / Taxi Time in Total Duration
+                                <span>
+                                    {isGenerating
+                                        ? "Computing Optimal Route..."
+                                        : "Generate New Route"}
                                 </span>
-                            </label>
-                            <p className="text-[10px] text-neutral-400 dark:text-geist-muted mt-1 pl-5 leading-normal">
-                                Accounts for realistic airport taxi-out (
-                                {selectedProfile.taxiOutMinutes}m) and taxi-in (
-                                {selectedProfile.taxiInMinutes}m) per sector.
-                            </p>
+                            </button>
                         </div>
-
-                        <button
-                            onClick={handleGenerateRoute}
-                            disabled={isGenerating}
-                            className="w-full flex items-center justify-center gap-2 py-2 rounded-sm text-xs font-semibold bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors shadow-sm disabled:opacity-50"
-                        >
-                            <Sparkles
-                                className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
-                            />
-                            <span>
-                                {isGenerating
-                                    ? "Computing Optimal Route..."
-                                    : "Find New Route"}
-                            </span>
-                        </button>
                     </div>
                 </div>
 
@@ -2127,7 +2156,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-geist-muted">
                                             Suggested Route:
                                         </span>
-                                        <span className="text-sm font-bold font-mono text-neutral-900 dark:text-white">
+                                        <span className="text-sm font-bold text-neutral-900 dark:text-white">
                                             {[
                                                 route.sectors[0].departure.icao,
                                                 ...route.sectors.map(
@@ -2135,7 +2164,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 ),
                                             ].join(" ➔ ")}
                                         </span>
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-mono">
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400">
                                             Cat {route.aircraftCategory}
                                         </span>
                                     </div>
@@ -2155,14 +2184,14 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                 <div className="flex items-center gap-2 self-stretch sm:self-center">
                                     <button
                                         onClick={handleCopyBriefing}
-                                        className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium border transition-colors ${
+                                        className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-sm text-xs font-medium border transition-colors ${
                                             copied
-                                                ? "bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-600 dark:border-emerald-600"
+                                                ? "border-emerald-600 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/25 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30"
                                                 : "border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1a1a1a] text-neutral-700 dark:text-neutral-200"
                                         }`}
                                     >
                                         {copied ? (
-                                            <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                                         ) : (
                                             <Copy className="w-3.5 h-3.5" />
                                         )}
@@ -2173,23 +2202,21 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
 
                                     <button
                                         onClick={handleSaveDraft}
-                                        className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium border transition-colors ${
+                                        className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-sm text-xs font-medium border transition-colors ${
                                             isDraftSaved || draftSavedNotice
-                                                ? "bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-600 dark:border-emerald-600"
+                                                ? "border-emerald-600 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/25 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30"
                                                 : "border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1a1a1a] text-neutral-700 dark:text-neutral-200"
                                         }`}
                                     >
                                         {isDraftSaved || draftSavedNotice ? (
-                                            <Check className="w-3.5 h-3.5 text-white" />
+                                            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                                         ) : (
-                                            <Bookmark className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
+                                            <Bookmark className="w-3.5 h-3.5" />
                                         )}
                                         <span>
-                                            {draftSavedNotice
-                                                ? "Draft Saved"
-                                                : isDraftSaved
-                                                  ? "Saved in Routes"
-                                                  : "Draft"}
+                                            {isDraftSaved || draftSavedNotice
+                                                ? "Saved for later"
+                                                : "Save for later"}
                                         </span>
                                     </button>
 
@@ -2197,15 +2224,17 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                         onClick={handleSaveFavorite}
                                         className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-sm text-xs font-medium border transition-colors ${
                                             isFavorite
-                                                ? "bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-600 dark:border-emerald-600"
+                                                ? "border-rose-500 dark:border-rose-500 bg-rose-50/50 dark:bg-rose-950/25 text-rose-600 dark:text-rose-400 hover:bg-rose-100/60 dark:hover:bg-rose-900/30"
                                                 : "border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1a1a1a] text-neutral-700 dark:text-neutral-200"
                                         }`}
                                     >
-                                        {isFavorite ? (
-                                            <Check className="w-3.5 h-3.5 text-white" />
-                                        ) : (
-                                            <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500/20" />
-                                        )}
+                                        <Heart
+                                            className={`w-3.5 h-3.5 text-rose-500 ${
+                                                isFavorite
+                                                    ? "fill-rose-500"
+                                                    : "fill-rose-500/20"
+                                            }`}
+                                        />
                                         <span>
                                             {isFavorite
                                                 ? "Favorited"
@@ -2222,7 +2251,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                         <span>Total Distance</span>
                                         <Milestone className="w-3 h-3 text-neutral-400" />
                                     </div>
-                                    <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white tabular-nums">
+                                    <div className="text-xl font-bold text-neutral-900 dark:text-white tabular-nums">
                                         {route.totalDistanceNm}{" "}
                                         <span className="text-xs font-normal text-neutral-500">
                                             NM
@@ -2241,7 +2270,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                         <span>Airborne Flight Time</span>
                                         <Clock className="w-3 h-3 text-neutral-400" />
                                     </div>
-                                    <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white tabular-nums">
+                                    <div className="text-xl font-bold text-neutral-900 dark:text-white tabular-nums">
                                         {formatDurationHoursMinutes(
                                             route.totalAirborneMinutes,
                                         )}
@@ -2256,7 +2285,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                         <span>Total Block Time</span>
                                         <Gauge className="w-3 h-3 text-neutral-400" />
                                     </div>
-                                    <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white tabular-nums">
+                                    <div className="text-xl font-bold text-neutral-900 dark:text-white tabular-nums">
                                         {formatDurationHoursMinutes(
                                             route.totalDurationMinutes,
                                         )}
@@ -2273,7 +2302,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                         <span>Max Cruise Level</span>
                                         <Plane className="w-3 h-3 text-neutral-400" />
                                     </div>
-                                    <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white tabular-nums">
+                                    <div className="text-xl font-bold text-neutral-900 dark:text-white tabular-nums">
                                         {formatFlightLevelOrAltitude(
                                             Math.max(
                                                 ...route.sectors.map(
@@ -2363,8 +2392,9 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 handleViewportChange
                                             }
                                         />
+                                        <MapFitRouteControl onFit={handleFocusRoute} />
                                         <TileLayer
-                                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                         />
 
@@ -2787,13 +2817,13 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                                 0}{" "}
                                                             ft
                                                         </div>
-                                                        <div className="text-[10px] text-neutral-400 font-mono">
+                                                        <div className="text-[10px] text-neutral-400">
                                                             Type:{" "}
                                                             {initialDep.airportType ||
                                                                 "Airport"}
                                                         </div>
                                                         {initialDep.maxRunwayLengthFt && (
-                                                            <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono">
+                                                            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
                                                                 Longest Runway:{" "}
                                                                 {initialDep.maxRunwayLengthFt.toLocaleString()}{" "}
                                                                 ft (
@@ -2846,7 +2876,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                                     0}{" "}
                                                                 ft
                                                             </div>
-                                                            <div className="text-[10px] text-neutral-400 font-mono">
+                                                            <div className="text-[10px] text-neutral-400">
                                                                 Type:{" "}
                                                                 {s.arrival
                                                                     .airportType ||
@@ -2854,7 +2884,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                             </div>
                                                             {s.arrival
                                                                 .maxRunwayLengthFt && (
-                                                                <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono">
+                                                                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
                                                                     Longest
                                                                     Runway:{" "}
                                                                     {s.arrival.maxRunwayLengthFt.toLocaleString()}{" "}
@@ -2913,7 +2943,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                                 0}{" "}
                                                             ft
                                                         </div>
-                                                        <div className="text-[10px] text-neutral-400 font-mono">
+                                                        <div className="text-[10px] text-neutral-400">
                                                             Type:{" "}
                                                             {finalLeg.arrival
                                                                 .airportType ||
@@ -2921,7 +2951,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                         </div>
                                                         {finalLeg.arrival
                                                             .maxRunwayLengthFt && (
-                                                            <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono">
+                                                            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
                                                                 Longest Runway:{" "}
                                                                 {finalLeg.arrival.maxRunwayLengthFt.toLocaleString()}{" "}
                                                                 ft (
@@ -3000,278 +3030,261 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                 </div>
                             </div>
 
-                            {/* Sector-by-Sector Breakdown Cards */}
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
-                                        Sector Flight Dispatch & Climb Profile
-                                    </h3>
-                                    <span className="text-[11px] text-neutral-500 dark:text-geist-muted">
-                                        Calculated using standard climb/descent
-                                        gradients and common cruise TAS
-                                    </span>
+                            {/* Sector Flight Dispatch Table */}
+                            <div className="space-y-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                    <div>
+                                        <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+                                            Sector Flight Dispatch
+                                        </h3>
+                                        <p className="text-[11px] text-neutral-500 dark:text-geist-muted">
+                                            Calculated using standard cruise TAS and direct distance
+                                        </p>
+                                    </div>
+                                    {route.sectors.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const allExpanded = route.sectors.every(
+                                                    (s) => expandedSectors[s.sectorIndex],
+                                                );
+                                                const nextState: Record<number, boolean> = {};
+                                                route.sectors.forEach((s) => {
+                                                    nextState[s.sectorIndex] = !allExpanded;
+                                                });
+                                                setExpandedSectors(nextState);
+                                            }}
+                                            className="text-[11px] text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors self-start sm:self-auto cursor-pointer"
+                                        >
+                                            {route.sectors.every((s) => expandedSectors[s.sectorIndex])
+                                                ? "Collapse All Details"
+                                                : "Expand All Details"}
+                                        </button>
+                                    )}
                                 </div>
 
-                                <div className="grid grid-cols-1 gap-3">
-                                    {route.sectors.map((sector) => (
-                                        <div
-                                            key={sector.sectorIndex}
-                                            className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm"
-                                        >
-                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-neutral-200 dark:border-geist-hairline gap-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-5 h-5 rounded-full bg-neutral-900 text-white dark:bg-white dark:text-black flex items-center justify-center text-[10px] font-mono font-bold">
-                                                        {sector.sectorIndex}
-                                                    </span>
-                                                    <span className="text-sm font-bold font-mono text-neutral-900 dark:text-white">
-                                                        {sector.departure.icao}{" "}
-                                                        ➔ {sector.arrival.icao}
-                                                    </span>
-                                                    <span className="text-xs text-neutral-500 dark:text-geist-muted truncate max-w-[500px]">
-                                                        ({sector.departure.name}{" "}
-                                                        to {sector.arrival.name}
-                                                        )
-                                                    </span>
-                                                </div>
+                                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm overflow-hidden shadow-sm">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse min-w-[680px]">
+                                            <thead>
+                                                <tr className="border-b border-neutral-200 dark:border-geist-hairline bg-neutral-50/80 dark:bg-[#151c28] text-[10px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 select-none">
+                                                    <th className="py-2.5 px-3 w-10 text-center">#</th>
+                                                    <th className="py-2.5 px-3">Sector</th>
+                                                    <th className="py-2.5 px-3">Aerodrome Runways</th>
+                                                    <th className="py-2.5 px-3">Distance</th>
+                                                    <th className="py-2.5 px-3">Cruise & MORA</th>
+                                                    <th className="py-2.5 px-3">
+                                                        {route.includeGroundTime ? "Block Time" : "Airborne"}
+                                                    </th>
+                                                    <th className="py-2.5 px-3 w-10 text-center">Details</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-neutral-200 dark:divide-geist-hairline text-xs">
+                                                {route.sectors.map((sector) => {
+                                                    const isExpanded = Boolean(expandedSectors[sector.sectorIndex]);
+                                                    return (
+                                                        <React.Fragment key={sector.sectorIndex}>
+                                                            <tr
+                                                                onClick={() => toggleSectorExpanded(sector.sectorIndex)}
+                                                                className={`cursor-pointer transition-colors ${
+                                                                    isExpanded
+                                                                        ? "bg-neutral-50/60 dark:bg-geist-card/60"
+                                                                        : "hover:bg-neutral-50/80 dark:hover:bg-[#161d2b]/60"
+                                                                }`}
+                                                            >
+                                                                {/* Leg Number */}
+                                                                <td className="py-3 px-3 text-center align-middle">
+                                                                    <span className="w-5 h-5 rounded-full bg-neutral-900 text-white dark:bg-white dark:text-black inline-flex items-center justify-center text-[10px] font-bold">
+                                                                        {sector.sectorIndex}
+                                                                    </span>
+                                                                </td>
 
-                                                <div className="flex items-center gap-2 text-xs font-mono">
-                                                    <span className="text-neutral-600 dark:text-neutral-300">
-                                                        TRK{" "}
-                                                        {String(
-                                                            sector.initialBearingDeg,
-                                                        ).padStart(3, "0")}
-                                                        °
-                                                    </span>
-                                                    <span>·</span>
-                                                    <span className="text-neutral-900 dark:text-white font-semibold">
-                                                        {sector.distanceNm} NM
-                                                    </span>
-                                                </div>
-                                            </div>
+                                                                {/* Sector Route */}
+                                                                <td className="py-3 px-3 align-middle">
+                                                                    <div className="flex items-center gap-1.5 font-bold text-neutral-900 dark:text-white">
+                                                                        <span>{sector.departure.icao}</span>
+                                                                        <span className="text-neutral-400 font-normal">➔</span>
+                                                                        <span>{sector.arrival.icao}</span>
+                                                                    </div>
+                                                                    <div
+                                                                        className="text-[11px] text-neutral-500 dark:text-geist-muted truncate max-w-[200px]"
+                                                                        title={`${sector.departure.name} to ${sector.arrival.name}`}
+                                                                    >
+                                                                        {sector.departure.name} → {sector.arrival.name}
+                                                                    </div>
+                                                                </td>
 
-                                            {/* Aerodrome Runway Specifications */}
-                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-geist-card/50 px-2.5 py-1.5 rounded border border-neutral-100 dark:border-geist-hairline">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="font-semibold text-neutral-700 dark:text-neutral-300">
-                                                        Dep Rwy (
-                                                        {sector.departure.icao}
-                                                        ):
-                                                    </span>
-                                                    <span className="font-mono text-neutral-900 dark:text-neutral-200">
-                                                        {sector.departure
-                                                            .maxRunwayLengthFt
-                                                            ? `${sector.departure.maxRunwayLengthFt.toLocaleString()} ft`
-                                                            : "Length N/A"}
-                                                    </span>
-                                                    <span
-                                                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                                                            sector.departure
-                                                                .hasPaved
-                                                                ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
-                                                                : sector
-                                                                        .departure
-                                                                        .hasUnpaved
-                                                                  ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
-                                                                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
-                                                        }`}
-                                                    >
-                                                        {sector.departure
-                                                            .hasPaved
-                                                            ? "Paved"
-                                                            : sector.departure
-                                                                    .hasUnpaved
-                                                              ? "Unpaved"
-                                                              : "Standard"}
-                                                    </span>
-                                                </div>
+                                                                {/* Aerodrome Runways */}
+                                                                <td className="py-3 px-3 align-middle">
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex items-center gap-1.5 text-[11px]">
+                                                                            <span className="text-neutral-400 font-medium">Dep:</span>
+                                                                            {sector.departure.maxRunwayLengthFt && sector.departure.maxRunwayLengthFt > 0 ? (
+                                                                                <span className="text-neutral-800 dark:text-neutral-200 tabular-nums">
+                                                                                    {runwayUnit === "m"
+                                                                                        ? `${Math.round(sector.departure.maxRunwayLengthFt * 0.3048).toLocaleString()} m`
+                                                                                        : `${sector.departure.maxRunwayLengthFt.toLocaleString()} ft`}
+                                                                                </span>
+                                                                            ) : null}
+                                                                            <span
+                                                                                className={`px-1 py-0.2 rounded text-[9px] font-medium ${
+                                                                                    sector.departure.hasPaved
+                                                                                        ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
+                                                                                        : sector.departure.hasUnpaved
+                                                                                        ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                                                                                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
+                                                                                }`}
+                                                                            >
+                                                                                {sector.departure.hasPaved
+                                                                                    ? "Paved"
+                                                                                    : sector.departure.hasUnpaved
+                                                                                    ? "Unpaved"
+                                                                                    : "Std"}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5 text-[11px]">
+                                                                            <span className="text-neutral-400 font-medium">Arr:</span>
+                                                                            {sector.arrival.maxRunwayLengthFt && sector.arrival.maxRunwayLengthFt > 0 ? (
+                                                                                <span className="text-neutral-800 dark:text-neutral-200 tabular-nums">
+                                                                                    {runwayUnit === "m"
+                                                                                        ? `${Math.round(sector.arrival.maxRunwayLengthFt * 0.3048).toLocaleString()} m`
+                                                                                        : `${sector.arrival.maxRunwayLengthFt.toLocaleString()} ft`}
+                                                                                </span>
+                                                                            ) : null}
+                                                                            <span
+                                                                                className={`px-1 py-0.2 rounded text-[9px] font-medium ${
+                                                                                    sector.arrival.hasPaved
+                                                                                        ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
+                                                                                        : sector.arrival.hasUnpaved
+                                                                                        ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                                                                                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
+                                                                                }`}
+                                                                            >
+                                                                                {sector.arrival.hasPaved
+                                                                                    ? "Paved"
+                                                                                    : sector.arrival.hasUnpaved
+                                                                                    ? "Unpaved"
+                                                                                    : "Std"}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
 
-                                                <span className="text-neutral-300 dark:text-neutral-700 hidden sm:inline">
-                                                    |
-                                                </span>
+                                                                {/* Distance */}
+                                                                <td className="py-3 px-3 align-middle">
+                                                                    <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                                                        {sector.distanceNm} NM
+                                                                    </span>
+                                                                </td>
 
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="font-semibold text-neutral-700 dark:text-neutral-300">
-                                                        Arr Rwy (
-                                                        {sector.arrival.icao}):
-                                                    </span>
-                                                    <span className="font-mono text-neutral-900 dark:text-neutral-200">
-                                                        {sector.arrival
-                                                            .maxRunwayLengthFt
-                                                            ? `${sector.arrival.maxRunwayLengthFt.toLocaleString()} ft`
-                                                            : "Length N/A"}
-                                                    </span>
-                                                    <span
-                                                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                                                            sector.arrival
-                                                                .hasPaved
-                                                                ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
-                                                                : sector.arrival
-                                                                        .hasUnpaved
-                                                                  ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
-                                                                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
-                                                        }`}
-                                                    >
-                                                        {sector.arrival.hasPaved
-                                                            ? "Paved"
-                                                            : sector.arrival
-                                                                    .hasUnpaved
-                                                              ? "Unpaved"
-                                                              : "Standard"}
-                                                    </span>
-                                                </div>
-                                            </div>
+                                                                {/* Altitude & MORA */}
+                                                                <td className="py-3 px-3 align-middle">
+                                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                                        <span className="font-semibold text-neutral-900 dark:text-white">
+                                                                            {formatFlightLevelOrAltitude(sector.cruiseAltitudeFt)}
+                                                                        </span>
+                                                                        {sector.isMountainous && (
+                                                                            <span
+                                                                                className="px-1 py-0.2 rounded text-[9px] font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60"
+                                                                                title="Mountainous Terrain (≥3,000 ft variation within 10 NM)"
+                                                                            >
+                                                                                Mountainous
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-[11px] text-neutral-500 dark:text-neutral-400 tabular-nums">
+                                                                        {sector.corridorMsaFt !== undefined
+                                                                            ? `MORA ${formatFlightLevelOrAltitude(sector.corridorMsaFt)}`
+                                                                            : `${sector.cruiseAltitudeFt.toLocaleString()} ft`}
+                                                                    </div>
+                                                                </td>
 
-                                            {/* Physics Breakdown Badges */}
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                                                <div className="p-2 rounded bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
-                                                    <span className="text-[10px] text-neutral-500 block mb-0.5">
-                                                        Recommended Altitude
-                                                    </span>
-                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                        <span className="font-mono font-semibold text-neutral-900 dark:text-white">
-                                                            {formatFlightLevelOrAltitude(
-                                                                sector.cruiseAltitudeFt,
-                                                            )}{" "}
-                                                            (
-                                                            {sector.cruiseAltitudeFt.toLocaleString()}{" "}
-                                                            ft)
-                                                        </span>
-                                                    </div>
-                                                </div>
+                                                                {/* Duration */}
+                                                                <td className="py-3 px-3 align-middle">
+                                                                    <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                                                        {formatDurationHoursMinutes(sector.totalMinutes)}
+                                                                    </span>
+                                                                </td>
 
-                                                <div className="p-2 rounded bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
-                                                    <span className="text-[10px] text-neutral-500 block mb-0.5">
-                                                        Climb & Descent
-                                                    </span>
-                                                    <span className="font-mono font-semibold text-neutral-900 dark:text-white">
-                                                        {sector.climbMinutes}m
-                                                        climb ·{" "}
-                                                        {sector.descentMinutes}m
-                                                        desc
-                                                    </span>
-                                                </div>
+                                                                {/* Expand Chevron */}
+                                                                <td className="py-3 px-3 text-center align-middle">
+                                                                    <div className="inline-flex items-center justify-center p-1 rounded text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors">
+                                                                        <ChevronDown
+                                                                            className={`w-4 h-4 transition-transform duration-200 ${
+                                                                                isExpanded ? "rotate-180" : ""
+                                                                            }`}
+                                                                        />
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
 
-                                                <div className="p-2 rounded bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
-                                                    <span className="text-[10px] text-neutral-500 block mb-0.5">
-                                                        Cruise Segment
-                                                    </span>
-                                                    <span className="font-mono font-semibold text-neutral-900 dark:text-white">
-                                                        {sector.cruiseMinutes}m
-                                                        @ {sector.cruiseSpeedKt}{" "}
-                                                        kt
-                                                    </span>
-                                                </div>
+                                                            {/* Expanded Row for Terrain Corridor Details & Mountainous Advisories */}
+                                                            {isExpanded && (
+                                                                <tr className="bg-neutral-50/70 dark:bg-[#111723] border-b border-neutral-200 dark:border-geist-hairline">
+                                                                    <td colSpan={7} className="p-3.5 space-y-2.5">
+                                                                        {sector.corridorMsaFt !== undefined && (
+                                                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline text-xs">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <div className="p-1 rounded bg-neutral-200/60 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+                                                                                        <Mountain className="w-3.5 h-3.5" />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                            <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                                                                                                Corridor Minimum Safe Altitude:
+                                                                                            </span>
+                                                                                            <span className="font-bold text-neutral-900 dark:text-white">
+                                                                                                {formatFlightLevelOrAltitude(sector.corridorMsaFt)}{" "}
+                                                                                                ({sector.corridorMsaFt.toLocaleString()} ft MORA)
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                                                                            10 NM corridor ·{" "}
+                                                                                            {sector.isMountainous
+                                                                                                ? "Mountainous terrain (variation ≥ 3,000 ft within 10 NM) · 2,000 ft clearance margin"
+                                                                                                : "Non-mountainous terrain (variation < 3,000 ft within 10 NM) · 1,000 ft clearance margin"}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
 
-                                                <div className="p-2 rounded bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
-                                                    <span className="text-[10px] text-neutral-500 block mb-0.5">
-                                                        {route.includeGroundTime
-                                                            ? "Total Block Time"
-                                                            : "Airborne Time"}
-                                                    </span>
-                                                    <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                                                        {formatDurationHoursMinutes(
-                                                            sector.totalMinutes,
-                                                        )}
-                                                    </span>
-                                                </div>
-                                            </div>
+                                                                                <div className="flex items-center gap-3 text-[11px] text-neutral-600 dark:text-neutral-400">
+                                                                                    {sector.peakTerrainFt !== undefined && (
+                                                                                        <span className="tabular-nums">
+                                                                                            Peak: ~{sector.peakTerrainFt.toLocaleString()} ft MSL
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {sector.maxTerrainVariation10Nm !== undefined && (
+                                                                                        <span className="tabular-nums">
+                                                                                            Δh: {sector.maxTerrainVariation10Nm.toLocaleString()} ft / 10 NM
+                                                                                        </span>
+                                                                                    )}
+                                                                                    <span className="tabular-nums font-medium text-emerald-600 dark:text-emerald-400">
+                                                                                        Margin: +{(sector.cruiseAltitudeFt - (sector.peakTerrainFt || 0)).toLocaleString()} ft (Req: {sector.requiredMarginFt || 1000} ft)
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
 
-                                            {/* Terrain & Corridor Minimum Safe Altitude (MSA / Grid MORA) Card */}
-                                            {sector.corridorMsaFt !==
-                                                undefined && (
-                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded bg-neutral-50 dark:bg-geist-card/60 border border-neutral-200 dark:border-geist-hairline text-xs">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="p-1 rounded bg-neutral-200/60 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
-                                                            <Mountain className="w-3.5 h-3.5" />
-                                                        </div>
-                                                        <div>
-                                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                                                                    Corridor
-                                                                    Minimum Safe
-                                                                    Altitude:
-                                                                </span>
-                                                                <span className="font-mono font-bold text-neutral-900 dark:text-white">
-                                                                    {formatFlightLevelOrAltitude(
-                                                                        sector.corridorMsaFt,
-                                                                    )}{" "}
-                                                                    (
-                                                                    {sector.corridorMsaFt.toLocaleString()}{" "}
-                                                                    ft MORA)
-                                                                </span>
-                                                            </div>
-                                                            <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                                                10 NM corridor ·{" "}
-                                                                {sector.isMountainous
-                                                                    ? "Mountainous terrain (variation ≥ 3,000 ft within 10 NM) · 2,000 ft clearance margin"
-                                                                    : "Non-mountainous terrain (variation < 3,000 ft within 10 NM) · 1,000 ft clearance margin"}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="flex items-center gap-3 text-[11px] text-neutral-600 dark:text-neutral-400 font-mono">
-                                                        {sector.peakTerrainFt !==
-                                                            undefined && (
-                                                            <span className="tabular-nums">
-                                                                Peak: ~
-                                                                {sector.peakTerrainFt.toLocaleString()}{" "}
-                                                                ft MSL
-                                                            </span>
-                                                        )}
-                                                        {sector.maxTerrainVariation10Nm !==
-                                                            undefined && (
-                                                            <span className="tabular-nums">
-                                                                Δh:{" "}
-                                                                {sector.maxTerrainVariation10Nm.toLocaleString()}{" "}
-                                                                ft / 10 NM
-                                                            </span>
-                                                        )}
-                                                        <span className="tabular-nums font-medium text-emerald-600 dark:text-emerald-400">
-                                                            Margin: +
-                                                            {(
-                                                                sector.cruiseAltitudeFt -
-                                                                (sector.peakTerrainFt ||
-                                                                    0)
-                                                            ).toLocaleString()}{" "}
-                                                            ft (Req:{" "}
-                                                            {sector.requiredMarginFt ||
-                                                                1000}{" "}
-                                                            ft)
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Mountainous Terrain Warning Banner */}
-                                            {sector.isMountainous && (
-                                                <div className="flex items-start gap-2 p-2.5 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-300">
-                                                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-                                                    <div>
-                                                        <strong className="font-semibold">
-                                                            Mountainous Terrain
-                                                            Advisory:
-                                                        </strong>{" "}
-                                                        This sector traverses
-                                                        mountainous terrain
-                                                        (elevation variation ≥
-                                                        3,000 ft within 10 NM).
-                                                        A 2,000 ft clearance
-                                                        margin is applied over
-                                                        peak terrain (~
-                                                        {(
-                                                            sector.peakTerrainFt ||
-                                                            0
-                                                        ).toLocaleString()}{" "}
-                                                        ft MSL), recommending{" "}
-                                                        {formatFlightLevelOrAltitude(
-                                                            sector.cruiseAltitudeFt,
-                                                        )}
-                                                        .
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                                        {sector.isMountainous && (
+                                                                            <div className="flex items-start gap-2 p-2.5 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-300">
+                                                                                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                                                                                <div>
+                                                                                    <strong className="font-semibold">
+                                                                                        Mountainous Terrain Advisory:
+                                                                                    </strong>{" "}
+                                                                                    This sector traverses mountainous terrain (elevation variation ≥ 3,000 ft within 10 NM). A 2,000 ft clearance margin is applied over peak terrain (~{(sector.peakTerrainFt || 0).toLocaleString()} ft MSL), recommending {formatFlightLevelOrAltitude(sector.cruiseAltitudeFt)}.
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                        </React.Fragment>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </>
@@ -3332,8 +3345,9 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 handleViewportChange
                                             }
                                         />
+                                        <MapFitRouteControl onFit={handleFocusRoute} />
                                         <TileLayer
-                                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                         />
 

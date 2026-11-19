@@ -1,4 +1,4 @@
-import { Airport } from "../types/flight";
+import { Airport, Runway } from "../types/flight";
 import {
     RouteSearchParams,
     GeneratedRoute,
@@ -13,7 +13,6 @@ import {
 } from "../data/aircraftCategories";
 import {
     calculateDistanceNm,
-    calculateInitialBearing,
     isHelipadOrHeliport,
 } from "../data/mockData";
 import { FALLBACK_AIRPORTS } from "../data/fallbackAirports";
@@ -69,6 +68,28 @@ export async function resolveAirport(icao: string): Promise<Airport | null> {
         isValidIcaoCode(dbApt.icao) &&
         !isHelipadOrHeliport(dbApt)
     ) {
+        // If runway length is missing, attempt to query the runways table
+        if (!dbApt.maxRunwayLengthFt || dbApt.maxRunwayLengthFt <= 0) {
+            try {
+                const runways = await safeInvoke<Runway[]>("get_airport_runways", {
+                    icao: cleanIcao,
+                });
+                if (runways && Array.isArray(runways) && runways.length > 0) {
+                    const lengths = runways
+                        .map((r) => r.lengthFt || 0)
+                        .filter((l) => l > 0);
+                    if (lengths.length > 0) {
+                        dbApt.maxRunwayLengthFt = Math.max(...lengths);
+                    }
+                    if (dbApt.hasPaved === undefined) {
+                        dbApt.hasPaved = runways.some((r) => r.isPaved);
+                    }
+                    if (dbApt.hasUnpaved === undefined) {
+                        dbApt.hasUnpaved = runways.some((r) => r.isUnpaved);
+                    }
+                }
+            } catch {}
+        }
         return dbApt;
     }
 
@@ -588,12 +609,6 @@ export function computeRouteSector(
         arr.latitude,
         arr.longitude,
     );
-    const bearing = calculateInitialBearing(
-        dep.latitude,
-        dep.longitude,
-        arr.latitude,
-        arr.longitude,
-    );
 
     // Query terrain-aware corridor minimum safe altitude (MSA / Grid MORA)
     const corridorMsaResult = getCorridorMsa(
@@ -611,7 +626,6 @@ export function computeRouteSector(
         dep.elevationFt || 0,
         arr.elevationFt || 0,
         corridorMsaResult.msaFt,
-        bearing,
         corridorMsaResult.peakTerrainFt,
         corridorMsaResult.requiredMarginFt,
     );
@@ -626,13 +640,13 @@ export function computeRouteSector(
         departure: dep,
         arrival: arr,
         distanceNm: profileMetrics.distanceNm,
-        initialBearingDeg: bearing,
+        initialBearingDeg: 0,
         airborneMinutes: profileMetrics.airborneMinutes,
         groundMinutes: profileMetrics.groundMinutes,
         totalMinutes: profileMetrics.totalMinutes,
-        climbMinutes: profileMetrics.climbMinutes,
-        cruiseMinutes: profileMetrics.cruiseMinutes,
-        descentMinutes: profileMetrics.descentMinutes,
+        climbMinutes: 0,
+        cruiseMinutes: profileMetrics.airborneMinutes,
+        descentMinutes: 0,
         cruiseAltitudeFt: profileMetrics.cruiseAltitudeFt,
         cruiseSpeedKt: profileMetrics.cruiseSpeedKt,
         corridorMsaFt: corridorMsaResult.msaFt,

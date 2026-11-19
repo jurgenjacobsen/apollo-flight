@@ -337,12 +337,29 @@ export const useEfbStore = create<EfbStoreState>()(
             name: "apollo-efb-storage",
             partialize: (state) => ({
                 scratchpad: state.scratchpad,
-                checklists: state.checklists,
+                checklists: (state.checklists || []).map((group) => ({
+                    ...group,
+                    items: (group.items || []).map((item) => ({
+                        ...item,
+                        checked: false,
+                    })),
+                })),
                 theme: state.theme,
                 customPort: state.customPort,
                 autoStartEfb: state.autoStartEfb,
                 serverMode: state.serverMode,
             }),
+            onRehydrateStorage: () => (state) => {
+                if (state && Array.isArray(state.checklists)) {
+                    state.checklists = state.checklists.map((group) => ({
+                        ...group,
+                        items: (group.items || []).map((item) => ({
+                            ...item,
+                            checked: false,
+                        })),
+                    }));
+                }
+            },
         },
     ),
 );

@@ -14,6 +14,7 @@ import {
 import { IfrTrainer } from "./components/views/IfrTrainer";
 import { HoldTrainer } from "./components/views/HoldTrainer";
 import { SettingsView } from "./components/views/SettingsView";
+import { DocumentationView } from "./components/views/DocumentationView";
 import { ChecklistsView } from "./components/views/ChecklistsView";
 import { FeedbackView } from "./components/views/FeedbackView";
 import { RecycleBinView } from "./components/views/RecycleBinView";
@@ -175,6 +176,7 @@ export const App: React.FC = () => {
                         {activeView === "ifr-trainer" && <IfrTrainer />}
                         {activeView === "hold-trainer" && <HoldTrainer />}
                         {activeView === "checklists" && <ChecklistsView />}
+                        {activeView === "documentation" && <DocumentationView />}
                         {activeView === "settings" && <SettingsView />}
                         {activeView === "feedback" && <FeedbackView />}
                         {activeView === "recycle-bin" && <RecycleBinView />}

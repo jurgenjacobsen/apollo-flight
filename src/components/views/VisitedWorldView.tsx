@@ -175,7 +175,56 @@ export const VisitedWorldView: React.FC = () => {
     }, [visitedAirports, airportFilterText]);
 
     return (
-        <div className="flex-1 min-h-0 h-full overflow-y-auto p-4 sm:p-5 space-y-5 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
+        <div className="flex-1 min-h-0 h-full overflow-y-auto p-5 space-y-4 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-geist-hairline">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
+                        <Globe2 className="w-5 h-5 text-neutral-500 dark:text-neutral-300" />
+                    </div>
+                    <div>
+                        <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight flex items-center gap-2">
+                            Visited Destinations
+                        </h1>
+                        <p className="text-xs text-neutral-500 dark:text-geist-muted mt-0.5">
+                            Global passport of visited sovereign nations and logged aerodromes
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
+                    <div className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-300 shadow-xs">
+                        <Globe2 className="w-3.5 h-3.5 text-neutral-400" />
+                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
+                            {visitedCount}
+                        </span>
+                        <span className="text-neutral-500 dark:text-geist-muted">
+                            / {totalCountriesWorld} Nations
+                        </span>
+                    </div>
+
+                    <div className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-300 shadow-xs">
+                        <MapPin className="w-3.5 h-3.5 text-neutral-400" />
+                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
+                            {visitedAirports.length}
+                        </span>
+                        <span className="text-neutral-500 dark:text-geist-muted">
+                            Airports
+                        </span>
+                    </div>
+
+                    <div className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-300 shadow-xs">
+                        <Award className="w-3.5 h-3.5 text-amber-500" />
+                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
+                            {percentage}%
+                        </span>
+                        <span className="text-neutral-500 dark:text-geist-muted">
+                            Unlocked
+                        </span>
+                    </div>
+                </div>
+            </div>
+
             {/* Metrics Row */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {/* Progress Card */}

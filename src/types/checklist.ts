@@ -33,3 +33,16 @@ export interface ApolloChecklistExportBundle {
     exportedAt: string;
     checklists: Checklist[];
 }
+
+export const resetChecklistChecks = (checklists: Checklist[]): Checklist[] =>
+    (checklists || []).map((chk) => ({
+        ...chk,
+        sections: (chk.sections || []).map((sec) => ({
+            ...sec,
+            items: (sec.items || []).map((it) => ({
+                ...it,
+                checked: false,
+            })),
+        })),
+    }));
+

@@ -48,10 +48,10 @@ export class ErrorBoundary extends Component<Props, State> {
                     </div>
 
                     <h2 className="text-base font-semibold mb-1">
-                        {this.props.fallbackTitle || "Something went wrong in this view"}
+                        {this.props.fallbackTitle || "Something went wrong in this page"}
                     </h2>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-md mb-4">
-                        An unexpected error occurred while rendering. You can try refreshing the view.
+                        An unexpected error occurred while rendering. You can try refreshing the page.
                     </p>
 
                     {this.state.error?.message && (

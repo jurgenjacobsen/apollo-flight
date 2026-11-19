@@ -55,6 +55,7 @@ export type ExportFormat = "gpx" | "kml" | "geojson" | "csv" | "json";
 export type LogbookExportFormat = "csv" | "json";
 
 export type WeightUnit = "kg" | "lbs";
+export type LengthUnit = "ft" | "m";
 
 export interface Airport {
     icao: string;

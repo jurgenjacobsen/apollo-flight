@@ -797,21 +797,50 @@ export const FlightDetailView: React.FC = () => {
 
     if (!flight) {
         return (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-neutral-500 dark:text-neutral-400 text-center">
-                <Navigation className="w-8 h-8 text-neutral-400 dark:text-neutral-600 mb-3" />
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
-                    No Flights Logged Yet
-                </h3>
-                <p className="text-xs text-neutral-500 dark:text-geist-muted max-w-sm mt-1">
-                    When you fly in MSFS with FSUIPC7 running, flights and
-                    telemetry trajectories will be automatically recorded here.
-                </p>
-                <button
-                    onClick={() => setActiveView("dashboard")}
-                    className="mt-4 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors"
-                >
-                    View Live Dashboard
-                </button>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans">
+                {/* Header Bar */}
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-geist-hairline">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
+                            <Layers className="w-5 h-5 text-neutral-500 dark:text-neutral-300" />
+                        </div>
+                        <div>
+                            <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight flex items-center gap-2">
+                                Telemetry Analysis
+                            </h1>
+                            <p className="text-xs text-neutral-500 dark:text-geist-muted mt-0.5">
+                                Synchronized with embedded SQLite aerotrack.db
+                            </p>
+                        </div>
+                    </div>
+                    <div>
+                        <button
+                            type="button"
+                            onClick={() => setActiveView("logbook")}
+                            className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline shadow-xs transition-colors"
+                        >
+                            <ArrowLeft className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
+                            <span>Back to Logbook</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex-1 flex flex-col items-center justify-center p-16 text-neutral-500 dark:text-neutral-400 text-center">
+                    <Navigation className="w-8 h-8 text-neutral-400 dark:text-neutral-600 mb-3" />
+                    <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
+                        No Flights Logged Yet
+                    </h3>
+                    <p className="text-xs text-neutral-500 dark:text-geist-muted max-w-sm mt-1">
+                        When you fly in MSFS with FSUIPC7 running, flights and
+                        telemetry trajectories will be automatically recorded here.
+                    </p>
+                    <button
+                        onClick={() => setActiveView("dashboard")}
+                        className="mt-4 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors"
+                    >
+                        View Live Dashboard
+                    </button>
+                </div>
             </div>
         );
     }
@@ -821,46 +850,55 @@ export const FlightDetailView: React.FC = () => {
     const durationRemainingMins = durationMins % 60;
 
     return (
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-neutral-50 dark:bg-black text-neutral-900 dark:text-neutral-100 font-sans transition-colors duration-150">
             {/* Header Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-200 dark:border-geist-hairline">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-geist-hairline">
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => setActiveView("logbook")}
-                        className="p-1.5 rounded-sm bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
-                        title="Return to Logbook"
-                    >
-                        <ArrowLeft className="w-4 h-4" />
-                    </button>
+                    <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline">
+                        <Layers className="w-5 h-5 text-neutral-500 dark:text-neutral-300" />
+                    </div>
                     <div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight">
-                                {flight.departureIcao} ➔ {flight.arrivalIcao}
-                            </span>
-                            <span className="text-[11px] px-2 py-0.5 rounded-sm bg-neutral-100 dark:bg-[#161616] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-geist-hairline">
-                                {flight.aircraftType}
-                            </span>
-                        </div>
+                        <h1 className="text-base font-semibold text-neutral-900 dark:text-white tracking-tight flex items-center gap-2">
+                            Flight Telemetry Analysis
+                        </h1>
                         <p className="text-xs text-neutral-500 dark:text-geist-muted mt-0.5">
-                            Operation on{" "}
-                            {new Date(flight.startTime).toLocaleString()}
+                            Synchronized with embedded SQLite aerotrack.db
                         </p>
                     </div>
                 </div>
 
                 {/* Action Controls */}
-                <div className="flex items-center gap-2 self-end sm:self-auto">
+                <div className="flex items-center gap-2.5 w-full md:w-auto">
+                    {/* Flight selector */}
+                    <div className="relative flex-1 md:w-64">
+                        <Select
+                            size="sm"
+                            value={flight.id}
+                            onChange={(val) => setSelectedFlightId(String(val))}
+                            options={flights.map((f) => ({
+                                value: f.id,
+                                label: `${f.departureIcao} ➔ ${f.arrivalIcao} (${f.aircraftType})`,
+                            }))}
+                            className="w-full"
+                            triggerClassName="bg-white dark:bg-geist-surface shadow-xs"
+                        />
+                    </div>
+
                     {/* Export Menu (consistent with LogbookView) */}
-                    <div className="relative" ref={exportMenuRef}>
+                    <div className="relative shrink-0" ref={exportMenuRef}>
                         <button
                             onClick={() => setShowExportMenu(!showExportMenu)}
-                            className="h-8 inline-flex items-center gap-1.5 bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline text-xs font-medium text-neutral-800 dark:text-neutral-200 rounded-sm px-2.5 hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] transition-colors"
+                            className={`h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border transition-colors duration-150 select-none cursor-pointer ${
+                                showExportMenu
+                                    ? "bg-neutral-200 dark:bg-[#282828] text-neutral-900 dark:text-white border-neutral-300 dark:border-neutral-600"
+                                    : "bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-geist-hairline shadow-xs"
+                            }`}
                             title="Export Flight Telemetry (.GPX, .KML, .GeoJSON, .CSV)"
                         >
                             {copiedFormat ? (
                                 <Check className="w-3.5 h-3.5 text-emerald-500" />
                             ) : (
-                                <Download className="w-3.5 h-3.5 text-neutral-400" />
+                                <Download className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
                             )}
                             <span>
                                 {copiedFormat
@@ -868,7 +906,7 @@ export const FlightDetailView: React.FC = () => {
                                     : "Export Flight"}
                             </span>
                             <ChevronDown
-                                className={`w-3 h-3 text-neutral-400 transition-transform duration-150 ${
+                                className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-150 ${
                                     showExportMenu
                                         ? "rotate-180 text-neutral-700 dark:text-neutral-200"
                                         : ""
@@ -995,17 +1033,16 @@ export const FlightDetailView: React.FC = () => {
                         )}
                     </div>
 
-                    {/* Flight selector */}
-                    <Select
-                        value={flight.id}
-                        onChange={(val) => setSelectedFlightId(String(val))}
-                        options={flights.map((f) => ({
-                            value: f.id,
-                            label: `${f.departureIcao} ➔ ${f.arrivalIcao} (${f.aircraftType})`,
-                        }))}
-                        className="min-w-[200px]"
-                        triggerClassName="bg-white dark:bg-geist-surface"
-                    />
+                    {/* Return to Logbook */}
+                    <button
+                        type="button"
+                        onClick={() => setActiveView("logbook")}
+                        className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline shadow-xs transition-colors duration-150 select-none cursor-pointer"
+                        title="Return to Logbook"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
+                        <span>Logbook</span>
+                    </button>
 
                     {/* Expanding Delete Confirmation Button */}
                     <ConfirmDeleteButton
