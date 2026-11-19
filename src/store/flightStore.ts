@@ -15,8 +15,15 @@ import {
     ApolloExportScope,
     ApolloExportBundle,
     WeightUnit,
+    LengthUnit,
 } from "../types/flight";
-import { Checklist, ChecklistItem, ChecklistSection } from "../types/checklist";
+import {
+    Checklist,
+    ChecklistItem,
+    ChecklistSection,
+    resetChecklistChecks,
+} from "../types/checklist";
+import { DocFileContent } from "../types/documentation";
 import { DEFAULT_CHECKLISTS } from "../data/defaultChecklists";
 import { SavedRoute, GeneratedRoute, RouteSector } from "../types/route";
 import { calculateTouchdownGForce } from "../utils/touchdownPhysics";
@@ -29,6 +36,19 @@ import {
 } from "../utils/telemetryStorage";
 import type { Update } from "@tauri-apps/plugin-updater";
 import packageJson from "../../package.json";
+
+const RETIRED_DEFAULT_CHECKLIST_IDS = new Set([
+    "chk-c172-normal",
+    "chk-a320-sop",
+    "chk-b738-normal",
+]);
+
+const sanitizeChecklistList = (list?: Checklist[]): Checklist[] => {
+    const cleaned = (list || []).filter((c) => !RETIRED_DEFAULT_CHECKLIST_IDS.has(c.id));
+    const hasWelcome = cleaned.some((c) => c.id === "chk-welcome");
+    const merged = hasWelcome ? cleaned : [...DEFAULT_CHECKLISTS, ...cleaned];
+    return resetChecklistChecks(merged);
+};
 
 /**
  * Formats flight duration in seconds for UI cards.
@@ -961,13 +981,19 @@ export interface FlightState {
         | "checklists"
         | "settings"
         | "feedback"
-        | "recycle-bin";
+        | "recycle-bin"
+        | "documentation";
+    docCustomDirs: string[];
+    docLiveUpdate: boolean;
+    docActiveFilePath: string | null;
+    docContentCache: Record<string, DocFileContent>;
     recycleBin: DeletedFlightRecord[];
     checklists: Checklist[];
     activeChecklistId: string | null;
     isSidebarCollapsed: boolean;
     theme: "light" | "dark";
     weightUnit: WeightUnit;
+    lengthUnit: LengthUnit;
     dbInitialized: boolean;
     airportsCount: number;
     isSyncingAirports: boolean;
@@ -1030,10 +1056,16 @@ export interface FlightState {
     setTheme: (theme: "light" | "dark") => void;
     toggleTheme: () => void;
     setWeightUnit: (unit: WeightUnit) => Promise<void>;
+    setLengthUnit: (unit: LengthUnit) => Promise<void>;
     setActiveView: (view: FlightState["activeView"]) => void;
     setSelectedFlightId: (id: string | null) => void;
     setScrubbedTelemetryIndex: (index: number | null) => void;
     setCloseToTray: (enabled: boolean) => Promise<void>;
+    setDocCustomDirs: (dirs: string[]) => Promise<void>;
+    setDocLiveUpdate: (enabled: boolean) => Promise<void>;
+    setDocActiveFilePath: (path: string | null) => void;
+    setDocCachedContent: (path: string, content: DocFileContent) => void;
+    clearDocCache: () => void;
     setAutoStartRecording: (enabled: boolean) => void;
     setRecordDetailedTelemetry: (enabled: boolean) => void;
     setShowEndFlightPrompt: (show: boolean) => void;
@@ -1328,6 +1360,7 @@ export const useFlightStore = create<FlightState>()(
                 return "light";
             })(),
             weightUnit: "kg",
+            lengthUnit: "ft",
             dbInitialized: false,
             pageSize: 50,
             airportsCount: 75,
@@ -1348,6 +1381,10 @@ export const useFlightStore = create<FlightState>()(
             detectedMultiSectorRoute: null,
             nearestAirport: null,
             isLoadingFlightDetails: false,
+            docCustomDirs: [],
+            docLiveUpdate: true,
+            docActiveFilePath: null,
+            docContentCache: {},
 
             setAutoCheckUpdates: (enabled: boolean) => {
                 set({ autoCheckUpdates: enabled });
@@ -1514,6 +1551,37 @@ export const useFlightStore = create<FlightState>()(
                     value: String(enabled),
                 });
             },
+
+            setDocCustomDirs: async (dirs: string[]) => {
+                set({ docCustomDirs: dirs });
+                await safeInvoke("set_user_setting", {
+                    key: "docCustomDirs",
+                    value: JSON.stringify(dirs),
+                });
+            },
+
+            setDocLiveUpdate: async (enabled: boolean) => {
+                set({ docLiveUpdate: enabled });
+                await safeInvoke("set_user_setting", {
+                    key: "docLiveUpdate",
+                    value: String(enabled),
+                });
+            },
+
+            setDocActiveFilePath: (path: string | null) => set({ docActiveFilePath: path }),
+
+            setDocCachedContent: (path: string, content: DocFileContent) => {
+                set((state) => {
+                    const cache = { ...state.docContentCache, [path]: content };
+                    const keys = Object.keys(cache);
+                    if (keys.length > 8) {
+                        delete cache[keys[0]];
+                    }
+                    return { docContentCache: cache };
+                });
+            },
+
+            clearDocCache: () => set({ docContentCache: {} }),
 
             setAutoStartRecording: (enabled: boolean) => {
                 set({ autoStartRecording: enabled });
@@ -1698,6 +1766,23 @@ export const useFlightStore = create<FlightState>()(
                             set({ weightUnit: dbSettings.weightUnit });
                         }
                         if (
+                            dbSettings.lengthUnit === "ft" ||
+                            dbSettings.lengthUnit === "m"
+                        ) {
+                            set({ lengthUnit: dbSettings.lengthUnit });
+                        }
+                        if (typeof dbSettings.docCustomDirs === "string") {
+                            try {
+                                const parsed = JSON.parse(dbSettings.docCustomDirs);
+                                if (Array.isArray(parsed)) {
+                                    set({ docCustomDirs: parsed });
+                                }
+                            } catch {}
+                        }
+                        if (typeof dbSettings.docLiveUpdate === "string") {
+                            set({ docLiveUpdate: dbSettings.docLiveUpdate === "true" });
+                        }
+                        if (
                             typeof dbSettings.recycle_bin_flights === "string"
                         ) {
                             try {
@@ -1720,14 +1805,16 @@ export const useFlightStore = create<FlightState>()(
                             try {
                                 const parsed = JSON.parse(dbSettings.checklists);
                                 if (Array.isArray(parsed) && parsed.length > 0) {
-                                    set({ checklists: parsed });
+                                    const sanitized = sanitizeChecklistList(parsed);
+                                    set({ checklists: sanitized });
+                                    safeInvoke("set_user_setting", {
+                                        key: "checklists",
+                                        value: JSON.stringify(sanitized),
+                                    }).catch(() => {});
                                 }
                             } catch {}
                         } else {
-                            const initialChecklists =
-                                get().checklists && get().checklists.length > 0
-                                    ? get().checklists
-                                    : DEFAULT_CHECKLISTS;
+                            const initialChecklists = sanitizeChecklistList(get().checklists);
                             set({ checklists: initialChecklists });
                             safeInvoke("set_user_setting", {
                                 key: "checklists",
@@ -1744,10 +1831,8 @@ export const useFlightStore = create<FlightState>()(
                         const currentAutoCheck = get().autoCheckUpdates;
                         const currentPageSize = get().pageSize || 50;
                         const currentWeightUnit = get().weightUnit || "kg";
-                        const currentChecklists =
-                            get().checklists && get().checklists.length > 0
-                                ? get().checklists
-                                : DEFAULT_CHECKLISTS;
+                        const currentLengthUnit = get().lengthUnit || "ft";
+                        const currentChecklists = sanitizeChecklistList(get().checklists);
                         await safeInvoke("set_user_setting", {
                             key: "theme",
                             value: currentTheme,
@@ -1775,6 +1860,10 @@ export const useFlightStore = create<FlightState>()(
                         await safeInvoke("set_user_setting", {
                             key: "weightUnit",
                             value: currentWeightUnit,
+                        });
+                        await safeInvoke("set_user_setting", {
+                            key: "lengthUnit",
+                            value: currentLengthUnit,
                         });
                         await safeInvoke("set_user_setting", {
                             key: "checklists",
@@ -2313,6 +2402,14 @@ export const useFlightStore = create<FlightState>()(
                 set({ weightUnit: unit });
                 await safeInvoke("set_user_setting", {
                     key: "weightUnit",
+                    value: unit,
+                });
+            },
+
+            setLengthUnit: async (unit: LengthUnit) => {
+                set({ lengthUnit: unit });
+                await safeInvoke("set_user_setting", {
+                    key: "lengthUnit",
                     value: unit,
                 });
             },
@@ -3547,6 +3644,7 @@ export const useFlightStore = create<FlightState>()(
                         autoCheckUpdates: String(get().autoCheckUpdates),
                         pageSize: String(get().pageSize),
                         weightUnit: get().weightUnit,
+                        lengthUnit: get().lengthUnit,
                     };
                 }
 
@@ -3646,6 +3744,12 @@ export const useFlightStore = create<FlightState>()(
                                 (val === "kg" || val === "lbs")
                             ) {
                                 get().setWeightUnit(val);
+                            }
+                            if (
+                                key === "lengthUnit" &&
+                                (val === "ft" || val === "m")
+                            ) {
+                                get().setLengthUnit(val);
                             }
                             await safeInvoke("set_user_setting", {
                                 key,
@@ -3991,7 +4095,7 @@ export const useFlightStore = create<FlightState>()(
                 set({ checklists });
                 safeInvoke("set_user_setting", {
                     key: "checklists",
-                    value: JSON.stringify(checklists),
+                    value: JSON.stringify(resetChecklistChecks(checklists)),
                 }).catch(() => {});
             },
 
@@ -4010,7 +4114,7 @@ export const useFlightStore = create<FlightState>()(
                 set({ checklists: updated, activeChecklistId: id });
                 safeInvoke("set_user_setting", {
                     key: "checklists",
-                    value: JSON.stringify(updated),
+                    value: JSON.stringify(resetChecklistChecks(updated)),
                 }).catch(() => {});
                 return newChecklist;
             },
@@ -4023,7 +4127,7 @@ export const useFlightStore = create<FlightState>()(
                 set({ checklists: updated });
                 safeInvoke("set_user_setting", {
                     key: "checklists",
-                    value: JSON.stringify(updated),
+                    value: JSON.stringify(resetChecklistChecks(updated)),
                 }).catch(() => {});
             },
 
@@ -4034,7 +4138,7 @@ export const useFlightStore = create<FlightState>()(
                 set({ checklists: updated, activeChecklistId });
                 safeInvoke("set_user_setting", {
                     key: "checklists",
-                    value: JSON.stringify(updated),
+                    value: JSON.stringify(resetChecklistChecks(updated)),
                 }).catch(() => {});
             },
 
@@ -4064,7 +4168,7 @@ export const useFlightStore = create<FlightState>()(
                 set({ checklists: updated, activeChecklistId: newId });
                 safeInvoke("set_user_setting", {
                     key: "checklists",
-                    value: JSON.stringify(updated),
+                    value: JSON.stringify(resetChecklistChecks(updated)),
                 }).catch(() => {});
             },
 
@@ -4086,10 +4190,6 @@ export const useFlightStore = create<FlightState>()(
                     };
                 });
                 set({ checklists: updated });
-                safeInvoke("set_user_setting", {
-                    key: "checklists",
-                    value: JSON.stringify(updated),
-                }).catch(() => {});
             },
 
             resetChecklist: (checklistId) => {
@@ -4107,10 +4207,6 @@ export const useFlightStore = create<FlightState>()(
                     };
                 });
                 set({ checklists: updated });
-                safeInvoke("set_user_setting", {
-                    key: "checklists",
-                    value: JSON.stringify(updated),
-                }).catch(() => {});
             },
 
             resetChecklistSection: (checklistId, sectionId) => {
@@ -4131,10 +4227,6 @@ export const useFlightStore = create<FlightState>()(
                     };
                 });
                 set({ checklists: updated });
-                safeInvoke("set_user_setting", {
-                    key: "checklists",
-                    value: JSON.stringify(updated),
-                }).catch(() => {});
             },
 
             importChecklists: (imported) => {
@@ -4175,7 +4267,7 @@ export const useFlightStore = create<FlightState>()(
                                 challenge: it.challenge || "Item",
                                 response: it.response || "CHECK",
                                 note: it.note,
-                                checked: Boolean(it.checked),
+                                checked: false,
                             })),
                         })),
                     };
@@ -4193,7 +4285,7 @@ export const useFlightStore = create<FlightState>()(
                 set({ checklists: updated });
                 safeInvoke("set_user_setting", {
                     key: "checklists",
-                    value: JSON.stringify(updated),
+                    value: JSON.stringify(resetChecklistChecks(updated)),
                 }).catch(() => {});
                 return { added, replaced };
             },
@@ -4207,6 +4299,8 @@ export const useFlightStore = create<FlightState>()(
                 recordDetailedTelemetry: state.recordDetailedTelemetry,
                 autoCheckUpdates: state.autoCheckUpdates,
                 pageSize: state.pageSize,
+                docCustomDirs: state.docCustomDirs,
+                docLiveUpdate: state.docLiveUpdate,
                 savedRoutes: state.savedRoutes,
                 recycleBin: state.recycleBin.map(
                     ({ telemetryPoints, ...rest }) => ({
@@ -4220,14 +4314,19 @@ export const useFlightStore = create<FlightState>()(
                 })),
                 visitedAirports: state.visitedAirports,
                 visitedCountries: state.visitedCountries,
-                checklists: state.checklists,
+                checklists: sanitizeChecklistList(state.checklists),
             }),
             onRehydrateStorage: () => (state) => {
-                if (state && typeof document !== "undefined") {
-                    if (state.theme === "dark") {
-                        document.documentElement.classList.add("dark");
-                    } else {
-                        document.documentElement.classList.remove("dark");
+                if (state) {
+                    if (state.checklists && Array.isArray(state.checklists)) {
+                        state.checklists = sanitizeChecklistList(state.checklists);
+                    }
+                    if (typeof document !== "undefined") {
+                        if (state.theme === "dark") {
+                            document.documentElement.classList.add("dark");
+                        } else {
+                            document.documentElement.classList.remove("dark");
+                        }
                     }
                 }
             },

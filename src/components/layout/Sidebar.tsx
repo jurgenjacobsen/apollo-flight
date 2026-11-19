@@ -17,6 +17,7 @@ import {
     LifeBuoy,
     Bookmark,
     ListChecks,
+    FileText,
     ChevronLeft,
     ChevronRight,
 } from "lucide-react";
@@ -52,6 +53,7 @@ export const Sidebar: React.FC = () => {
                 { id: "new-route", label: "New Route", icon: Route },
                 { id: "saved-routes", label: "Saved Routes", icon: Bookmark },
                 { id: "checklists", label: "Checklists", icon: ListChecks },
+                { id: "documentation", label: "Documentation", icon: FileText },
                 { id: "logbook", label: "Flight Logbook", icon: BookOpen },
                 {
                     id: "flight-detail",

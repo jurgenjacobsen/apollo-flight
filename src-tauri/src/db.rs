@@ -439,6 +439,13 @@ pub fn init_databases(
             version TEXT PRIMARY KEY,
             applied_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS document_metadata (
+            file_path TEXT PRIMARY KEY,
+            title TEXT,
+            last_seen TEXT,
+            tags TEXT
+        );
         "#
     )?;
 
@@ -450,6 +457,7 @@ pub fn init_databases(
         CREATE UNIQUE INDEX IF NOT EXISTS idx_visited_airports_icao_uniq ON visited_airports(icao);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_visited_countries_iso_uniq ON visited_countries(iso_a2);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_key_uniq ON user_settings(key);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_document_metadata_path_uniq ON document_metadata(file_path);
         "#
     );
 
@@ -484,6 +492,7 @@ fn migrate_from_legacy_aerotrack(legacy_db: &Path, logbook_path: &Path, navdata_
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_visited_airports_icao_uniq ON visited_airports(icao);
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_visited_countries_iso_uniq ON visited_countries(iso_a2);
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_key_uniq ON user_settings(key);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_document_metadata_path_uniq ON document_metadata(file_path);
                     "#
                 );
                 let _ = logbook.execute("CREATE TABLE IF NOT EXISTS user_settings AS SELECT * FROM legacy.user_settings", []);
@@ -703,6 +712,13 @@ pub fn init_database_with_resources(db_path: &Path, resource_dirs: &[std::path::
         CREATE TABLE IF NOT EXISTS schema_migrations (
             version TEXT PRIMARY KEY,
             applied_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS document_metadata (
+            file_path TEXT PRIMARY KEY,
+            title TEXT,
+            last_seen TEXT,
+            tags TEXT
         );
         "#
     );
@@ -2813,6 +2829,65 @@ pub fn get_all_user_settings(conn: &Connection) -> Result<std::collections::Hash
         }
     }
     Ok(map)
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DocumentMetadata {
+    pub file_path: String,
+    pub title: Option<String>,
+    pub last_seen: Option<String>,
+    pub tags: Vec<String>,
+}
+
+pub fn get_all_document_metadata(conn: &Connection) -> Result<std::collections::HashMap<String, DocumentMetadata>> {
+    let mut stmt = conn.prepare("SELECT file_path, title, last_seen, tags FROM document_metadata")?;
+    let rows = stmt.query_map([], |row| {
+        let tags_raw: Option<String> = row.get(3)?;
+        let tags: Vec<String> = tags_raw
+            .map(|t| t.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+            .unwrap_or_default();
+        Ok(DocumentMetadata {
+            file_path: row.get(0)?,
+            title: row.get(1)?,
+            last_seen: row.get(2)?,
+            tags,
+        })
+    })?;
+    let mut map = std::collections::HashMap::new();
+    for r in rows.flatten() {
+        map.insert(r.file_path.clone(), r);
+    }
+    Ok(map)
+}
+
+pub fn save_document_metadata(
+    conn: &Connection,
+    file_path: &str,
+    title: Option<&str>,
+    tags: &[String],
+) -> Result<()> {
+    let tags_str = tags.join(",");
+    conn.execute(
+        "INSERT INTO document_metadata (file_path, title, tags)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(file_path) DO UPDATE SET
+            title = COALESCE(?2, title),
+            tags = ?3",
+        params![file_path, title, tags_str],
+    )?;
+    Ok(())
+}
+
+pub fn record_document_opened(conn: &Connection, file_path: &str) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO document_metadata (file_path, last_seen)
+         VALUES (?1, ?2)
+         ON CONFLICT(file_path) DO UPDATE SET
+            last_seen = ?2",
+        params![file_path, now],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

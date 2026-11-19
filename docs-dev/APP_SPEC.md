@@ -577,7 +577,28 @@ The checklists will be structurized in sections and items within. Each item will
 
 --- 
 
-### Phase 16: User Profile Update
+### Phase 18: Documentation
+Users might want to have their Markdown or PDF files accessible and readable for them directly on the app. Such as briefing documents, aircraft information, etc.
+
+Allowing them to select folders from where they want the app to find files, or even allowing them to import directly into the app folder specific `/user-docs`.
+
+- [x] Add "Documentation" page;
+    - [x] Add a list of all indexed files;
+    - [x] Make markdown files rendered into the app following the app UI style so it looks seamless within the UI;
+    - [x] Add support for PDF visualization (it should be as light on computer processing as possible);
+    - [x] Add a "customization" option where each indexed file will have some metadata associated and saved into the database:
+        - [x] Each indexed file will have a title (replacing the file name), lastSeen (used for sorting the list of files from latest seen), tag (option) (single or multiple) making it easier to sort, search and organize indexed files;
+- [x] Add two folders to be bundled with the installer or to be created when the app is installed:
+    - [x] `/user-docs` folder will be created with the app installed where the users can place .md or .pdf files that the app will live update and read.
+    - [x] `/docs` which is be the current app repo `/docs` folder which will be bundled with the app installer allowing the users to read some documentation that has been included in the app from development.
+- [x] Add a "Documentation Options" section in the settings page:
+    - [x] Allows users to select one or more directory from where the app will be given access to fetch files to read into the "Documentation" view page;
+    - [x] Switch to live update (keep the view and indexing live updated) or disabled will pause live update and only update the indexing and the rendering of documents in the "Documentation" page when the app is opened.
+    (Later we can add more options to this section, the most important one is the directory option)
+
+---
+
+### Phase 17: User Profile Update
 Instead of only having the visited airports and countries as the user "profile". We can create a user profile, with user statistics such as total distance, flight time, visited airports, number of landings, etc. The visited countries/airports visited map should be moved into this page. Add a badges card which will be awarded like game achievements, which will be awarded when users check some information, for example, if they have visited a continent as a whole.
 
 Instead of the achivements be hard coded into the page itself a data file (.ts) should be used for this, so instead of having static achivements to be checked agaisnt data we will make use of an array list which will have the achivement data plus an expression which checks and returns boolean and progression (%) values.

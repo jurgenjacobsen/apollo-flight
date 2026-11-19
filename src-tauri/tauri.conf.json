@@ -46,7 +46,8 @@
     "resources": [
       "../data/airports.csv",
       "../data/countries.csv",
-      "../data/runways.csv"
+      "../data/runways.csv",
+      "../docs"
     ]
   },
   "plugins": {
