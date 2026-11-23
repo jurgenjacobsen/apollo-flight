@@ -18,6 +18,11 @@ export interface TelemetryData {
     aircraftTitle: string;
     isOnGround: boolean;
     isEngineRunning: boolean;
+    engineCombustionMask?: number;
+    allEnginesStopped?: boolean;
+    simTimeSeconds?: number;
+    isSlewActive?: boolean;
+    isReplayActive?: boolean;
     nav1Obs: number;
     nav1Radial?: number;
     nav1RelativeBearing: number;
@@ -52,7 +57,10 @@ export type FlightStage =
     | "TAKEOFF_CLIMB"
     | "ENROUTE_CRUISE"
     | "DESCENT_APPROACH"
+    | "GO_AROUND"
     | "TOUCHDOWN_ROLLOUT"
+    | "TOUCH_AND_GO"
+    | "TAXI_IN"
     | "ARRIVED";
 
 export type ExportFormat = "gpx" | "kml" | "geojson" | "csv" | "json";
@@ -117,6 +125,7 @@ export interface TouchdownEvent {
     gForce?: number;
     airportIcao?: string;
     airportName?: string;
+    runwayIdent?: string;
 }
 
 export interface FlightRecord {
@@ -132,6 +141,8 @@ export interface FlightRecord {
     distanceFlownNm: number;
     landingRateFpm?: number;
     touchdowns?: TouchdownEvent[];
+    goAroundsCount?: number;
+    circuitLandingsCount?: number;
     status: "RECORDING" | "COMPLETED" | "DISCARDED";
     isManualFlight?: boolean;
     totalWeight?: number;

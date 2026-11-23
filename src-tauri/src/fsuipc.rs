@@ -27,6 +27,10 @@ pub struct TelemetryPacket {
     pub aircraft_title: String,
     pub is_on_ground: bool,
     pub is_engine_running: bool,
+    pub engine_combustion_mask: u8,
+    pub all_engines_stopped: bool,
+    pub sim_time_seconds: u32,
+    pub is_slew_active: bool,
     pub nav1_obs: u16,
     pub nav1_radial: f64,
     pub nav1_relative_bearing: f64,
@@ -72,6 +76,10 @@ impl Default for TelemetryPacket {
             aircraft_title: "Standby (Waiting for MSFS)".to_string(),
             is_on_ground: true,
             is_engine_running: false,
+            engine_combustion_mask: 0,
+            all_engines_stopped: true,
+            sim_time_seconds: 0,
+            is_slew_active: false,
             nav1_obs: 0,
             nav1_radial: 0.0,
             nav1_relative_bearing: 0.0,
@@ -178,6 +186,8 @@ pub mod win {
         let mut raw_on_ground: u16 = 0;
         let mut raw_eng1_comb: i32 = 0;
         let mut raw_eng2_comb: i32 = 0;
+        let mut raw_eng3_comb: i32 = 0;
+        let mut raw_eng4_comb: i32 = 0;
         let mut raw_nav1_obs: u16 = 0;
         let mut raw_nav1_radial: u16 = 0;
         let mut raw_nav1_rel_brg: i16 = 0;
@@ -199,6 +209,8 @@ pub mod win {
         let mut raw_td_rate: i32 = 0;
         let mut raw_body_vx: f64 = 0.0;
         let mut raw_body_vz: f64 = 0.0;
+        let mut raw_sim_time_sec: u32 = 0;
+        let mut raw_slew_mode: u16 = 0;
         let mut raw_aircraft_title = [0u8; 256];
 
         {
@@ -220,6 +232,8 @@ pub mod win {
             session.read(0x0366, &mut raw_on_ground)?;
             session.read(0x0894, &mut raw_eng1_comb)?;
             session.read(0x092C, &mut raw_eng2_comb)?;
+            session.read(0x09C4, &mut raw_eng3_comb)?;
+            session.read(0x0A5C, &mut raw_eng4_comb)?;
             session.read(0x0C4E, &mut raw_nav1_obs)?;
             session.read(0x0C50, &mut raw_nav1_radial)?;
             session.read(0x0C56, &mut raw_nav1_rel_brg)?;
@@ -241,6 +255,8 @@ pub mod win {
             session.read(0x030C, &mut raw_td_rate)?;
             session.read(0x31D0, &mut raw_body_vx)?;
             session.read(0x31E0, &mut raw_body_vz)?;
+            session.read(0x0240, &mut raw_sim_time_sec)?;
+            session.read(0x05DC, &mut raw_slew_mode)?;
             session.read_bytes(0x3D00, raw_aircraft_title.as_mut_ptr(), 256)?;
             session.process()?;
         }
@@ -283,7 +299,12 @@ pub mod win {
         let heading_deg = (FsuipcConversions::parse_heading(raw_heading) + 360.0) % 360.0;
         let pitch_deg = FsuipcConversions::parse_angle_32(raw_pitch);
         let bank_deg = FsuipcConversions::parse_angle_32(raw_bank);
-        let is_engine_running = raw_eng1_comb != 0 || raw_eng2_comb != 0;
+        let engine_combustion_mask: u8 = (if raw_eng1_comb != 0 { 1 } else { 0 })
+            | (if raw_eng2_comb != 0 { 2 } else { 0 })
+            | (if raw_eng3_comb != 0 { 4 } else { 0 })
+            | (if raw_eng4_comb != 0 { 8 } else { 0 });
+        let is_engine_running = engine_combustion_mask != 0;
+        let all_engines_stopped = engine_combustion_mask == 0;
 
         let g_force = ((raw_g_force as f64 / 625.0) * 100.0).round() / 100.0;
         let touchdown_normal_velocity = FsuipcConversions::parse_vertical_speed(raw_td_rate).round();
@@ -319,6 +340,10 @@ pub mod win {
             },
             is_on_ground: raw_on_ground != 0,
             is_engine_running,
+            engine_combustion_mask,
+            all_engines_stopped,
+            sim_time_seconds: raw_sim_time_sec,
+            is_slew_active: raw_slew_mode != 0,
             nav1_obs: raw_nav1_obs % 360,
             nav1_radial: (FsuipcConversions::parse_radial(raw_nav1_radial) * 10.0).round() / 10.0,
             nav1_relative_bearing: (FsuipcConversions::parse_relative_bearing(raw_nav1_rel_brg) * 10.0).round() / 10.0,

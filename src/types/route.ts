@@ -18,6 +18,32 @@ export interface GeographicAreaFilter {
     polygonCoords?: [number, number][]; // [[lat, lon], ...]
 }
 
+export interface RouteWaypoint {
+    ident: string;
+    name?: string;
+    latitude: number;
+    longitude: number;
+    altitudeFt?: number;
+    airway?: string;
+    stage?: "CLB" | "CRZ" | "DSC";
+    isSidStar?: boolean;
+    distanceNm?: number;
+    sequence?: number;
+}
+
+export interface SimBriefSummary {
+    flightNumber?: string;
+    routeString?: string;
+    plannedRampFuel?: number;
+    plannedBurn?: number;
+    estZfw?: number;
+    estTow?: number;
+    costIndex?: string;
+    originRunway?: string;
+    destRunway?: string;
+    airacCycle?: string;
+}
+
 export interface AircraftCategoryProfile {
     category: AircraftCategory;
     name: string;
@@ -81,6 +107,8 @@ export interface RouteSector {
     isMountainous?: boolean;
     maxTerrainVariation10Nm?: number;
     requiredMarginFt?: number;
+    waypoints?: RouteWaypoint[];
+    simbriefSummary?: SimBriefSummary;
 }
 
 export interface GeneratedRoute {
@@ -96,6 +124,9 @@ export interface GeneratedRoute {
     includeGroundTime: boolean;
     isRoundTrip: boolean;
     areaFilter?: GeographicAreaFilter;
+    simbriefOfp?: any;
+    waypoints?: RouteWaypoint[];
+    simbriefSummary?: SimBriefSummary;
 }
 
 export type SavedRouteStatus = "draft" | "flown";

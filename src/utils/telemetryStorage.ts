@@ -105,3 +105,21 @@ export async function deleteFlightTelemetry(flightId: string): Promise<void> {
         }
     });
 }
+
+/**
+ * Deletes the entire IndexedDB telemetry cache database.
+ * Used during user data wiping to resolve dual-store drift and ensure complete erasure.
+ */
+export async function clearAllCachedTelemetry(): Promise<void> {
+    if (typeof window === "undefined" || !window.indexedDB) return;
+    return new Promise((resolve) => {
+        try {
+            const req = window.indexedDB.deleteDatabase(DB_NAME);
+            req.onsuccess = () => resolve();
+            req.onerror = () => resolve();
+            req.onblocked = () => resolve();
+        } catch {
+            resolve();
+        }
+    });
+}
