@@ -64,197 +64,43 @@ import {
     Heart,
     Dices,
     Maximize2,
+    Download,
+    ExternalLink,
+    GitBranch,
+    Layers,
+    Radio,
 } from "lucide-react";
-
-interface MapFocusTarget {
-    bounds?: L.LatLngBoundsExpression;
-    center?: [number, number];
-    zoom?: number;
-    id: number;
-}
-
-// Leaflet map controller: Only pans/fits when explicitly triggered by focusTarget.id change
-function MapController({
-    focusTarget,
-}: {
-    focusTarget: MapFocusTarget | null;
-}) {
-    const map = useMap();
-    const lastHandledIdRef = React.useRef<number | null>(null);
-
-    useEffect(() => {
-        if (!focusTarget || focusTarget.id === lastHandledIdRef.current) return;
-        lastHandledIdRef.current = focusTarget.id;
-
-        if (focusTarget.bounds) {
-            // Apply 18-20% padding so departure, arrival, and corridors fit comfortably
-            map.fitBounds(focusTarget.bounds, {
-                padding: [60, 60],
-                maxZoom: 10,
-            });
-        } else if (focusTarget.center) {
-            map.setView(focusTarget.center, focusTarget.zoom ?? map.getZoom());
-        }
-    }, [focusTarget, map]);
-
-    return null;
-}
-
-// Fit route control button directly beneath Leaflet zoom controls (- button)
-function MapFitRouteControl({ onFit }: { onFit: () => void }) {
-    return (
-        <div className="leaflet-top leaflet-left !top-[74px]">
-            <div className="leaflet-control leaflet-bar">
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        onFit();
-                    }}
-                    title="Fit Entire Route / Reset Zoom"
-                    className="w-[30px] h-[30px] flex items-center justify-center bg-white dark:bg-[#1a1a1a] hover:bg-neutral-100 dark:hover:bg-[#262626] text-neutral-700 dark:text-neutral-200 cursor-pointer transition-colors border-0 select-none shadow-xs"
-                >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                </button>
-            </div>
-        </div>
-    );
-}
-
-// Map click event listener for custom area definition
-function MapAreaClickHandler({
-    areaType,
-    onMapClick,
-}: {
-    areaType: GeographicAreaType;
-    onMapClick: (lat: number, lon: number) => void;
-}) {
-    useMapEvents({
-        click(e) {
-            if (areaType !== "preset") {
-                onMapClick(e.latlng.lat, e.latlng.lng);
-            }
-        },
-    });
-    return null;
-}
-
-// Tracks current map viewport center and bounds without causing global re-renders
-function MapViewportTracker({
-    onViewportChange,
-}: {
-    onViewportChange: (
-        center: [number, number],
-        bounds: L.LatLngBounds,
-        zoom: number,
-    ) => void;
-}) {
-    const map = useMap();
-
-    useEffect(() => {
-        const c = map.getCenter();
-        const b = map.getBounds();
-        onViewportChange([c.lat, c.lng], b, map.getZoom());
-    }, [map, onViewportChange]);
-
-    useMapEvents({
-        moveend(e) {
-            const c = e.target.getCenter();
-            const b = e.target.getBounds();
-            onViewportChange([c.lat, c.lng], b, e.target.getZoom());
-        },
-        zoomend(e) {
-            const c = e.target.getCenter();
-            const b = e.target.getBounds();
-            onViewportChange([c.lat, c.lng], b, e.target.getZoom());
-        },
-    });
-
-    return null;
-}
-
-// Custom Leaflet waypoint marker icons
-const createAirportMarkerIcon = (
-    icao: string,
-    type: "dep" | "arr" | "waypoint",
-) => {
-    const bgColor =
-        type === "dep" ? "#10b981" : type === "arr" ? "#8b5cf6" : "#f59e0b";
-    const label = type === "dep" ? "DEP" : type === "arr" ? "ARR" : "WPT";
-    return L.divIcon({
-        className: "custom-route-marker",
-        html: `
-      <div style="display: flex; flex-direction: column; align-items: center; pointer-events: auto;">
-        <div style="background: ${bgColor}; color: #ffffff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; border: 1.5px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.35); white-space: nowrap; display: flex; align-items: center; gap: 3px;">
-          <span style="font-size: 8px; opacity: 0.9; text-transform: uppercase;">${label}</span>
-          <span>${icao}</span>
-        </div>
-        <div style="width: 2px; height: 6px; background: ${bgColor};"></div>
-        <div style="width: 6px; height: 6px; border-radius: 50%; background: ${bgColor}; border: 1.5px solid #ffffff;"></div>
-      </div>
-    `,
-        iconSize: [52, 30],
-        iconAnchor: [26, 30],
-        popupAnchor: [0, -30],
-    });
-};
-
-const createMountainPeakMarkerIcon = (peakFt: number) => {
-    return L.divIcon({
-        className: "custom-peak-marker",
-        html: `
-      <div style="display: flex; flex-direction: column; align-items: center; pointer-events: auto;">
-        <div style="background: #171717; color: #f59e0b; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; border: 1px solid #f59e0b; box-shadow: 0 2px 4px rgba(0,0,0,0.4); white-space: nowrap;">
-          ▲ ${(peakFt / 1000).toFixed(1)}k ft
-        </div>
-      </div>
-    `,
-        iconSize: [44, 18],
-        iconAnchor: [22, 9],
-    });
-};
-
-const createAreaCenterMarkerIcon = (radiusNm: number) => {
-    return L.divIcon({
-        className: "custom-area-marker",
-        html: `
-      <div style="display: flex; flex-direction: column; align-items: center; pointer-events: auto; cursor: grab; user-select: none;">
-        <div style="background: #0284c7; color: #ffffff; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1.5px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); white-space: nowrap;">
-          ● Center (${radiusNm} NM)
-        </div>
-      </div>
-    `,
-        iconSize: [84, 20],
-        iconAnchor: [42, 10],
-    });
-};
-
-const createVertexMarkerIcon = (index: number) => {
-    return L.divIcon({
-        className: "custom-vertex-marker",
-        html: `
-      <div oncontextmenu="event.preventDefault();" title="Drag to move · Right-click to delete" style="display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; background: #7c3aed; color: #ffffff; font-size: 9px; font-weight: 700; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); cursor: grab; user-select: none;">
-        ${index}
-      </div>
-    `,
-        iconSize: [20, 20],
-        iconAnchor: [10, 10],
-    });
-};
-
-const createMidpointMarkerIcon = () => {
-    return L.divIcon({
-        className: "custom-midpoint-marker",
-        html: `
-      <div oncontextmenu="event.preventDefault();" style="display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: #9333ea; color: #ffffff; font-size: 11px; font-weight: 700; border-radius: 50%; border: 1.5px solid #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); cursor: grab; user-select: none; opacity: 0.9;" title="Drag or click to insert a vertex on this border">
-        +
-      </div>
-    `,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-    });
-};
+import {
+    fetchLatestSimBriefOFP,
+    normalizeSimBriefToRoute,
+} from "../../services/simbriefService";
+import { syncRouteToEfb } from "../../services/efbService";
+import {
+    getAiracStatus,
+    getAirportProcedures,
+    calculateAirwayRoute,
+} from "../../services/navigraphService";
+import {
+    AiracStatusInfo,
+    AirportProceduresResult,
+} from "../../types/navigraph";
+import { AircraftSelector } from "../route/AircraftSelector";
+import { ElevationProfileChart } from "../route/ElevationProfileChart";
+import { SectorAccordionList } from "../route/SectorAccordionList";
+import {
+    CorridorMapPreview,
+    MapFocusTarget,
+    MapController,
+    MapViewportTracker,
+    MapFitRouteControl,
+    MapAreaClickHandler,
+    createAirportMarkerIcon,
+    createWaypointMarkerIcon,
+    createMountainPeakMarkerIcon,
+    createAreaCenterMarkerIcon,
+    createVertexMarkerIcon,
+    createMidpointMarkerIcon,
+} from "../route/CorridorMapPreview";
 
 const CONTINENT_OPTIONS = [
     { value: "random", label: "Worldwide / Random" },
@@ -295,6 +141,9 @@ export const NewRouteView: React.FC = () => {
         currentGeneratedRoute,
         setCurrentGeneratedRoute,
         lengthUnit,
+        simbriefUsername,
+        setSimbriefUsername,
+        setLatestOfp,
     } = useFlightStore();
 
     // Length unit alias for runway calculations
@@ -316,6 +165,50 @@ export const NewRouteView: React.FC = () => {
     const [circleRadiusNm, setCircleRadiusNm] = useState<number>(150);
     const [polygonCoords, setPolygonCoords] = useState<[number, number][]>([]);
     const [mapZoom, setMapZoom] = useState<number>(6);
+
+    // SimBrief Import State
+    const [isImportingSimbrief, setIsImportingSimbrief] = useState<boolean>(false);
+    const [isSimbriefModalOpen, setIsSimbriefModalOpen] = useState<boolean>(false);
+    const [simbriefModalInput, setSimbriefModalInput] = useState<string>("");
+    const [simbriefError, setSimbriefError] = useState<string | null>(null);
+
+    const handleImportSimbrief = async (usernameOverride?: string) => {
+        const targetUsername = (
+            usernameOverride !== undefined
+                ? usernameOverride
+                : simbriefUsername || ""
+        ).trim();
+        if (!targetUsername) {
+            setSimbriefModalInput("");
+            setSimbriefError(null);
+            setIsSimbriefModalOpen(true);
+            return;
+        }
+
+        setIsImportingSimbrief(true);
+        setGenerationError(null);
+        setSimbriefError(null);
+
+        try {
+            const ofp = await fetchLatestSimBriefOFP(targetUsername);
+            const generated = normalizeSimBriefToRoute(ofp);
+            setRoute(generated);
+            setCurrentGeneratedRoute(generated);
+            setLatestOfp(ofp);
+            if (usernameOverride !== undefined && usernameOverride.trim()) {
+                await setSimbriefUsername(usernameOverride.trim());
+            }
+            await syncRouteToEfb(generated);
+            setIsSimbriefModalOpen(false);
+            setDraftSavedNotice(false);
+        } catch (err: any) {
+            const msg = err.message || "Failed to import SimBrief flight plan.";
+            setSimbriefError(msg);
+            setGenerationError(`SimBrief: ${msg}`);
+        } finally {
+            setIsImportingSimbrief(false);
+        }
+    };
 
     // Track map viewport center, bounds, and zoom level without causing global re-renders
     const mapViewportRef = React.useRef<{
@@ -631,11 +524,192 @@ export const NewRouteView: React.FC = () => {
         Record<number, boolean>
     >({});
 
-    const toggleSectorExpanded = (sectorIndex: number) => {
-        setExpandedSectors((prev) => ({
+    // AIRAC & Procedure State
+    const [airacStatus, setAiracStatus] = useState<AiracStatusInfo | null>(null);
+    const [isRoutingAirways, setIsRoutingAirways] = useState<boolean>(false);
+    const [sectorProcedures, setSectorProcedures] = useState<
+        Record<
+            number,
+            {
+                depProcs: AirportProceduresResult | null;
+                arrProcs: AirportProceduresResult | null;
+                selectedSid: string;
+                selectedStar: string;
+                isLoadingProcs: boolean;
+            }
+        >
+    >({});
+
+    useEffect(() => {
+        getAiracStatus()
+            .then((status) => setAiracStatus(status))
+            .catch(() => {});
+    }, []);
+
+    const loadSectorProcedures = async (
+        sectorIdx: number,
+        depIcao: string,
+        arrIcao: string,
+    ) => {
+        if (sectorProcedures[sectorIdx]?.depProcs) return;
+        setSectorProcedures((prev) => ({
             ...prev,
-            [sectorIndex]: !prev[sectorIndex],
+            [sectorIdx]: {
+                depProcs: null,
+                arrProcs: null,
+                selectedSid: "",
+                selectedStar: "",
+                isLoadingProcs: true,
+            },
         }));
+        try {
+            const [depProcs, arrProcs] = await Promise.all([
+                getAirportProcedures(depIcao),
+                getAirportProcedures(arrIcao),
+            ]);
+            setSectorProcedures((prev) => ({
+                ...prev,
+                [sectorIdx]: {
+                    depProcs,
+                    arrProcs,
+                    selectedSid: prev[sectorIdx]?.selectedSid || "",
+                    selectedStar: prev[sectorIdx]?.selectedStar || "",
+                    isLoadingProcs: false,
+                },
+            }));
+        } catch {
+            setSectorProcedures((prev) => ({
+                ...prev,
+                [sectorIdx]: {
+                    ...prev[sectorIdx],
+                    isLoadingProcs: false,
+                },
+            }));
+        }
+    };
+
+    const toggleSectorExpanded = (sectorIndex: number) => {
+        setExpandedSectors((prev) => {
+            const next = !prev[sectorIndex];
+            if (next && airacStatus?.isInstalled && route) {
+                const sec = route.sectors.find(
+                    (s) => s.sectorIndex === sectorIndex,
+                );
+                if (sec) {
+                    loadSectorProcedures(
+                        sectorIndex,
+                        sec.departure.icao,
+                        sec.arrival.icao,
+                    );
+                }
+            }
+            return {
+                ...prev,
+                [sectorIndex]: next,
+            };
+        });
+    };
+
+    const handleRouteAirwaysForSector = async (sectorIdx: number) => {
+        if (!route || !route.sectors[sectorIdx]) return;
+        const sec = route.sectors[sectorIdx];
+        const procState = sectorProcedures[sec.sectorIndex];
+        setIsRoutingAirways(true);
+        setGenerationError(null);
+        try {
+            const res = await calculateAirwayRoute(
+                sec.departure.icao,
+                sec.arrival.icao,
+                sec.cruiseAltitudeFt,
+                procState?.selectedSid || undefined,
+                procState?.selectedStar || undefined,
+            );
+            const updatedSectors = [...route.sectors];
+            updatedSectors[sectorIdx] = {
+                ...sec,
+                waypoints: res.waypoints.map((w) => ({
+                    ident: w.ident,
+                    latitude: w.latitude,
+                    longitude: w.longitude,
+                    airway: w.airway,
+                    distanceNm: w.distanceNm,
+                    sequence: w.sequence,
+                })),
+                distanceNm: Math.max(1, Math.round(res.totalDistanceNm)),
+            };
+            const totalDist = updatedSectors.reduce(
+                (acc, s) => acc + s.distanceNm,
+                0,
+            );
+            const updatedRoute: GeneratedRoute = {
+                ...route,
+                sectors: updatedSectors,
+                totalDistanceNm: totalDist,
+                waypoints: updatedSectors.flatMap((s) => s.waypoints || []),
+            };
+            setRoute(updatedRoute);
+            setCurrentGeneratedRoute(updatedRoute);
+            await syncRouteToEfb(updatedRoute);
+        } catch (err: any) {
+            console.error("Airway routing failed:", err);
+            setGenerationError(
+                err?.message || "Failed to calculate airway route.",
+            );
+        } finally {
+            setIsRoutingAirways(false);
+        }
+    };
+
+    const handleAutoRouteAllSectors = async () => {
+        if (!route || route.sectors.length === 0) return;
+        setIsRoutingAirways(true);
+        setGenerationError(null);
+        try {
+            const updatedSectors = [...route.sectors];
+            for (let i = 0; i < updatedSectors.length; i++) {
+                const sec = updatedSectors[i];
+                const procState = sectorProcedures[sec.sectorIndex];
+                const res = await calculateAirwayRoute(
+                    sec.departure.icao,
+                    sec.arrival.icao,
+                    sec.cruiseAltitudeFt,
+                    procState?.selectedSid || undefined,
+                    procState?.selectedStar || undefined,
+                );
+                updatedSectors[i] = {
+                    ...sec,
+                    waypoints: res.waypoints.map((w) => ({
+                        ident: w.ident,
+                        latitude: w.latitude,
+                        longitude: w.longitude,
+                        airway: w.airway,
+                        distanceNm: w.distanceNm,
+                        sequence: w.sequence,
+                    })),
+                    distanceNm: Math.max(1, Math.round(res.totalDistanceNm)),
+                };
+            }
+            const totalDist = updatedSectors.reduce(
+                (acc, s) => acc + s.distanceNm,
+                0,
+            );
+            const updatedRoute: GeneratedRoute = {
+                ...route,
+                sectors: updatedSectors,
+                totalDistanceNm: totalDist,
+                waypoints: updatedSectors.flatMap((s) => s.waypoints || []),
+            };
+            setRoute(updatedRoute);
+            setCurrentGeneratedRoute(updatedRoute);
+            await syncRouteToEfb(updatedRoute);
+        } catch (err: any) {
+            console.error("Airway auto-routing failed:", err);
+            setGenerationError(
+                err?.message || "Failed to calculate airway route.",
+            );
+        } finally {
+            setIsRoutingAirways(false);
+        }
     };
 
     // Generation state
@@ -951,16 +1025,31 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
 
     // Build map coordinates and bounds
     const mapCoordinates: [number, number][] = route
-        ? [
-              [
-                  route.sectors[0].departure.latitude,
-                  route.sectors[0].departure.longitude,
-              ],
-              ...route.sectors.map((s): [number, number] => [
-                  s.arrival.latitude,
-                  s.arrival.longitude,
-              ]),
-          ]
+        ? (route.sectors.some((s) => s.waypoints && s.waypoints.length > 0)
+              ? route.sectors.flatMap((s) =>
+                    s.waypoints && s.waypoints.length > 0
+                        ? [
+                              [s.departure.latitude, s.departure.longitude] as [number, number],
+                              ...s.waypoints.map(
+                                  (w): [number, number] => [w.latitude, w.longitude],
+                              ),
+                              [s.arrival.latitude, s.arrival.longitude] as [number, number],
+                          ]
+                        : [
+                              [s.departure.latitude, s.departure.longitude] as [number, number],
+                              [s.arrival.latitude, s.arrival.longitude] as [number, number],
+                          ],
+                )
+              : [
+                    [
+                        route.sectors[0].departure.latitude,
+                        route.sectors[0].departure.longitude,
+                    ],
+                    ...route.sectors.map((s): [number, number] => [
+                        s.arrival.latitude,
+                        s.arrival.longitude,
+                    ]),
+                ])
         : areaType === "polygon" && polygonCoords.length > 0
           ? polygonCoords
           : [circleCenter];
@@ -994,6 +1083,27 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
 
                 <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
                     <button
+                        type="button"
+                        onClick={() => handleImportSimbrief()}
+                        disabled={isImportingSimbrief}
+                        className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-sm text-xs font-medium bg-white hover:bg-neutral-100 dark:bg-[#1a1a1a] dark:hover:bg-[#252525] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors duration-150 shadow-xs shrink-0 select-none disabled:opacity-50"
+                        title={
+                            simbriefUsername
+                                ? `Import latest OFP for SimBrief user '${simbriefUsername}'`
+                                : "Link SimBrief account and import OFP"
+                        }
+                    >
+                        <Download
+                            className={`w-3.5 h-3.5 ${isImportingSimbrief ? "animate-spin" : ""}`}
+                        />
+                        <span>
+                            {isImportingSimbrief
+                                ? "Importing OFP..."
+                                : "Import from SimBrief"}
+                        </span>
+                    </button>
+
+                    <button
                         onClick={handleGenerateRoute}
                         disabled={isGenerating}
                         className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-sm text-xs font-medium bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black border border-neutral-900 dark:border-neutral-200 transition-colors duration-150 shadow-xs shrink-0 select-none disabled:opacity-50"
@@ -1007,6 +1117,80 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                     </button>
                 </div>
             </div>
+
+            {/* SimBrief Import Prompt Modal */}
+            {isSimbriefModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+                    <div className="bg-white dark:bg-[#111111] border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-xl w-full max-w-md p-5 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-geist-hairline">
+                            <div className="flex items-center gap-2">
+                                <Route className="w-4 h-4 text-neutral-700 dark:text-neutral-300" />
+                                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
+                                    Import SimBrief Flight Plan
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsSimbriefModalOpen(false)}
+                                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 text-xs"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
+                            Enter your SimBrief username or numeric Pilot ID to fetch and import your latest generated Operational Flight Plan (OFP).
+                        </p>
+
+                        <div className="space-y-1.5">
+                            <label className="block text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
+                                SimBrief Username or Pilot ID
+                            </label>
+                            <input
+                                type="text"
+                                value={simbriefModalInput}
+                                onChange={(e) => setSimbriefModalInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        handleImportSimbrief(simbriefModalInput);
+                                    }
+                                }}
+                                placeholder="e.g. 123456 or pilot_callsign"
+                                className="w-full h-8 px-3 text-xs bg-neutral-50 dark:bg-[#191919] border border-neutral-300 dark:border-geist-hairline rounded-sm text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:border-neutral-500"
+                                autoFocus
+                            />
+                        </div>
+
+                        {simbriefError && (
+                            <div className="p-2.5 rounded-sm bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-xs flex items-center gap-2">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">{simbriefError}</span>
+                            </div>
+                        )}
+
+                        <div className="flex items-center justify-end gap-2 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsSimbriefModalOpen(false)}
+                                className="h-8 px-3 rounded-sm text-xs font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleImportSimbrief(simbriefModalInput)}
+                                disabled={isImportingSimbrief || !simbriefModalInput.trim()}
+                                className="h-8 px-3.5 rounded-sm text-xs font-semibold bg-neutral-900 hover:bg-black text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                                <Download
+                                    className={`w-3.5 h-3.5 ${isImportingSimbrief ? "animate-spin" : ""}`}
+                                />
+                                <span>{isImportingSimbrief ? "Fetching..." : "Fetch & Import Plan"}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {generationError && (
                 <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 p-3 rounded-sm text-xs text-red-700 dark:text-red-400 flex items-center gap-2">
@@ -1028,58 +1212,13 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                         </div>
 
                         {/* 1. Aircraft Category (A to F with examples) */}
-                        <div className="space-y-1.5">
-                            <label className="block text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                                1. Aircraft Category & Airframe
-                            </label>
-                            <Select
-                                value={category}
-                                onChange={(newCat) => {
-                                    setCategory(newCat as AircraftCategory);
-                                    // Auto-adjust airport type if local was selected on heavy
-                                    if (
-                                        ["C", "D", "E", "F"].includes(newCat) &&
-                                        airportType === "small_airport"
-                                    ) {
-                                        setAirportType("all");
-                                    }
-                                }}
-                                options={(
-                                    Object.keys(
-                                        AIRCRAFT_CATEGORIES,
-                                    ) as AircraftCategory[]
-                                ).map((cat) => {
-                                    const prof = AIRCRAFT_CATEGORIES[cat];
-                                    return {
-                                        value: cat,
-                                        label: `Cat ${cat} - ${prof.examples.slice(0, 3).join(", ")}`,
-                                    };
-                                })}
-                                className="w-full"
-                                triggerClassName="bg-neutral-50 dark:bg-black"
-                            />
-                            <div className="p-2 rounded bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline text-[11px] text-neutral-600 dark:text-neutral-400 space-y-0.5">
-                                <div className="flex justify-between">
-                                    <span>
-                                        Cruise TAS:{" "}
-                                        {selectedProfile.cruiseSpeedTasKt} kt
-                                    </span>
-                                    <span>
-                                        Typical Level:{" "}
-                                        {formatFlightLevelOrAltitude(
-                                            selectedProfile.typicalCruiseAltFt,
-                                        )}
-                                    </span>
-                                </div>
-                                <div
-                                    className="text-[10px] text-neutral-500 truncate"
-                                    title={selectedProfile.examples.join(", ")}
-                                >
-                                    Examples:{" "}
-                                    {selectedProfile.examples.join(", ")}
-                                </div>
-                            </div>
-                        </div>
+                        <AircraftSelector
+                            category={category}
+                            onSelectCategory={setCategory}
+                            airportType={airportType}
+                            onAdjustAirportType={setAirportType}
+                            selectedProfile={selectedProfile}
+                        />
                         {/* 2. Region or Country (Area Filter) */}
                         <div className="space-y-1.5 pt-2 border-t border-neutral-200 dark:border-geist-hairline">
                             <button
@@ -2178,6 +2317,42 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                             ? "Round-Trip"
                                             : "Point-to-Point"}
                                     </p>
+
+                                    {route.simbriefSummary && (
+                                        <div className="mt-1 pt-1.5 border-t border-neutral-100 dark:border-geist-hairline flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                                            <span className="font-semibold text-neutral-900 dark:text-white flex items-center gap-1.5">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                SimBrief OFP
+                                                {route.simbriefSummary.flightNumber
+                                                    ? `: ${route.simbriefSummary.flightNumber}`
+                                                    : ""}
+                                            </span>
+                                            {route.simbriefSummary.routeString && (
+                                                <span
+                                                    className="text-neutral-500 font-mono text-[11px] truncate max-w-xs sm:max-w-md"
+                                                    title={route.simbriefSummary.routeString}
+                                                >
+                                                    {route.simbriefSummary.routeString}
+                                                </span>
+                                            )}
+                                            {route.simbriefSummary.plannedRampFuel !== undefined && (
+                                                <span className="text-neutral-600 dark:text-neutral-400 text-[11px]">
+                                                    Ramp Fuel: {Math.round(route.simbriefSummary.plannedRampFuel).toLocaleString()}{" "}
+                                                    {route.simbriefOfp?.params?.units || "kg"}
+                                                </span>
+                                            )}
+                                            {route.simbriefSummary.airacCycle && (
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 font-mono">
+                                                    AIRAC {route.simbriefSummary.airacCycle}
+                                                </span>
+                                            )}
+                                            {route.waypoints && route.waypoints.length > 0 && (
+                                                <span className="text-neutral-500 text-[11px]">
+                                                    {route.waypoints.length} Waypoints
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Quick Actions */}
@@ -2241,6 +2416,28 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 : "Favorite"}
                                         </span>
                                     </button>
+
+                                    {airacStatus?.isInstalled && (
+                                        <button
+                                            onClick={handleAutoRouteAllSectors}
+                                            disabled={isRoutingAirways}
+                                            title="Auto-route flight plan via Navigraph AIRAC DFD v2 airways"
+                                            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-sm text-xs font-medium border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/50 transition-colors disabled:opacity-50"
+                                        >
+                                            <GitBranch
+                                                className={`w-3.5 h-3.5 ${
+                                                    isRoutingAirways
+                                                        ? "animate-spin"
+                                                        : ""
+                                                }`}
+                                            />
+                                            <span>
+                                                {isRoutingAirways
+                                                    ? "Routing..."
+                                                    : "Airways"}
+                                            </span>
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
@@ -2319,975 +2516,42 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                             </div>
 
                             {/* Interactive Route Map */}
-                            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-sm overflow-hidden space-y-1">
-                                {areaType !== "preset" && (
-                                    <div className="px-2 py-1 text-[11px] flex items-center justify-between text-neutral-600 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-geist-hairline rounded-t-sm">
-                                        <div className="flex items-center gap-1.5 font-medium">
-                                            {areaType === "circle" ? (
-                                                <>
-                                                    <CircleDot className="w-3.5 h-3.5 text-sky-600" />
-                                                    <span>
-                                                        Circle Area Active:{" "}
-                                                        {circleRadiusNm} NM
-                                                        radius
-                                                    </span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Scan className="w-3.5 h-3.5 text-purple-600" />
-                                                    <span>
-                                                        Polygon Area Active:{" "}
-                                                        {polygonCoords.length}{" "}
-                                                        vertices
-                                                    </span>
-                                                </>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-neutral-400">
-                                                {areaType === "circle"
-                                                    ? "Click map to reposition center"
-                                                    : "Click map to add boundary points"}
-                                            </span>
-                                            {route && (
-                                                <button
-                                                    type="button"
-                                                    onClick={handleFocusRoute}
-                                                    className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition-colors"
-                                                    title="Recenter map on current route"
-                                                >
-                                                    Focus Route
-                                                </button>
-                                            )}
-                                            <button
-                                                type="button"
-                                                onClick={handleFocusArea}
-                                                className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition-colors"
-                                                title="Recenter map on search area"
-                                            >
-                                                Focus Area
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                                <div className="h-[360px] w-full rounded-sm overflow-hidden relative z-0">
-                                    <MapContainer
-                                        center={
-                                            mapCoordinates[0] || [47.26, 11.34]
-                                        }
-                                        zoom={6}
-                                        style={{
-                                            height: "100%",
-                                            width: "100%",
-                                        }}
-                                        className={
-                                            theme === "dark" ? "dark-tiles" : ""
-                                        }
-                                    >
-                                        <MapController
-                                            focusTarget={mapFocusTarget}
-                                        />
-                                        <MapViewportTracker
-                                            onViewportChange={
-                                                handleViewportChange
-                                            }
-                                        />
-                                        <MapFitRouteControl onFit={handleFocusRoute} />
-                                        <TileLayer
-                                            attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
-                                            url="https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                                            maxZoom={19}
-                                        />
+                            <CorridorMapPreview
+                                route={route}
+                                initialDep={initialDep}
+                                finalLeg={finalLeg}
+                                theme={theme}
+                                mapFocusTarget={mapFocusTarget}
+                                handleFocusRoute={handleFocusRoute}
+                                handleViewportChange={handleViewportChange}
+                                areaType={areaType}
+                                circleCenter={circleCenter}
+                                circleRadiusNm={circleRadiusNm}
+                                polygonCoords={polygonCoords}
+                                showCircleCenterBadge={showCircleCenterBadge}
+                                setCircleCenter={setCircleCenter}
+                                setPolygonCoords={setPolygonCoords}
+                                handleMapClick={handleMapClick}
+                                handleDeletePolygonVertex={handleDeletePolygonVertex}
+                                handleAddPolygonVertexAt={handleInsertVertexAtIndex}
+                            />
 
-                                        {/* Area Click Handler */}
-                                        <MapAreaClickHandler
-                                            areaType={areaType}
-                                            onMapClick={handleMapClick}
-                                        />
-
-                                        {/* Area Filter Overlay: Circle */}
-                                        {areaType === "circle" &&
-                                            circleCenter && (
-                                                <>
-                                                    <Circle
-                                                        center={circleCenter}
-                                                        radius={
-                                                            circleRadiusNm *
-                                                            1852
-                                                        }
-                                                        pathOptions={{
-                                                            color: "#0284c7",
-                                                            fillColor:
-                                                                "#38bdf8",
-                                                            fillOpacity: 0.12,
-                                                            weight: 2,
-                                                            dashArray: "5, 5",
-                                                        }}
-                                                    />
-                                                    {showCircleCenterBadge && (
-                                                        <Marker
-                                                            position={
-                                                                circleCenter
-                                                            }
-                                                            draggable={true}
-                                                            eventHandlers={{
-                                                                dragend: (
-                                                                    e,
-                                                                ) => {
-                                                                    const marker =
-                                                                        e.target;
-                                                                    const pos =
-                                                                        marker.getLatLng();
-                                                                    setCircleCenter(
-                                                                        [
-                                                                            pos.lat,
-                                                                            pos.lng,
-                                                                        ],
-                                                                    );
-                                                                },
-                                                            }}
-                                                            icon={createAreaCenterMarkerIcon(
-                                                                circleRadiusNm,
-                                                            )}
-                                                        >
-                                                            <Popup>
-                                                                <div className="text-xs space-y-1">
-                                                                    <strong className="text-sky-600 block">
-                                                                        Search
-                                                                        Area
-                                                                        Center
-                                                                    </strong>
-                                                                    <div>
-                                                                        Lat:{" "}
-                                                                        {circleCenter[0].toFixed(
-                                                                            4,
-                                                                        )}
-                                                                        °, Lon:{" "}
-                                                                        {circleCenter[1].toFixed(
-                                                                            4,
-                                                                        )}
-                                                                        °
-                                                                    </div>
-                                                                    <div>
-                                                                        Radius:{" "}
-                                                                        {
-                                                                            circleRadiusNm
-                                                                        }{" "}
-                                                                        NM (
-                                                                        {Math.round(
-                                                                            circleRadiusNm *
-                                                                                1.852,
-                                                                        )}{" "}
-                                                                        km)
-                                                                    </div>
-                                                                    <div className="text-[10px] text-neutral-400">
-                                                                        Drag
-                                                                        marker
-                                                                        to move
-                                                                        circle
-                                                                        center
-                                                                    </div>
-                                                                </div>
-                                                            </Popup>
-                                                        </Marker>
-                                                    )}
-                                                </>
-                                            )}
-
-                                        {areaType === "polygon" && (
-                                            <>
-                                                {polygonCoords.length >= 3 ? (
-                                                    <Polygon
-                                                        positions={
-                                                            polygonCoords
-                                                        }
-                                                        pathOptions={{
-                                                            color: "#7c3aed",
-                                                            fillColor:
-                                                                "#a855f7",
-                                                            fillOpacity: 0.12,
-                                                            weight: 2,
-                                                            dashArray: "5, 5",
-                                                        }}
-                                                    />
-                                                ) : polygonCoords.length ===
-                                                  2 ? (
-                                                    <Polyline
-                                                        positions={
-                                                            polygonCoords
-                                                        }
-                                                        color="#7c3aed"
-                                                        weight={2}
-                                                        dashArray="5, 5"
-                                                    />
-                                                ) : null}
-
-                                                {/* Interactive border hit-area to insert new vertex on click */}
-                                                {polygonCoords.length >= 2 && (
-                                                    <Polyline
-                                                        positions={
-                                                            polygonCoords.length >=
-                                                            3
-                                                                ? [
-                                                                      ...polygonCoords,
-                                                                      polygonCoords[0],
-                                                                  ]
-                                                                : polygonCoords
-                                                        }
-                                                        pathOptions={{
-                                                            color: "#7c3aed",
-                                                            weight: 16,
-                                                            opacity: 0.001,
-                                                            lineCap: "round",
-                                                            lineJoin: "round",
-                                                        }}
-                                                        eventHandlers={{
-                                                            click: (e) => {
-                                                                if (
-                                                                    e.originalEvent
-                                                                ) {
-                                                                    e.originalEvent.stopPropagation();
-                                                                }
-                                                                handleInsertPolygonVertexOnBorder(
-                                                                    e.latlng
-                                                                        .lat,
-                                                                    e.latlng
-                                                                        .lng,
-                                                                );
-                                                            },
-                                                        }}
-                                                    />
-                                                )}
-
-                                                {/* Midpoint '+' handles to drag or click to split segment */}
-                                                {polygonCoords.length >= 2 &&
-                                                    polygonCoords.map(
-                                                        (coord, idx) => {
-                                                            const isClosed =
-                                                                polygonCoords.length >=
-                                                                3;
-                                                            if (
-                                                                !isClosed &&
-                                                                idx ===
-                                                                    polygonCoords.length -
-                                                                        1
-                                                            )
-                                                                return null;
-                                                            const nextCoord =
-                                                                polygonCoords[
-                                                                    (idx + 1) %
-                                                                        polygonCoords.length
-                                                                ];
-                                                            const midLat =
-                                                                (coord[0] +
-                                                                    nextCoord[0]) /
-                                                                2;
-                                                            const midLon =
-                                                                (coord[1] +
-                                                                    nextCoord[1]) /
-                                                                2;
-
-                                                            return (
-                                                                <Marker
-                                                                    key={`route-midpoint-${idx}`}
-                                                                    position={[
-                                                                        midLat,
-                                                                        midLon,
-                                                                    ]}
-                                                                    draggable={
-                                                                        true
-                                                                    }
-                                                                    eventHandlers={{
-                                                                        dragend:
-                                                                            (
-                                                                                e,
-                                                                            ) => {
-                                                                                const marker =
-                                                                                    e.target;
-                                                                                const pos =
-                                                                                    marker.getLatLng();
-                                                                                handleInsertVertexAtIndex(
-                                                                                    idx +
-                                                                                        1,
-                                                                                    pos.lat,
-                                                                                    pos.lng,
-                                                                                );
-                                                                            },
-                                                                        click: (
-                                                                            e,
-                                                                        ) => {
-                                                                            if (
-                                                                                e.originalEvent
-                                                                            ) {
-                                                                                e.originalEvent.stopPropagation();
-                                                                            }
-                                                                            handleInsertVertexAtIndex(
-                                                                                idx +
-                                                                                    1,
-                                                                                midLat,
-                                                                                midLon,
-                                                                            );
-                                                                        },
-                                                                    }}
-                                                                    icon={createMidpointMarkerIcon()}
-                                                                >
-                                                                    <Popup>
-                                                                        <div className="text-xs space-y-0.5">
-                                                                            <strong className="text-purple-600 block">
-                                                                                Border
-                                                                                Segment
-                                                                                Handle
-                                                                            </strong>
-                                                                            <div className="text-[10px] text-neutral-400">
-                                                                                Drag
-                                                                                or
-                                                                                click
-                                                                                to
-                                                                                insert
-                                                                                a
-                                                                                vertex
-                                                                                here
-                                                                            </div>
-                                                                        </div>
-                                                                    </Popup>
-                                                                </Marker>
-                                                            );
-                                                        },
-                                                    )}
-
-                                                {polygonCoords.map(
-                                                    (coord, idx) => (
-                                                        <Marker
-                                                            key={`route-poly-vertex-${idx}`}
-                                                            position={coord}
-                                                            draggable={true}
-                                                            eventHandlers={{
-                                                                dragend: (
-                                                                    e,
-                                                                ) => {
-                                                                    const marker =
-                                                                        e.target;
-                                                                    const pos =
-                                                                        marker.getLatLng();
-                                                                    handleUpdatePolygonVertex(
-                                                                        idx,
-                                                                        pos.lat,
-                                                                        pos.lng,
-                                                                    );
-                                                                },
-                                                                contextmenu: (
-                                                                    e,
-                                                                ) => {
-                                                                    if (
-                                                                        e.originalEvent
-                                                                    ) {
-                                                                        e.originalEvent.preventDefault();
-                                                                        e.originalEvent.stopPropagation();
-                                                                    }
-                                                                    handleDeletePolygonVertex(
-                                                                        idx,
-                                                                    );
-                                                                },
-                                                            }}
-                                                            icon={createVertexMarkerIcon(
-                                                                idx + 1,
-                                                            )}
-                                                        >
-                                                            <Popup>
-                                                                <div className="text-xs space-y-1">
-                                                                    <strong className="text-purple-600 block">
-                                                                        Polygon
-                                                                        Vertex #
-                                                                        {idx +
-                                                                            1}
-                                                                    </strong>
-                                                                    <div>
-                                                                        Lat:{" "}
-                                                                        {coord[0].toFixed(
-                                                                            4,
-                                                                        )}
-                                                                        °, Lon:{" "}
-                                                                        {coord[1].toFixed(
-                                                                            4,
-                                                                        )}
-                                                                        °
-                                                                    </div>
-                                                                    <div className="text-[10px] text-neutral-400">
-                                                                        Drag to
-                                                                        move ·
-                                                                        Right-click
-                                                                        to
-                                                                        delete
-                                                                    </div>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(
-                                                                            ev,
-                                                                        ) => {
-                                                                            ev.stopPropagation();
-                                                                            handleDeletePolygonVertex(
-                                                                                idx,
-                                                                            );
-                                                                        }}
-                                                                        className="mt-1 text-[10px] text-red-600 hover:text-red-700 hover:underline flex items-center gap-1 font-medium"
-                                                                    >
-                                                                        <span>
-                                                                            Delete
-                                                                            vertex
-                                                                            #
-                                                                            {idx +
-                                                                                1}
-                                                                        </span>
-                                                                    </button>
-                                                                </div>
-                                                            </Popup>
-                                                        </Marker>
-                                                    ),
-                                                )}
-                                            </>
-                                        )}
-
-                                        {/* Sector Polylines */}
-                                        {route.sectors.map((sector, idx) => {
-                                            const positions: [
-                                                number,
-                                                number,
-                                            ][] = [
-                                                [
-                                                    sector.departure.latitude,
-                                                    sector.departure.longitude,
-                                                ],
-                                                [
-                                                    sector.arrival.latitude,
-                                                    sector.arrival.longitude,
-                                                ],
-                                            ];
-                                            const colors = [
-                                                "#0070f3",
-                                                "#10b981",
-                                                "#f59e0b",
-                                                "#ec4899",
-                                            ];
-                                            const legColor =
-                                                colors[idx % colors.length];
-
-                                            return (
-                                                <Polyline
-                                                    key={`leg-${idx}`}
-                                                    positions={positions}
-                                                    color={legColor}
-                                                    weight={4}
-                                                    opacity={0.85}
-                                                    dashArray={
-                                                        route.isRoundTrip &&
-                                                        idx === 1
-                                                            ? "6, 6"
-                                                            : undefined
-                                                    }
-                                                />
-                                            );
-                                        })}
-
-                                        {/* Departure Airport Marker */}
-                                        {initialDep && (
-                                            <Marker
-                                                position={[
-                                                    initialDep.latitude,
-                                                    initialDep.longitude,
-                                                ]}
-                                                icon={createAirportMarkerIcon(
-                                                    initialDep.icao,
-                                                    "dep",
-                                                )}
-                                            >
-                                                <Popup>
-                                                    <div className="text-xs space-y-1">
-                                                        <strong className="text-emerald-600 block text-sm">
-                                                            Departure:{" "}
-                                                            {initialDep.icao}
-                                                        </strong>
-                                                        <div>
-                                                            {initialDep.name}
-                                                        </div>
-                                                        <div className="text-neutral-500">
-                                                            {
-                                                                initialDep.countryName
-                                                            }{" "}
-                                                            · Elev.{" "}
-                                                            {initialDep.elevationFt ||
-                                                                0}{" "}
-                                                            ft
-                                                        </div>
-                                                        <div className="text-[10px] text-neutral-400">
-                                                            Type:{" "}
-                                                            {initialDep.airportType ||
-                                                                "Airport"}
-                                                        </div>
-                                                        {initialDep.maxRunwayLengthFt && (
-                                                            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                                                Longest Runway:{" "}
-                                                                {initialDep.maxRunwayLengthFt.toLocaleString()}{" "}
-                                                                ft (
-                                                                {initialDep.hasPaved
-                                                                    ? "Paved"
-                                                                    : initialDep.hasUnpaved
-                                                                      ? "Unpaved"
-                                                                      : "Standard"}
-                                                                )
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </Popup>
-                                            </Marker>
-                                        )}
-
-                                        {/* Intermediate Waypoint Markers */}
-                                        {route.sectors
-                                            .slice(0, -1)
-                                            .map((s, idx) => (
-                                                <Marker
-                                                    key={`mid-${idx}`}
-                                                    position={[
-                                                        s.arrival.latitude,
-                                                        s.arrival.longitude,
-                                                    ]}
-                                                    icon={createAirportMarkerIcon(
-                                                        s.arrival.icao,
-                                                        "waypoint",
-                                                    )}
-                                                >
-                                                    <Popup>
-                                                        <div className="text-xs space-y-1">
-                                                            <strong className="text-amber-600 block text-sm">
-                                                                Waypoint{" "}
-                                                                {idx + 1}:{" "}
-                                                                {s.arrival.icao}
-                                                            </strong>
-                                                            <div>
-                                                                {s.arrival.name}
-                                                            </div>
-                                                            <div className="text-neutral-500">
-                                                                {
-                                                                    s.arrival
-                                                                        .countryName
-                                                                }{" "}
-                                                                · Elev.{" "}
-                                                                {s.arrival
-                                                                    .elevationFt ||
-                                                                    0}{" "}
-                                                                ft
-                                                            </div>
-                                                            <div className="text-[10px] text-neutral-400">
-                                                                Type:{" "}
-                                                                {s.arrival
-                                                                    .airportType ||
-                                                                    "Airport"}
-                                                            </div>
-                                                            {s.arrival
-                                                                .maxRunwayLengthFt && (
-                                                                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                                                    Longest
-                                                                    Runway:{" "}
-                                                                    {s.arrival.maxRunwayLengthFt.toLocaleString()}{" "}
-                                                                    ft (
-                                                                    {s.arrival
-                                                                        .hasPaved
-                                                                        ? "Paved"
-                                                                        : s
-                                                                                .arrival
-                                                                                .hasUnpaved
-                                                                          ? "Unpaved"
-                                                                          : "Standard"}
-                                                                    )
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </Popup>
-                                                </Marker>
-                                            ))}
-
-                                        {/* Final Arrival Airport Marker */}
-                                        {finalLeg && (
-                                            <Marker
-                                                position={[
-                                                    finalLeg.arrival.latitude,
-                                                    finalLeg.arrival.longitude,
-                                                ]}
-                                                icon={createAirportMarkerIcon(
-                                                    finalLeg.arrival.icao,
-                                                    "arr",
-                                                )}
-                                            >
-                                                <Popup>
-                                                    <div className="text-xs space-y-1">
-                                                        <strong className="text-purple-600 block text-sm">
-                                                            Destination:{" "}
-                                                            {
-                                                                finalLeg.arrival
-                                                                    .icao
-                                                            }
-                                                        </strong>
-                                                        <div>
-                                                            {
-                                                                finalLeg.arrival
-                                                                    .name
-                                                            }
-                                                        </div>
-                                                        <div className="text-neutral-500">
-                                                            {
-                                                                finalLeg.arrival
-                                                                    .countryName
-                                                            }{" "}
-                                                            · Elev.{" "}
-                                                            {finalLeg.arrival
-                                                                .elevationFt ||
-                                                                0}{" "}
-                                                            ft
-                                                        </div>
-                                                        <div className="text-[10px] text-neutral-400">
-                                                            Type:{" "}
-                                                            {finalLeg.arrival
-                                                                .airportType ||
-                                                                "Airport"}
-                                                        </div>
-                                                        {finalLeg.arrival
-                                                            .maxRunwayLengthFt && (
-                                                            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                                                Longest Runway:{" "}
-                                                                {finalLeg.arrival.maxRunwayLengthFt.toLocaleString()}{" "}
-                                                                ft (
-                                                                {finalLeg
-                                                                    .arrival
-                                                                    .hasPaved
-                                                                    ? "Paved"
-                                                                    : finalLeg
-                                                                            .arrival
-                                                                            .hasUnpaved
-                                                                      ? "Unpaved"
-                                                                      : "Standard"}
-                                                                )
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </Popup>
-                                            </Marker>
-                                        )}
-
-                                        {/* Limiting Terrain Peak Markers */}
-                                        {route.sectors.map((sector, idx) => {
-                                            if (
-                                                !sector.limitingCoord ||
-                                                (sector.peakTerrainFt || 0) <
-                                                    4000
-                                            )
-                                                return null;
-                                            return (
-                                                <Marker
-                                                    key={`peak-${idx}`}
-                                                    position={
-                                                        sector.limitingCoord
-                                                    }
-                                                    icon={createMountainPeakMarkerIcon(
-                                                        sector.peakTerrainFt ||
-                                                            0,
-                                                    )}
-                                                >
-                                                    <Popup>
-                                                        <div className="text-xs space-y-1">
-                                                            <strong className="text-amber-600 block">
-                                                                Corridor Terrain
-                                                                Peak (Leg{" "}
-                                                                {idx + 1})
-                                                            </strong>
-                                                            <div>
-                                                                Highest Relief:
-                                                                ~
-                                                                {sector.peakTerrainFt?.toLocaleString()}{" "}
-                                                                ft MSL
-                                                            </div>
-                                                            <div>
-                                                                Sector MORA:{" "}
-                                                                {formatFlightLevelOrAltitude(
-                                                                    sector.corridorMsaFt ||
-                                                                        0,
-                                                                )}{" "}
-                                                                (
-                                                                {sector.corridorMsaFt?.toLocaleString()}{" "}
-                                                                ft)
-                                                            </div>
-                                                            {sector.isMountainous && (
-                                                                <div className="text-amber-600 dark:text-amber-400 font-medium">
-                                                                    Mountainous
-                                                                    terrain
-                                                                    corridor
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </Popup>
-                                                </Marker>
-                                            );
-                                        })}
-                                    </MapContainer>
-                                </div>
-                            </div>
+                            {/* Terrain Clearance & MORA Profile */}
+                            <ElevationProfileChart route={route} />
 
                             {/* Sector Flight Dispatch Table */}
-                            <div className="space-y-2">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                                    <div>
-                                        <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
-                                            Sector Flight Dispatch
-                                        </h3>
-                                        <p className="text-[11px] text-neutral-500 dark:text-geist-muted">
-                                            Calculated using standard cruise TAS and direct distance
-                                        </p>
-                                    </div>
-                                    {route.sectors.length > 1 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const allExpanded = route.sectors.every(
-                                                    (s) => expandedSectors[s.sectorIndex],
-                                                );
-                                                const nextState: Record<number, boolean> = {};
-                                                route.sectors.forEach((s) => {
-                                                    nextState[s.sectorIndex] = !allExpanded;
-                                                });
-                                                setExpandedSectors(nextState);
-                                            }}
-                                            className="text-[11px] text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors self-start sm:self-auto cursor-pointer"
-                                        >
-                                            {route.sectors.every((s) => expandedSectors[s.sectorIndex])
-                                                ? "Collapse All Details"
-                                                : "Expand All Details"}
-                                        </button>
-                                    )}
-                                </div>
-
-                                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm overflow-hidden shadow-sm">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left border-collapse min-w-[680px]">
-                                            <thead>
-                                                <tr className="border-b border-neutral-200 dark:border-geist-hairline bg-neutral-50/80 dark:bg-[#151c28] text-[10px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 select-none">
-                                                    <th className="py-2.5 px-3 w-10 text-center">#</th>
-                                                    <th className="py-2.5 px-3">Sector</th>
-                                                    <th className="py-2.5 px-3">Aerodrome Runways</th>
-                                                    <th className="py-2.5 px-3">Distance</th>
-                                                    <th className="py-2.5 px-3">Cruise & MORA</th>
-                                                    <th className="py-2.5 px-3">
-                                                        {route.includeGroundTime ? "Block Time" : "Airborne"}
-                                                    </th>
-                                                    <th className="py-2.5 px-3 w-10 text-center">Details</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-neutral-200 dark:divide-geist-hairline text-xs">
-                                                {route.sectors.map((sector) => {
-                                                    const isExpanded = Boolean(expandedSectors[sector.sectorIndex]);
-                                                    return (
-                                                        <React.Fragment key={sector.sectorIndex}>
-                                                            <tr
-                                                                onClick={() => toggleSectorExpanded(sector.sectorIndex)}
-                                                                className={`cursor-pointer transition-colors ${
-                                                                    isExpanded
-                                                                        ? "bg-neutral-50/60 dark:bg-geist-card/60"
-                                                                        : "hover:bg-neutral-50/80 dark:hover:bg-[#161d2b]/60"
-                                                                }`}
-                                                            >
-                                                                {/* Leg Number */}
-                                                                <td className="py-3 px-3 text-center align-middle">
-                                                                    <span className="w-5 h-5 rounded-full bg-neutral-900 text-white dark:bg-white dark:text-black inline-flex items-center justify-center text-[10px] font-bold">
-                                                                        {sector.sectorIndex}
-                                                                    </span>
-                                                                </td>
-
-                                                                {/* Sector Route */}
-                                                                <td className="py-3 px-3 align-middle">
-                                                                    <div className="flex items-center gap-1.5 font-bold text-neutral-900 dark:text-white">
-                                                                        <span>{sector.departure.icao}</span>
-                                                                        <span className="text-neutral-400 font-normal">➔</span>
-                                                                        <span>{sector.arrival.icao}</span>
-                                                                    </div>
-                                                                    <div
-                                                                        className="text-[11px] text-neutral-500 dark:text-geist-muted truncate max-w-[200px]"
-                                                                        title={`${sector.departure.name} to ${sector.arrival.name}`}
-                                                                    >
-                                                                        {sector.departure.name} → {sector.arrival.name}
-                                                                    </div>
-                                                                </td>
-
-                                                                {/* Aerodrome Runways */}
-                                                                <td className="py-3 px-3 align-middle">
-                                                                    <div className="space-y-1">
-                                                                        <div className="flex items-center gap-1.5 text-[11px]">
-                                                                            <span className="text-neutral-400 font-medium">Dep:</span>
-                                                                            {sector.departure.maxRunwayLengthFt && sector.departure.maxRunwayLengthFt > 0 ? (
-                                                                                <span className="text-neutral-800 dark:text-neutral-200 tabular-nums">
-                                                                                    {runwayUnit === "m"
-                                                                                        ? `${Math.round(sector.departure.maxRunwayLengthFt * 0.3048).toLocaleString()} m`
-                                                                                        : `${sector.departure.maxRunwayLengthFt.toLocaleString()} ft`}
-                                                                                </span>
-                                                                            ) : null}
-                                                                            <span
-                                                                                className={`px-1 py-0.2 rounded text-[9px] font-medium ${
-                                                                                    sector.departure.hasPaved
-                                                                                        ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
-                                                                                        : sector.departure.hasUnpaved
-                                                                                        ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
-                                                                                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
-                                                                                }`}
-                                                                            >
-                                                                                {sector.departure.hasPaved
-                                                                                    ? "Paved"
-                                                                                    : sector.departure.hasUnpaved
-                                                                                    ? "Unpaved"
-                                                                                    : "Std"}
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="flex items-center gap-1.5 text-[11px]">
-                                                                            <span className="text-neutral-400 font-medium">Arr:</span>
-                                                                            {sector.arrival.maxRunwayLengthFt && sector.arrival.maxRunwayLengthFt > 0 ? (
-                                                                                <span className="text-neutral-800 dark:text-neutral-200 tabular-nums">
-                                                                                    {runwayUnit === "m"
-                                                                                        ? `${Math.round(sector.arrival.maxRunwayLengthFt * 0.3048).toLocaleString()} m`
-                                                                                        : `${sector.arrival.maxRunwayLengthFt.toLocaleString()} ft`}
-                                                                                </span>
-                                                                            ) : null}
-                                                                            <span
-                                                                                className={`px-1 py-0.2 rounded text-[9px] font-medium ${
-                                                                                    sector.arrival.hasPaved
-                                                                                        ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
-                                                                                        : sector.arrival.hasUnpaved
-                                                                                        ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
-                                                                                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
-                                                                                }`}
-                                                                            >
-                                                                                {sector.arrival.hasPaved
-                                                                                    ? "Paved"
-                                                                                    : sector.arrival.hasUnpaved
-                                                                                    ? "Unpaved"
-                                                                                    : "Std"}
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-
-                                                                {/* Distance */}
-                                                                <td className="py-3 px-3 align-middle">
-                                                                    <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
-                                                                        {sector.distanceNm} NM
-                                                                    </span>
-                                                                </td>
-
-                                                                {/* Altitude & MORA */}
-                                                                <td className="py-3 px-3 align-middle">
-                                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                                        <span className="font-semibold text-neutral-900 dark:text-white">
-                                                                            {formatFlightLevelOrAltitude(sector.cruiseAltitudeFt)}
-                                                                        </span>
-                                                                        {sector.isMountainous && (
-                                                                            <span
-                                                                                className="px-1 py-0.2 rounded text-[9px] font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60"
-                                                                                title="Mountainous Terrain (≥3,000 ft variation within 10 NM)"
-                                                                            >
-                                                                                Mountainous
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="text-[11px] text-neutral-500 dark:text-neutral-400 tabular-nums">
-                                                                        {sector.corridorMsaFt !== undefined
-                                                                            ? `MORA ${formatFlightLevelOrAltitude(sector.corridorMsaFt)}`
-                                                                            : `${sector.cruiseAltitudeFt.toLocaleString()} ft`}
-                                                                    </div>
-                                                                </td>
-
-                                                                {/* Duration */}
-                                                                <td className="py-3 px-3 align-middle">
-                                                                    <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                                                                        {formatDurationHoursMinutes(sector.totalMinutes)}
-                                                                    </span>
-                                                                </td>
-
-                                                                {/* Expand Chevron */}
-                                                                <td className="py-3 px-3 text-center align-middle">
-                                                                    <div className="inline-flex items-center justify-center p-1 rounded text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors">
-                                                                        <ChevronDown
-                                                                            className={`w-4 h-4 transition-transform duration-200 ${
-                                                                                isExpanded ? "rotate-180" : ""
-                                                                            }`}
-                                                                        />
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-
-                                                            {/* Expanded Row for Terrain Corridor Details & Mountainous Advisories */}
-                                                            {isExpanded && (
-                                                                <tr className="bg-neutral-50/70 dark:bg-[#111723] border-b border-neutral-200 dark:border-geist-hairline">
-                                                                    <td colSpan={7} className="p-3.5 space-y-2.5">
-                                                                        {sector.corridorMsaFt !== undefined && (
-                                                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline text-xs">
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <div className="p-1 rounded bg-neutral-200/60 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
-                                                                                        <Mountain className="w-3.5 h-3.5" />
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                                                                            <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                                                                                                Corridor Minimum Safe Altitude:
-                                                                                            </span>
-                                                                                            <span className="font-bold text-neutral-900 dark:text-white">
-                                                                                                {formatFlightLevelOrAltitude(sector.corridorMsaFt)}{" "}
-                                                                                                ({sector.corridorMsaFt.toLocaleString()} ft MORA)
-                                                                                            </span>
-                                                                                        </div>
-                                                                                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                                                                            10 NM corridor ·{" "}
-                                                                                            {sector.isMountainous
-                                                                                                ? "Mountainous terrain (variation ≥ 3,000 ft within 10 NM) · 2,000 ft clearance margin"
-                                                                                                : "Non-mountainous terrain (variation < 3,000 ft within 10 NM) · 1,000 ft clearance margin"}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                </div>
-
-                                                                                <div className="flex items-center gap-3 text-[11px] text-neutral-600 dark:text-neutral-400">
-                                                                                    {sector.peakTerrainFt !== undefined && (
-                                                                                        <span className="tabular-nums">
-                                                                                            Peak: ~{sector.peakTerrainFt.toLocaleString()} ft MSL
-                                                                                        </span>
-                                                                                    )}
-                                                                                    {sector.maxTerrainVariation10Nm !== undefined && (
-                                                                                        <span className="tabular-nums">
-                                                                                            Δh: {sector.maxTerrainVariation10Nm.toLocaleString()} ft / 10 NM
-                                                                                        </span>
-                                                                                    )}
-                                                                                    <span className="tabular-nums font-medium text-emerald-600 dark:text-emerald-400">
-                                                                                        Margin: +{(sector.cruiseAltitudeFt - (sector.peakTerrainFt || 0)).toLocaleString()} ft (Req: {sector.requiredMarginFt || 1000} ft)
-                                                                                    </span>
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-
-                                                                        {sector.isMountainous && (
-                                                                            <div className="flex items-start gap-2 p-2.5 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-300">
-                                                                                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-                                                                                <div>
-                                                                                    <strong className="font-semibold">
-                                                                                        Mountainous Terrain Advisory:
-                                                                                    </strong>{" "}
-                                                                                    This sector traverses mountainous terrain (elevation variation ≥ 3,000 ft within 10 NM). A 2,000 ft clearance margin is applied over peak terrain (~{(sector.peakTerrainFt || 0).toLocaleString()} ft MSL), recommending {formatFlightLevelOrAltitude(sector.cruiseAltitudeFt)}.
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-                                                                    </td>
-                                                                </tr>
-                                                            )}
-                                                        </React.Fragment>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
+                            <SectorAccordionList
+                                route={route}
+                                expandedSectors={expandedSectors}
+                                toggleSectorExpanded={toggleSectorExpanded}
+                                setExpandedSectors={setExpandedSectors}
+                                runwayUnit={runwayUnit}
+                                airacStatus={airacStatus}
+                                sectorProcedures={sectorProcedures}
+                                setSectorProcedures={setSectorProcedures}
+                                handleRouteAirwaysForSector={handleRouteAirwaysForSector}
+                                isRoutingAirways={isRoutingAirways}
+                            />
                         </>
                     ) : (
                         <div className="space-y-4">
