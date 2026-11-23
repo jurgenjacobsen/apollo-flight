@@ -1,0 +1,1 @@
+Whenever in doubt read the APP_SPEC.md file to understand how the app is supposed to work;

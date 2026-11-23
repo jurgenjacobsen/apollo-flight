@@ -62,9 +62,21 @@ coverage/
 /*.kml
 /*.geojson
 
-# Markdown Files (ignore all .md files except APP_SPEC.md and ROADMAP.md)
+# Markdown Files (track docs and root project markdown files)
 *.md
 !APP_SPEC.md
 !**/APP_SPEC.md
 !ROADMAP.md
 !**/ROADMAP.md
+!docs-dev/*.md
+!docs-dev/**/*.md
+!docs/*.md
+!docs/**/*.md
+!README.md
+!CONTRIBUTING.md
+!DESIGN.md
+!PRIVACY.md
+!SECURITY.md
+!AGENTS.md
+!RISKS.md
+!CITATION.cff
