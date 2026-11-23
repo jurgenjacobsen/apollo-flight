@@ -29,6 +29,7 @@ import {
 import { DocFileContent } from "../types/documentation";
 import { DEFAULT_CHECKLISTS } from "../data/defaultChecklists";
 import { SavedRoute, GeneratedRoute, RouteSector } from "../types/route";
+import { SimBriefOFP } from "../types/simbrief";
 import { calculateTouchdownGForce } from "../utils/touchdownPhysics";
 import { calculateDistanceNm } from "../data/mockData";
 import { resolveAirport } from "../services/routeGenerator";
@@ -36,6 +37,7 @@ import {
     saveFlightTelemetry,
     getFlightTelemetry,
     deleteFlightTelemetry,
+    clearAllCachedTelemetry,
 } from "../utils/telemetryStorage";
 import type { Update } from "@tauri-apps/plugin-updater";
 import packageJson from "../../package.json";
@@ -1018,6 +1020,10 @@ export interface FlightState {
     updateDismissed: boolean;
     pageSize: number;
     setPageSize: (size: number) => Promise<void>;
+    simbriefUsername: string;
+    latestOfp: SimBriefOFP | null;
+    setSimbriefUsername: (username: string) => Promise<void>;
+    setLatestOfp: (ofp: SimBriefOFP | null) => void;
     setAutoCheckUpdates: (enabled: boolean) => void;
     dismissUpdate: () => void;
     checkForUpdates: (silent?: boolean) => Promise<Update | null>;
@@ -1030,6 +1036,13 @@ export interface FlightState {
     latestTouchdown: TouchdownEvent | null;
     showTouchdownBanner: boolean;
     dismissTouchdownBanner: () => void;
+    touchdownNotificationMode: "in-app" | "overlay" | "both";
+    touchdownOverlayPosition: "top-right" | "top-center" | "bottom-right";
+    touchdownOverlayDuration: number;
+    setTouchdownNotificationMode: (mode: "in-app" | "overlay" | "both") => Promise<void>;
+    setTouchdownOverlayPosition: (pos: "top-right" | "top-center" | "bottom-right") => Promise<void>;
+    setTouchdownOverlayDuration: (duration: number) => Promise<void>;
+    triggerTouchdownNotification: (touchdown: TouchdownEvent, preview?: boolean) => Promise<void>;
     detectedMultiSectorRoute: {
         route: SavedRoute;
         currentAirportIcao: string;
@@ -1037,6 +1050,9 @@ export interface FlightState {
     } | null;
     nearestAirport: Airport | null;
     isLoadingFlightDetails: boolean;
+    showOnboarding: boolean;
+    setShowOnboarding: (show: boolean) => void;
+    completeOnboarding: () => Promise<void>;
 
     // Actions
     initFromDatabase: () => Promise<void>;
@@ -1055,6 +1071,7 @@ export interface FlightState {
         linkedFlightId?: string,
     ) => Promise<void>;
     deleteSavedRoute: (id: string) => Promise<void>;
+    wipeAllUserData: () => Promise<void>;
     loadFlightDetails: (id: string) => Promise<FlightRecord | null>;
     fetchAirportsCount: () => Promise<void>;
     fetchNearestAirport: (
@@ -1154,6 +1171,11 @@ const DEFAULT_TELEMETRY: TelemetryData = {
     aircraftTitle: "Standby (Waiting for MSFS)",
     isOnGround: true,
     isEngineRunning: false,
+    engineCombustionMask: 0,
+    allEnginesStopped: true,
+    simTimeSeconds: 0,
+    isSlewActive: false,
+    isReplayActive: false,
     nav1Obs: 0,
     nav1Radial: 0,
     nav1RelativeBearing: 0,
@@ -1180,9 +1202,16 @@ let lastFlushTimestamp = Date.now();
 let stoppedSinceTimestamp: number | null = null;
 let isTurnaroundStay = false;
 let lastFlightLoadCount: number | null = null;
+let lastSimTimeSeconds: number | null = null;
+let replaySuppressionUntil = 0;
 let cruiseWindSumU = 0;
 let cruiseWindSumV = 0;
 let cruiseWindCount = 0;
+
+// Flight State Machine Smoothing & Hysteresis
+let smoothedVerticalSpeed = 0;
+let hasReachedCruiseOrHighAlt = false;
+let timeOfLastTouchdown: number | null = null;
 
 async function flushTelemetryBuffer() {
     if (telemetryBuffer.length === 0) return;
@@ -1404,13 +1433,39 @@ export const useFlightStore = create<FlightState>()(
             latestTouchdown: null,
             showTouchdownBanner: false,
             dismissTouchdownBanner: () => set({ showTouchdownBanner: false }),
+            touchdownNotificationMode: "in-app",
+            touchdownOverlayPosition: "top-right",
+            touchdownOverlayDuration: 10,
             detectedMultiSectorRoute: null,
             nearestAirport: null,
             isLoadingFlightDetails: false,
+            showOnboarding: false,
+            setShowOnboarding: (show: boolean) => set({ showOnboarding: show }),
+            completeOnboarding: async () => {
+                set({ showOnboarding: false });
+                await safeInvoke("set_user_setting", {
+                    key: "has_completed_onboarding",
+                    value: "true",
+                });
+            },
             docCustomDirs: [],
             docLiveUpdate: true,
             docActiveFilePath: null,
             docContentCache: {},
+            simbriefUsername: "",
+            latestOfp: null,
+
+            setSimbriefUsername: async (username: string) => {
+                set({ simbriefUsername: username });
+                await safeInvoke("set_user_setting", {
+                    key: "simbriefUsername",
+                    value: username,
+                });
+            },
+
+            setLatestOfp: (ofp: SimBriefOFP | null) => {
+                set({ latestOfp: ofp });
+            },
 
             setAutoCheckUpdates: (enabled: boolean) => {
                 set({ autoCheckUpdates: enabled });
@@ -1746,6 +1801,13 @@ export const useFlightStore = create<FlightState>()(
                         "get_all_user_settings",
                     );
                     if (dbSettings && Object.keys(dbSettings).length > 0) {
+                        if (typeof dbSettings.has_completed_onboarding === "string") {
+                            if (dbSettings.has_completed_onboarding !== "true") {
+                                set({ showOnboarding: true });
+                            }
+                        } else {
+                            set({ showOnboarding: true });
+                        }
                         if (
                             dbSettings.theme === "dark" ||
                             dbSettings.theme === "light"
@@ -1778,6 +1840,9 @@ export const useFlightStore = create<FlightState>()(
                                 autoCheckUpdates:
                                     dbSettings.autoCheckUpdates === "true",
                             });
+                        }
+                        if (typeof dbSettings.simbriefUsername === "string") {
+                            set({ simbriefUsername: dbSettings.simbriefUsername });
                         }
                         if (typeof dbSettings.pageSize === "string") {
                             const ps = parseInt(dbSettings.pageSize, 10);
@@ -1814,6 +1879,26 @@ export const useFlightStore = create<FlightState>()(
                             dbSettings.temperatureUnit === "f"
                         ) {
                             set({ temperatureUnit: dbSettings.temperatureUnit });
+                        }
+                        if (
+                            dbSettings.touchdownNotificationMode === "in-app" ||
+                            dbSettings.touchdownNotificationMode === "overlay" ||
+                            dbSettings.touchdownNotificationMode === "both"
+                        ) {
+                            set({ touchdownNotificationMode: dbSettings.touchdownNotificationMode });
+                        }
+                        if (
+                            dbSettings.touchdownOverlayPosition === "top-right" ||
+                            dbSettings.touchdownOverlayPosition === "top-center" ||
+                            dbSettings.touchdownOverlayPosition === "bottom-right"
+                        ) {
+                            set({ touchdownOverlayPosition: dbSettings.touchdownOverlayPosition });
+                        }
+                        if (typeof dbSettings.touchdownOverlayDuration === "string") {
+                            const dur = parseInt(dbSettings.touchdownOverlayDuration, 10);
+                            if (!isNaN(dur) && dur > 0) {
+                                set({ touchdownOverlayDuration: dur });
+                            }
                         }
                         if (typeof dbSettings.docCustomDirs === "string") {
                             try {
@@ -2247,6 +2332,33 @@ export const useFlightStore = create<FlightState>()(
                 }));
             },
 
+            wipeAllUserData: async () => {
+                try {
+                    await safeInvoke("wipe_all_user_data");
+                } catch (err) {
+                    console.warn("[flightStore] Error executing wipe_all_user_data:", err);
+                }
+
+                try {
+                    localStorage.clear();
+                } catch {}
+
+                try {
+                    await clearAllCachedTelemetry();
+                } catch {}
+
+                set({
+                    flights: [],
+                    savedRoutes: [],
+                    visitedAirports: [],
+                    visitedCountries: [],
+                    recycleBin: [],
+                    simbriefUsername: undefined,
+                    latestOfp: null,
+                    currentGeneratedRoute: null,
+                });
+            },
+
             setPageSize: async (size: number) => {
                 const validSize = [25, 50, 100].includes(size) ? size : 50;
                 set({ pageSize: validSize });
@@ -2347,12 +2459,10 @@ export const useFlightStore = create<FlightState>()(
                         telemetryPoints: TelemetryPoint[];
                     }>("get_flight_details", { id });
 
+                    // Standardize SQLite as single source of truth (Section 3.5.2)
                     let pts = details?.telemetryPoints || [];
-                    if (pts.length > 0) {
-                        // Cache in IndexedDB for dev mode / offline fallback
-                        saveFlightTelemetry(id, pts).catch(() => {});
-                    } else {
-                        // Try loading from IndexedDB
+                    if (!details && pts.length === 0) {
+                        // Fallback only if SQLite returns null in mock/pure offline web dev mode
                         try {
                             const cachedPts = await getFlightTelemetry(id);
                             if (cachedPts && cachedPts.length > 0) {
@@ -2482,6 +2592,73 @@ export const useFlightStore = create<FlightState>()(
                 });
             },
 
+            setTouchdownNotificationMode: async (mode) => {
+                set({ touchdownNotificationMode: mode });
+                await safeInvoke("set_user_setting", {
+                    key: "touchdownNotificationMode",
+                    value: mode,
+                });
+            },
+
+            setTouchdownOverlayPosition: async (pos) => {
+                set({ touchdownOverlayPosition: pos });
+                await safeInvoke("set_user_setting", {
+                    key: "touchdownOverlayPosition",
+                    value: pos,
+                });
+            },
+
+            setTouchdownOverlayDuration: async (duration) => {
+                set({ touchdownOverlayDuration: duration });
+                await safeInvoke("set_user_setting", {
+                    key: "touchdownOverlayDuration",
+                    value: String(duration),
+                });
+            },
+
+            triggerTouchdownNotification: async (td, preview = false) => {
+                const mode = get().touchdownNotificationMode || "in-app";
+                const position = get().touchdownOverlayPosition || "top-right";
+                const duration = get().touchdownOverlayDuration || 10;
+
+                const absFpm = Math.abs(td.verticalSpeedFpm);
+                const grade =
+                    absFpm < 120
+                        ? "Butter"
+                        : absFpm < 180
+                          ? "Smooth"
+                          : absFpm < 300
+                            ? "Firm"
+                            : "Hard";
+
+                if (mode === "in-app" || mode === "both") {
+                    set({
+                        latestTouchdown: td,
+                        showTouchdownBanner: true,
+                    });
+                }
+
+                if (mode === "overlay" || mode === "both" || preview) {
+                    await safeInvoke("show_touchdown_overlay", {
+                        payload: {
+                            verticalSpeedFpm: td.verticalSpeedFpm,
+                            gForce: td.gForceSim ?? td.gForce ?? 1.0,
+                            indicatedAirspeedKt: td.indicatedAirspeedKt,
+                            groundSpeedKt: td.groundSpeedKt,
+                            headwindKt: td.headwindKt,
+                            crosswindKt: td.crosswindKt,
+                            pitchDeg: td.pitchDeg,
+                            bankDeg: td.bankDeg,
+                            airportIcao: td.airportIcao,
+                            runwayIdent: td.runwayIdent,
+                            grade,
+                            durationSeconds: duration,
+                            position,
+                        },
+                    });
+                }
+            },
+
             setActiveView: (view) => set({ activeView: view }),
             setSettingsActiveTab: (tab) => set({ settingsActiveTab: tab }),
             setSelectedFlightId: (id) => {
@@ -2497,6 +2674,8 @@ export const useFlightStore = create<FlightState>()(
                 // 1. FSUIPC Disconnect: Clean all telemetry display & nearest aerodrome
                 if (newData.simConnected === false) {
                     lastFlightLoadCount = null;
+                    lastSimTimeSeconds = null;
+                    replaySuppressionUntil = 0;
                     isTurnaroundStay = false;
                     stoppedSinceTimestamp = null;
                     set({
@@ -2544,8 +2723,61 @@ export const useFlightStore = create<FlightState>()(
                 let flights = get().flights;
                 let currentStage = get().flightStage;
 
-                // 3. Simulator Flight Restart Detection:
-                // When an active flight is recording, detect reload counter change or sudden teleportation
+                // 3. Simulator Flight Restart & Replay Rewind Detection:
+                const isSlewing = Boolean(newData.isSlewActive);
+                let isReplayRewind = false;
+
+                if (
+                    typeof newData.simTimeSeconds === "number" &&
+                    newData.simTimeSeconds > 0 &&
+                    lastSimTimeSeconds !== null &&
+                    lastSimTimeSeconds > 0
+                ) {
+                    const simDt = newData.simTimeSeconds - lastSimTimeSeconds;
+                    // Sim time jumped backward by > 1.5s (excluding midnight rollover e.g. 86395 -> 5)
+                    const isMidnightRollover =
+                        lastSimTimeSeconds > 86300 && newData.simTimeSeconds < 300;
+                    if (simDt < -1.5 && !isMidnightRollover) {
+                        isReplayRewind = true;
+                    }
+                }
+
+                if (
+                    typeof newData.simTimeSeconds === "number" &&
+                    newData.simTimeSeconds > 0
+                ) {
+                    lastSimTimeSeconds = newData.simTimeSeconds;
+                }
+
+                // Post-touchdown impossible airborne leap check:
+                // If aircraft was already in TOUCHDOWN_ROLLOUT or TAXI_IN and suddenly jumps airborne without high speed takeoff run
+                if (
+                    active &&
+                    active.status === "RECORDING" &&
+                    (currentStage === "TOUCHDOWN_ROLLOUT" ||
+                        currentStage === "TAXI_IN") &&
+                    timeOfLastTouchdown !== null &&
+                    prev &&
+                    prev.isOnGround &&
+                    !current.isOnGround &&
+                    prev.groundSpeed < 45 &&
+                    (current.altitudeAgl || 0) > 30
+                ) {
+                    isReplayRewind = true;
+                }
+
+                if (isReplayRewind || isSlewing) {
+                    replaySuppressionUntil = Date.now() + 4000;
+                    console.warn(
+                        `[Apollo Flight] ${isReplayRewind ? "Flight replay backward rewind" : "Slew mode"} detected. Suppressing track recording & duplicate stage transitions.`,
+                    );
+                }
+
+                const isReplayActive =
+                    Date.now() < replaySuppressionUntil || isSlewing;
+                current.isReplayActive = isReplayActive;
+
+                // When an active flight is recording, detect reload counter change or sudden macro-teleportation
                 if (active && active.status === "RECORDING") {
                     const loadCounterChanged =
                         typeof newData.flightLoadCount === "number" &&
@@ -2618,16 +2850,27 @@ export const useFlightStore = create<FlightState>()(
                     current.simConnected &&
                     !current.isInMenu &&
                     get().autoStartRecording &&
-                    !get().isSyncingAirports
+                    !get().isSyncingAirports &&
+                    !isReplayActive
                 ) {
                     const engineStarted =
-                        !prev.isEngineRunning && current.isEngineRunning;
+                        current.engineCombustionMask !== undefined &&
+                        prev.engineCombustionMask !== undefined
+                            ? prev.engineCombustionMask === 0 &&
+                              current.engineCombustionMask > 0
+                            : !prev.isEngineRunning && current.isEngineRunning;
                     const speedOver20 = current.groundSpeed > 20;
+                    const rotorClimb =
+                        !current.isOnGround &&
+                        current.verticalSpeed !== undefined &&
+                        current.verticalSpeed > 250 &&
+                        (current.altitudeAgl || 0) > 15;
 
-                    if (speedOver20 || engineStarted) {
-                        currentStage = speedOver20
-                            ? "TAKEOFF_CLIMB"
-                            : "TAXI_OUT";
+                    if (speedOver20 || engineStarted || rotorClimb) {
+                        currentStage =
+                            speedOver20 || rotorClimb
+                                ? "TAKEOFF_CLIMB"
+                                : "TAXI_OUT";
 
                         // Resolve nearest airport for departure
                         let originIcao = "ZZZZ";
@@ -2649,6 +2892,9 @@ export const useFlightStore = create<FlightState>()(
                         cruiseWindSumU = 0;
                         cruiseWindSumV = 0;
                         cruiseWindCount = 0;
+                        smoothedVerticalSpeed = current.verticalSpeed || 0;
+                        hasReachedCruiseOrHighAlt = false;
+                        timeOfLastTouchdown = null;
                         const isDetailed = get().recordDetailedTelemetry;
                         const initialPoint: TelemetryPoint = {
                             flightId: newFlightId,
@@ -2789,17 +3035,19 @@ export const useFlightStore = create<FlightState>()(
                             : {}),
                     };
 
-                    // Add to telemetry batch buffer
-                    telemetryBuffer.push(newPoint);
-                    if (
-                        telemetryBuffer.length >= 20 ||
-                        Date.now() - lastFlushTimestamp > 5000
-                    ) {
-                        flushTelemetryBuffer();
+                    // Add to telemetry batch buffer (suppressed during replay rewinds / slew)
+                    if (!isReplayActive) {
+                        telemetryBuffer.push(newPoint);
+                        if (
+                            telemetryBuffer.length >= 20 ||
+                            Date.now() - lastFlushTimestamp > 5000
+                        ) {
+                            flushTelemetryBuffer();
+                        }
                     }
 
                     let distInc = 0;
-                    if (lastPoint) {
+                    if (lastPoint && !isReplayActive) {
                         const rad = Math.PI / 180;
                         const dLat =
                             (current.latitude - lastPoint.latitude) * rad;
@@ -2816,14 +3064,106 @@ export const useFlightStore = create<FlightState>()(
                         distInc = 3440.065 * c;
                     }
 
+                    // Multi-variable smoothed telemetry filter & state machine
+                    const rawVs =
+                        current.verticalSpeed !== undefined
+                            ? current.verticalSpeed
+                            : 0;
+                    // Exponential Moving Average filter (alpha = 0.25) to eliminate turbulence jitter
+                    smoothedVerticalSpeed = Math.round(
+                        smoothedVerticalSpeed * 0.75 + rawVs * 0.25,
+                    );
+
+                    if (
+                        current.altitudeMsl >= 9000 ||
+                        (active.maxAltitude && active.maxAltitude >= 8000)
+                    ) {
+                        hasReachedCruiseOrHighAlt = true;
+                    }
+
                     // Stage determination while airborne
                     if (!current.isOnGround) {
-                        if (current.verticalSpeed < -300) {
-                            currentStage = "DESCENT_APPROACH";
-                        } else if (Math.abs(current.verticalSpeed) <= 150) {
-                            currentStage = "ENROUTE_CRUISE";
-                        } else {
+                        const isNearApproachZone =
+                            (current.altitudeAgl !== undefined
+                                ? current.altitudeAgl
+                                : 9999) < 3500;
+                        const descentThreshold = isNearApproachZone
+                            ? -120
+                            : -280;
+
+                        // 1. Touch-and-Go: liftoff following recent touchdown without full stop
+                        if (
+                            (currentStage === "TOUCHDOWN_ROLLOUT" ||
+                                currentStage === "TOUCH_AND_GO" ||
+                                currentStage === "TAXI_IN") &&
+                            smoothedVerticalSpeed > 150
+                        ) {
+                            currentStage = "TOUCH_AND_GO";
+                        }
+                        // 2. Go-Around: Climbing strongly from low approach altitude
+                        else if (
+                            (currentStage === "DESCENT_APPROACH" ||
+                                (current.altitudeAgl !== undefined &&
+                                    current.altitudeAgl < 2500)) &&
+                            smoothedVerticalSpeed > 400 &&
+                            hasReachedCruiseOrHighAlt &&
+                            !isReplayActive &&
+                            Math.abs(current.pitch || 0) <= 25 &&
+                            Math.abs(current.bank || 0) <= 45
+                        ) {
+                            currentStage = "GO_AROUND";
+                            active.goAroundsCount =
+                                (active.goAroundsCount || 0) + 1;
+                        }
+                        // 3. Continuing climb out of Go-Around
+                        else if (currentStage === "GO_AROUND") {
+                            if (smoothedVerticalSpeed < -150) {
+                                currentStage = "DESCENT_APPROACH";
+                            } else if (
+                                Math.abs(smoothedVerticalSpeed) <= 150 &&
+                                (current.altitudeAgl || 0) > 1500
+                            ) {
+                                currentStage = "ENROUTE_CRUISE";
+                            }
+                        }
+                        // 4. Returning from Touch-and-Go into pattern climb
+                        else if (
+                            currentStage === "TOUCH_AND_GO" &&
+                            (current.altitudeAgl || 0) > 1000
+                        ) {
                             currentStage = "TAKEOFF_CLIMB";
+                        }
+                        // 5. Normal Flight Transitions (Descent, Cruise, Climb)
+                        else {
+                            if (smoothedVerticalSpeed < descentThreshold) {
+                                currentStage = "DESCENT_APPROACH";
+                            } else if (
+                                Math.abs(smoothedVerticalSpeed) <= 160 &&
+                                (current.altitudeMsl > 5000 ||
+                                    hasReachedCruiseOrHighAlt)
+                            ) {
+                                currentStage = "ENROUTE_CRUISE";
+                            } else if (
+                                smoothedVerticalSpeed > 200 &&
+                                !isNearApproachZone
+                            ) {
+                                currentStage = "TAKEOFF_CLIMB";
+                            } else if (
+                                isNearApproachZone &&
+                                currentStage === "DESCENT_APPROACH"
+                            ) {
+                                // Prevent glideslope trap: leveling off on base/final maintains approach phase
+                                currentStage = "DESCENT_APPROACH";
+                            }
+                        }
+                    } else {
+                        // Ground Phase Detection while Recording
+                        if (currentStage === "TOUCHDOWN_ROLLOUT") {
+                            if (current.groundSpeed < 35) {
+                                currentStage = "TAXI_IN";
+                            }
+                        } else if (currentStage === "TAXI_IN") {
+                            // Continues in TAXI_IN until engine cut or arrival auto-stop
                         }
                     }
 
@@ -2875,8 +3215,19 @@ export const useFlightStore = create<FlightState>()(
                         : [];
 
                     // TOUCHDOWN_ROLLOUT: transition from air to ground (captures each touchdown)
-                    if (prev && !prev.isOnGround && current.isOnGround) {
+                    // Suppressed during replay rewinds / slew to avoid duplicate touchdowns or rate overrides
+                    if (
+                        prev &&
+                        !prev.isOnGround &&
+                        current.isOnGround &&
+                        !isReplayActive
+                    ) {
+                        if (currentStage === "TOUCH_AND_GO") {
+                            active.circuitLandingsCount =
+                                (active.circuitLandingsCount || 0) + 1;
+                        }
                         currentStage = "TOUCHDOWN_ROLLOUT";
+                        timeOfLastTouchdown = Date.now();
 
                         const now = Date.now();
                         const lastTd =
@@ -2915,10 +3266,7 @@ export const useFlightStore = create<FlightState>()(
                                 lastTd.gForceSim = Number(current.gForce.toFixed(2));
                             }
 
-                            set({
-                                latestTouchdown: { ...lastTd },
-                                showTouchdownBanner: true,
-                            });
+                            get().triggerTouchdownNotification({ ...lastTd });
                         } else {
                             // CLEAN INITIAL TOUCHDOWN: First ground contact
                             let tdIcao: string | undefined = undefined;
@@ -2996,10 +3344,7 @@ export const useFlightStore = create<FlightState>()(
 
                             currentTouchdowns.push(newTd);
 
-                            set({
-                                latestTouchdown: newTd,
-                                showTouchdownBanner: true,
-                            });
+                            get().triggerTouchdownNotification(newTd);
                         }
                     }
 
@@ -3024,12 +3369,16 @@ export const useFlightStore = create<FlightState>()(
                     const stoppedDurationSeconds = stoppedSinceTimestamp
                         ? (Date.now() - stoppedSinceTimestamp) / 1000
                         : 0;
-                    const isEngineOff = !current.isEngineRunning;
+                    // Multi-engine asymmetric single-engine taxi-in (SETI) coverage:
+                    // Flight recording must NOT stop if at least one engine is still running.
+                    // Only trigger auto-stop when all monitored engines are stopped (allEnginesStopped == true).
+                    const isEngineOff = current.allEnginesStopped ?? !current.isEngineRunning;
 
                     if (
                         stoppedDurationSeconds >= 30 &&
                         isEngineOff &&
-                        !isTurnaroundStay
+                        !isTurnaroundStay &&
+                        !isReplayActive
                     ) {
                         let arrIcao = "ZZZZ";
                         const arrLookup = await safeInvoke<any>(
@@ -3169,10 +3518,6 @@ export const useFlightStore = create<FlightState>()(
                             });
 
                             if (allPoints.length > 0) {
-                                saveFlightTelemetry(
-                                    completedFlight.id,
-                                    allPoints,
-                                ).catch(() => {});
                                 const rawPoints = allPoints.map((tp) => ({
                                     flight_id: completedFlight.id,
                                     timestamp: tp.timestamp,
@@ -3320,6 +3665,9 @@ export const useFlightStore = create<FlightState>()(
                 cruiseWindSumU = 0;
                 cruiseWindSumV = 0;
                 cruiseWindCount = 0;
+                smoothedVerticalSpeed = state.currentTelemetry.verticalSpeed || 0;
+                hasReachedCruiseOrHighAlt = false;
+                timeOfLastTouchdown = null;
                 const newFlightId = `fl-${Date.now()}`;
                 const newFlight: FlightRecord = {
                     id: newFlightId,
@@ -3461,15 +3809,6 @@ export const useFlightStore = create<FlightState>()(
                     ...dbRecord
                 } = completedFlight;
                 await safeInvoke("save_flight", { flight: dbRecord });
-                if (
-                    completedFlight.telemetryPoints &&
-                    completedFlight.telemetryPoints.length > 0
-                ) {
-                    saveFlightTelemetry(
-                        completedFlight.id,
-                        completedFlight.telemetryPoints,
-                    ).catch(() => {});
-                }
                 stoppedSinceTimestamp = null;
                 isTurnaroundStay = false;
 
@@ -3614,10 +3953,6 @@ export const useFlightStore = create<FlightState>()(
                         item.telemetryPoints &&
                         item.telemetryPoints.length > 0
                     ) {
-                        saveFlightTelemetry(
-                            item.id,
-                            item.telemetryPoints,
-                        ).catch(() => {});
                         const rawPoints = item.telemetryPoints.map((tp) => ({
                             flightId: item.id,
                             timestamp: tp.timestamp,
@@ -4005,8 +4340,6 @@ export const useFlightStore = create<FlightState>()(
                                         ? Number(tp.visibility)
                                         : null,
                             }));
-
-                            await saveFlightTelemetry(flightToSave.id, pts);
 
                             const CHUNK_SIZE = 500;
                             for (
@@ -4441,6 +4774,7 @@ export const useFlightStore = create<FlightState>()(
                 windSpeedUnit: state.windSpeedUnit,
                 temperatureUnit: state.temperatureUnit,
                 closeToTray: state.closeToTray,
+                simbriefUsername: state.simbriefUsername,
                 autoStartRecording: state.autoStartRecording,
                 recordDetailedTelemetry: state.recordDetailedTelemetry,
                 autoCheckUpdates: state.autoCheckUpdates,
