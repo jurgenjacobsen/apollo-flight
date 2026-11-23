@@ -22,8 +22,10 @@ import { EfbCompanionApp } from "./components/efb/EfbCompanionApp";
 import { isEfbMode } from "./services/efbService";
 import { useEfbStore } from "./store/efbStore";
 import { ImportModal } from "./components/modals/ImportModal";
+import { OnboardingModal } from "./components/modals/OnboardingModal";
 import { SimBridge } from "./components/bridge/SimBridge";
 import { TouchdownFlyoutBanner } from "./components/telemetry/TouchdownFlyoutBanner";
+import { TouchdownOverlayWindow } from "./components/telemetry/TouchdownOverlayWindow";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { safeInvoke } from "./store/flightStore";
 import { ApolloExportBundle } from "./types/flight";
@@ -38,6 +40,8 @@ export const App: React.FC = () => {
         isSyncingAirports,
         syncOurAirports,
         lastSyncMessage,
+        showOnboarding,
+        setShowOnboarding,
     } = useFlightStore();
 
     const [isImportModalOpen, setIsImportModalOpen] = React.useState(false);
@@ -152,6 +156,10 @@ export const App: React.FC = () => {
         return <EfbCompanionApp />;
     }
 
+    if (typeof window !== "undefined" && window.location.search.includes("overlay=touchdown")) {
+        return <TouchdownOverlayWindow />;
+    }
+
     return (
         <div className="flex h-screen w-screen bg-neutral-50 dark:bg-black text-neutral-900 dark:text-[#ededed] overflow-hidden font-sans selection:bg-neutral-200 dark:selection:bg-[#333333] transition-colors duration-150">
             {/* Background Sim Telemetry loop / FSUIPC bridge & Tray Event Bus */}
@@ -193,6 +201,12 @@ export const App: React.FC = () => {
                     setDroppedBundle(null);
                 }}
                 initialBundle={droppedBundle}
+            />
+
+            {/* Interactive First-Run Onboarding Modal */}
+            <OnboardingModal
+                isOpen={showOnboarding}
+                onClose={() => setShowOnboarding(false)}
             />
 
             {/* Instant Touchdown Dynamics Flyout Banner */}

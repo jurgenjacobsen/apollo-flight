@@ -12,6 +12,9 @@
     <script>
       (function() {
         try {
+          if (window.location.search && window.location.search.includes('overlay=touchdown')) {
+            document.documentElement.style.background = 'transparent';
+          }
           const raw = localStorage.getItem('apollo-flight-store');
           if (raw) {
             const parsed = JSON.parse(raw);

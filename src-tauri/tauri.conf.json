@@ -21,6 +21,21 @@
         "resizable": true,
         "fullscreen": false,
         "decorations": true
+      },
+      {
+        "label": "touchdown-overlay",
+        "title": "Apollo Flight - Touchdown Report",
+        "url": "index.html?overlay=touchdown",
+        "width": 380,
+        "height": 260,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "shadow": false
       }
     ],
     "security": {

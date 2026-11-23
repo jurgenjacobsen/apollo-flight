@@ -663,8 +663,14 @@ export const Overview: React.FC = () => {
                 return "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/40";
             case "DESCENT_APPROACH":
                 return "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/40";
+            case "GO_AROUND":
+                return "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/40";
             case "TOUCHDOWN_ROLLOUT":
                 return "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800/40";
+            case "TOUCH_AND_GO":
+                return "text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/40 border-cyan-200 dark:border-cyan-800/40";
+            case "TAXI_IN":
+                return "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800/40";
             case "ARRIVED":
                 return "text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700";
             default:
@@ -872,11 +878,11 @@ export const Overview: React.FC = () => {
                                 flightStage,
                             )}`}
                         >
-                            {flightStage.replace("_", " ")}
+                            {flightStage.replace(/_/g, " ")}
                         </span>
                     </div>
                     <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1">
-                        7-Stage Lifecycle
+                        Lifecycle State Machine
                     </div>
                 </div>
             </div>
