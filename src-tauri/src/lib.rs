@@ -1,23 +1,27 @@
 pub mod db;
 pub mod fsuipc;
 pub mod efb;
+pub mod navigraph_auth;
+pub mod navigraph_airac;
+pub mod navigraph_procedures;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 pub struct DbState {
     pub logbook: Mutex<rusqlite::Connection>,
+    pub logbook_read: Mutex<rusqlite::Connection>,
     pub navdata: Mutex<rusqlite::Connection>,
 }
 
-static WORKER_RUNNING: OnceLock<Arc<AtomicBool>> = OnceLock::new();
-static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(false);
-static IS_SYNCING_DATASET: AtomicBool = AtomicBool::new(false);
+pub(crate) static WORKER_RUNNING: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+pub(crate) static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+pub(crate) static IS_SYNCING_DATASET: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,726 +102,12 @@ fn migrate_legacy_com_apollo_flight_dir(app: &AppHandle, new_dir: &std::path::Pa
     }
 }
 
-fn get_worker_state() -> Arc<AtomicBool> {
+pub(crate) fn get_worker_state() -> Arc<AtomicBool> {
     WORKER_RUNNING.get_or_init(|| Arc::new(AtomicBool::new(true))).clone()
 }
 
-mod commands {
-    use super::*;
 
-    #[tauri::command]
-    pub fn get_connection_status() -> bool {
-        fsuipc::IS_CONNECTED_TO_SIM.load(Ordering::SeqCst)
-    }
-
-    #[tauri::command]
-    pub fn start_polling(app: AppHandle) -> Result<String, String> {
-        let state = get_worker_state();
-        if !state.load(Ordering::SeqCst) {
-            state.store(true, Ordering::SeqCst);
-            fsuipc::start_telemetry_loop(app, state);
-            Ok("Polling started".to_string())
-        } else {
-            Ok("Polling already active".to_string())
-        }
-    }
-
-    #[tauri::command]
-    pub fn stop_polling() -> Result<String, String> {
-        let state = get_worker_state();
-        state.store(false, Ordering::SeqCst);
-        fsuipc::IS_CONNECTED_TO_SIM.store(false, Ordering::SeqCst);
-        Ok("Polling stopped".to_string())
-    }
-
-    #[tauri::command]
-    pub fn get_close_to_tray() -> bool {
-        CLOSE_TO_TRAY.load(Ordering::SeqCst)
-    }
-
-    #[tauri::command]
-    pub fn set_close_to_tray(state: tauri::State<'_, DbState>, enabled: bool) -> Result<(), String> {
-        CLOSE_TO_TRAY.store(enabled, Ordering::SeqCst);
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::set_user_setting(&conn, "closeToTray", if enabled { "true" } else { "false" })
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    #[tauri::command]
-    pub fn get_user_setting(
-        state: tauri::State<'_, DbState>,
-        key: String,
-    ) -> Result<Option<String>, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::get_user_setting(&conn, &key).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn set_user_setting(
-        state: tauri::State<'_, DbState>,
-        key: String,
-        value: String,
-    ) -> Result<(), String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::set_user_setting(&conn, &key, &value).map_err(|e| e.to_string())?;
-        if key == "closeToTray" {
-            CLOSE_TO_TRAY.store(value == "true", Ordering::SeqCst);
-        }
-        Ok(())
-    }
-
-    #[tauri::command]
-    pub fn get_all_user_settings(
-        state: tauri::State<'_, DbState>,
-    ) -> Result<std::collections::HashMap<String, String>, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::get_all_user_settings(&conn).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn get_flights(state: tauri::State<'_, DbState>) -> Result<Vec<db::FlightRecord>, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::get_flights(&conn).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn get_flight_details(
-        state: tauri::State<'_, DbState>,
-        id: String,
-    ) -> Result<Option<db::FlightDetails>, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::get_flight_details(&conn, &id).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn save_flight(
-        state: tauri::State<'_, DbState>,
-        flight: db::FlightRecord,
-    ) -> Result<(), String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::save_flight(&conn, &flight).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn delete_flight(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::delete_flight(&conn, &id).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn save_telemetry_batch(
-        state: tauri::State<'_, DbState>,
-        points: Vec<db::TelemetryPointRecord>,
-    ) -> Result<(), String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::save_telemetry_batch(&conn, &points).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn search_airports_near(
-        state: tauri::State<'_, DbState>,
-        lat: f64,
-        lon: f64,
-        radius_nm: Option<f64>,
-    ) -> Result<Option<db::Airport>, String> {
-        let conn = state.navdata.lock().map_err(|e| e.to_string())?;
-        let radius = radius_nm.unwrap_or(3.0);
-        db::search_airports_near(&conn, lat, lon, radius).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn get_visited_stats(
-        state: tauri::State<'_, DbState>,
-    ) -> Result<db::VisitedStats, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::get_visited_stats(&conn).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn record_airport_visit(
-        state: tauri::State<'_, DbState>,
-        airport: db::Airport,
-        timestamp: String,
-    ) -> Result<(), String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::record_airport_visit(&conn, &airport, &timestamp).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn export_flight(
-        state: tauri::State<'_, DbState>,
-        id: String,
-        format: String,
-    ) -> Result<String, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::export_flight_format(&conn, &id, &format)
-    }
-
-    #[tauri::command]
-    pub fn export_logbook(
-        state: tauri::State<'_, DbState>,
-        format: String,
-    ) -> Result<String, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::export_logbook_format(&conn, &format)
-    }
-
-    #[tauri::command]
-    pub fn get_airports_count(state: tauri::State<'_, DbState>) -> Result<i64, String> {
-        let conn = state.navdata.lock().map_err(|e| e.to_string())?;
-        db::get_airports_count(&conn).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn get_airport(
-        state: tauri::State<'_, DbState>,
-        icao: String,
-    ) -> Result<Option<db::Airport>, String> {
-        let conn = state.navdata.lock().map_err(|e| e.to_string())?;
-        db::get_airport_by_icao(&conn, &icao).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn get_all_airports(
-        state: tauri::State<'_, DbState>,
-    ) -> Result<Vec<db::Airport>, String> {
-        let conn = state.navdata.lock().map_err(|e| e.to_string())?;
-        db::get_all_airports(&conn).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn get_airport_runways(
-        state: tauri::State<'_, DbState>,
-        icao: String,
-    ) -> Result<Vec<db::Runway>, String> {
-        let conn = state.navdata.lock().map_err(|e| e.to_string())?;
-        db::get_airport_runways(&conn, &icao).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn search_route_airports(
-        state: tauri::State<'_, DbState>,
-        filter: db::RouteSearchFilter,
-    ) -> Result<Vec<db::Airport>, String> {
-        let conn = state.navdata.lock().map_err(|e| e.to_string())?;
-        db::search_route_airports(&conn, &filter).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn is_dataset_syncing() -> bool {
-        IS_SYNCING_DATASET.load(Ordering::Relaxed)
-    }
-
-    #[tauri::command]
-    pub async fn sync_ourairports(
-        app: AppHandle,
-    ) -> Result<db::OurAirportsSyncResult, String> {
-        if IS_SYNCING_DATASET.swap(true, Ordering::SeqCst) {
-            return Err("A dataset synchronization is already in progress.".to_string());
-        }
-
-        struct SyncGuard;
-        impl Drop for SyncGuard {
-            fn drop(&mut self) {
-                IS_SYNCING_DATASET.store(false, Ordering::SeqCst);
-            }
-        }
-        let _guard = SyncGuard;
-
-        let app_clone = app.clone();
-        let app_worker = app.clone();
-        let work_dir = get_app_data_dir(&app_worker);
-
-        let res = tokio::task::spawn_blocking(move || {
-            let state = app_worker.state::<DbState>();
-            let mut conn = state.navdata.lock().map_err(|e| e.to_string())?;
-            db::sync_ourairports_data(&mut conn, &work_dir, |progress| {
-                let _ = app_clone.emit("ourairports-sync-progress", &progress);
-            })
-        })
-        .await
-        .map_err(|e| format!("Worker thread failed: {}", e))??;
-
-        Ok(res)
-    }
-
-    #[tauri::command]
-    pub fn list_log_files(app: AppHandle) -> Result<Vec<LogFileInfo>, String> {
-        let log_dir = get_log_dir(&app);
-        let mut files = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(&log_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if name.ends_with(".log") || name.ends_with(".txt") {
-                        if let Ok(metadata) = entry.metadata() {
-                            let size_bytes = metadata.len();
-                            let modified: chrono::DateTime<chrono::Utc> = metadata
-                                .modified()
-                                .map(|st| st.into())
-                                .unwrap_or_else(|_| chrono::Utc::now());
-                            let is_crash = name.starts_with("crash");
-                            files.push(LogFileInfo {
-                                name,
-                                path: path.to_string_lossy().to_string(),
-                                size_bytes,
-                                modified_iso: modified.to_rfc3339(),
-                                is_crash,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        files.sort_by(|a, b| b.modified_iso.cmp(&a.modified_iso));
-        Ok(files)
-    }
-
-    #[tauri::command]
-    pub fn get_log_file_content(app: AppHandle, file_name: String) -> Result<String, String> {
-        let safe_name = std::path::Path::new(&file_name)
-            .file_name()
-            .ok_or_else(|| "Invalid file name".to_string())?;
-        let log_dir = get_log_dir(&app);
-        let file_path = log_dir.join(safe_name);
-        if !file_path.exists() {
-            return Err("Log file does not exist".to_string());
-        }
-        let content = std::fs::read_to_string(&file_path)
-            .map_err(|e| format!("Failed to read log file: {}", e))?;
-        const MAX_BYTES: usize = 256 * 1024;
-        if content.len() > MAX_BYTES {
-            let start = content.len() - MAX_BYTES;
-            Ok(format!("... [truncated first {} bytes]\n{}", start, &content[start..]))
-        } else {
-            Ok(content)
-        }
-    }
-
-    #[tauri::command]
-    pub fn log_client_message(
-        app: AppHandle,
-        level: String,
-        message: String,
-        context: Option<String>,
-    ) -> Result<(), String> {
-        let log_dir = get_log_dir(&app);
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        let log_path = log_dir.join(format!("apollo-flight-{}.log", today));
-        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
-        let ctx_str = context.map(|c| format!(" [{}]", c)).unwrap_or_default();
-        let line = format!("[{}] [{}] [CLIENT{}] {}\n", timestamp, level.to_uppercase(), ctx_str, message);
-        use std::io::Write;
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path)
-            .map_err(|e| e.to_string())?;
-        file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    #[tauri::command]
-    pub fn open_external_url(url: String) -> Result<(), String> {
-        if !url.starts_with("https://") && !url.starts_with("http://") {
-            return Err("Invalid URL protocol".to_string());
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            let mut cmd = std::process::Command::new("rundll32.exe");
-            cmd.creation_flags(0x08000000);
-            let _ = cmd.args(["url.dll,FileProtocolHandler", &url]).spawn()
-                .map_err(|e| format!("Failed to launch browser: {}", e))?;
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = std::process::Command::new("xdg-open").arg(&url).spawn()
-                .map_err(|e| format!("Failed to launch browser: {}", e))?;
-        }
-        Ok(())
-    }
-
-    #[tauri::command]
-    pub fn save_file_dialog(
-        default_filename: String,
-        content: String,
-        filter_name: String,
-        filter_ext: String,
-    ) -> Result<Option<String>, String> {
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            let temp_dir = std::env::temp_dir();
-            let temp_id = uuid::Uuid::new_v4().to_string();
-            let temp_file = temp_dir.join(format!("apollo_export_{}.tmp", temp_id));
-            std::fs::write(&temp_file, &content).map_err(|e| e.to_string())?;
-
-            let clean_filter = format!("{} (*.{})|*.{}", filter_name, filter_ext, filter_ext);
-            let ps_script = format!(
-                "Add-Type -AssemblyName System.Windows.Forms;\
-                 $d = New-Object System.Windows.Forms.SaveFileDialog;\
-                 $d.Title = 'Save Export';\
-                 $d.Filter = '{}';\
-                 $d.FileName = '{}';\
-                 if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{\
-                     [System.IO.File]::Copy('{}', $d.FileName, $true);\
-                     [Console]::Out.Write($d.FileName);\
-                 }}",
-                clean_filter.replace('\'', "''"),
-                default_filename.replace('\'', "''"),
-                temp_file.to_string_lossy().replace('\'', "''")
-            );
-
-            let output = std::process::Command::new("powershell.exe")
-                .creation_flags(0x08000000)
-                .args(["-NoProfile", "-Sta", "-Command", &ps_script])
-                .output();
-
-            let _ = std::fs::remove_file(&temp_file);
-
-            match output {
-                Ok(out) => {
-                    let chosen_path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    if !chosen_path.is_empty() {
-                        Ok(Some(chosen_path))
-                    } else {
-                        Ok(None)
-                    }
-                }
-                Err(e) => Err(format!("Failed to show save file dialog: {}", e)),
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = (default_filename, content, filter_name, filter_ext);
-            Ok(None)
-        }
-    }
-
-    #[tauri::command]
-    pub fn save_route(
-        state: tauri::State<'_, DbState>,
-        route: db::SavedRouteRecord,
-    ) -> Result<db::SavedRouteRecord, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::save_route(&conn, &route).map_err(|e| e.to_string())?;
-        Ok(route)
-    }
-
-    #[tauri::command]
-    pub fn get_saved_routes(
-        state: tauri::State<'_, DbState>,
-    ) -> Result<Vec<db::SavedRouteRecord>, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::get_saved_routes(&conn).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn toggle_route_favorite(
-        state: tauri::State<'_, DbState>,
-        id: String,
-    ) -> Result<bool, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::toggle_route_favorite(&conn, &id).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn update_route_status(
-        state: tauri::State<'_, DbState>,
-        id: String,
-        status: String,
-        linked_flight_id: Option<String>,
-    ) -> Result<(), String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::update_route_status(&conn, &id, &status, linked_flight_id.as_deref())
-            .map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn delete_saved_route(
-        state: tauri::State<'_, DbState>,
-        id: String,
-    ) -> Result<(), String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::delete_saved_route(&conn, &id).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn recompute_visited_destinations(
-        state: tauri::State<'_, DbState>,
-    ) -> Result<db::VisitedStats, String> {
-        let logbook = state.logbook.lock().map_err(|e| e.to_string())?;
-        let navdata = state.navdata.lock().map_err(|e| e.to_string())?;
-        db::recompute_visited_stats_with_navdata(&logbook, &navdata).map_err(|e| e.to_string())?;
-        db::get_visited_stats(&logbook).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn get_efb_status() -> Result<efb::EfbStatus, String> {
-        Ok(efb::get_status())
-    }
-
-    #[tauri::command]
-    pub async fn start_efb(app: AppHandle, port: Option<u16>) -> Result<efb::EfbStatus, String> {
-        efb::start_server(app, port).await
-    }
-
-    #[tauri::command]
-    pub async fn stop_efb() -> Result<(), String> {
-        efb::stop_server().await
-    }
-
-    #[tauri::command]
-    pub fn set_efb_route(route: Option<serde_json::Value>) -> Result<(), String> {
-        efb::set_active_route(route);
-        Ok(())
-    }
-
-    #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
-    #[serde(rename_all = "camelCase")]
-    pub struct DocFileRecord {
-        pub path: String,
-        pub name: String,
-        pub extension: String,
-        pub size_bytes: u64,
-        pub modified: Option<String>,
-        pub source: String,
-        pub source_dir: Option<String>,
-        pub title: Option<String>,
-        pub last_seen: Option<String>,
-        pub tags: Vec<String>,
-    }
-
-    #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
-    #[serde(rename_all = "camelCase")]
-    pub struct DocFileContent {
-        pub path: String,
-        pub extension: String,
-        pub text_content: Option<String>,
-        pub base64_content: Option<String>,
-    }
-
-    fn to_base64(bytes: &[u8]) -> String {
-        const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
-        for chunk in bytes.chunks(3) {
-            let b0 = chunk[0] as usize;
-            let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
-            let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
-            out.push(CHARSET[(b0 >> 2) & 0x3F] as char);
-            out.push(CHARSET[((b0 << 4) | (b1 >> 4)) & 0x3F] as char);
-            if chunk.len() > 1 {
-                out.push(CHARSET[((b1 << 2) | (b2 >> 6)) & 0x3F] as char);
-            } else {
-                out.push('=');
-            }
-            if chunk.len() > 2 {
-                out.push(CHARSET[b2 & 0x3F] as char);
-            } else {
-                out.push('=');
-            }
-        }
-        out
-    }
-
-    fn scan_dir_for_docs(
-        dir: &std::path::Path,
-        source: &str,
-        meta_map: &std::collections::HashMap<String, db::DocumentMetadata>,
-        results: &mut Vec<DocFileRecord>,
-        depth: usize,
-    ) {
-        if depth > 4 || !dir.is_dir() {
-            return;
-        }
-        if let Ok(entries) = std::fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if p.is_dir() {
-                    scan_dir_for_docs(&p, source, meta_map, results, depth + 1);
-                } else if p.is_file() {
-                    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-                    if ext == "md" || ext == "markdown" || ext == "pdf" {
-                        let norm_ext = if ext == "markdown" { "md" } else { &ext };
-                        let norm_path = p.to_string_lossy().to_string();
-                        let file_name = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
-                        let (size, modified) = std::fs::metadata(&p).map(|m| {
-                            let sz = m.len();
-                            let mod_time = m.modified().ok().and_then(|t| {
-                                let dt: chrono::DateTime<chrono::Utc> = t.into();
-                                Some(dt.to_rfc3339())
-                            });
-                            (sz, mod_time)
-                        }).unwrap_or((0, None));
-
-                        let meta = meta_map.get(&norm_path);
-                        let title = meta.and_then(|m| m.title.clone()).or_else(|| {
-                            p.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string())
-                        });
-                        let last_seen = meta.and_then(|m| m.last_seen.clone());
-                        let tags = meta.map(|m| m.tags.clone()).unwrap_or_default();
-
-                        results.push(DocFileRecord {
-                            path: norm_path,
-                            name: file_name,
-                            extension: norm_ext.to_string(),
-                            size_bytes: size,
-                            modified,
-                            source: source.to_string(),
-                            source_dir: Some(dir.to_string_lossy().to_string()),
-                            title,
-                            last_seen,
-                            tags,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    #[tauri::command]
-    pub fn get_documentation_files(
-        app: AppHandle,
-        state: tauri::State<'_, DbState>,
-        custom_dirs: Vec<String>,
-    ) -> Result<Vec<DocFileRecord>, String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        let meta_map = db::get_all_document_metadata(&conn).unwrap_or_default();
-        let app_data_dir = get_app_data_dir(&app);
-
-        let mut results = Vec::new();
-
-        // 1. App user-docs directory (%APPDATA%/Apollo Flight/user-docs)
-        let user_docs_dir = app_data_dir.join("user-docs");
-        let _ = std::fs::create_dir_all(&user_docs_dir);
-        scan_dir_for_docs(&user_docs_dir, "user-docs", &meta_map, &mut results, 0);
-
-        // 2. Bundled / docs directory
-        let mut docs_dirs = Vec::new();
-        docs_dirs.push(std::path::PathBuf::from("docs"));
-        docs_dirs.push(std::path::PathBuf::from("../docs"));
-        docs_dirs.push(app_data_dir.join("docs"));
-        if let Ok(res_dir) = app.path().resource_dir() {
-            docs_dirs.push(res_dir.join("docs"));
-            docs_dirs.push(res_dir);
-        }
-
-        let mut scanned_docs = false;
-        for d in docs_dirs {
-            if d.is_dir() && !scanned_docs {
-                let prev_len = results.len();
-                scan_dir_for_docs(&d, "docs", &meta_map, &mut results, 0);
-                if results.len() > prev_len {
-                    scanned_docs = true;
-                }
-            }
-        }
-
-        // 3. User custom directories
-        for cd in custom_dirs {
-            let p = std::path::PathBuf::from(&cd);
-            if p.is_dir() {
-                scan_dir_for_docs(&p, "custom", &meta_map, &mut results, 0);
-            }
-        }
-
-        Ok(results)
-    }
-
-    #[tauri::command]
-    pub fn save_document_metadata(
-        state: tauri::State<'_, DbState>,
-        file_path: String,
-        title: Option<String>,
-        tags: Vec<String>,
-    ) -> Result<(), String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::save_document_metadata(&conn, &file_path, title.as_deref(), &tags)
-            .map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn record_document_opened(
-        state: tauri::State<'_, DbState>,
-        file_path: String,
-    ) -> Result<(), String> {
-        let conn = state.logbook.lock().map_err(|e| e.to_string())?;
-        db::record_document_opened(&conn, &file_path).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn read_document_file(file_path: String) -> Result<DocFileContent, String> {
-        let path = std::path::Path::new(&file_path);
-        if !path.exists() {
-            return Err("File does not exist".to_string());
-        }
-        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-        if ext == "md" || ext == "markdown" {
-            let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-            Ok(DocFileContent {
-                path: file_path,
-                extension: "md".to_string(),
-                text_content: Some(text),
-                base64_content: None,
-            })
-        } else if ext == "pdf" {
-            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-            let b64 = to_base64(&bytes);
-            Ok(DocFileContent {
-                path: file_path,
-                extension: "pdf".to_string(),
-                text_content: None,
-                base64_content: Some(b64),
-            })
-        } else {
-            Err("Unsupported file format".to_string())
-        }
-    }
-
-    #[tauri::command]
-    pub fn open_user_docs_folder(app: AppHandle) -> Result<(), String> {
-        let app_data_dir = get_app_data_dir(&app);
-        let user_docs_dir = app_data_dir.join("user-docs");
-        let _ = std::fs::create_dir_all(&user_docs_dir);
-        #[cfg(target_os = "windows")]
-        {
-            std::process::Command::new("explorer")
-                .arg(&user_docs_dir)
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
-        Ok(())
-    }
-
-    #[tauri::command]
-    pub fn open_directory_dialog() -> Result<Option<String>, String> {
-        #[cfg(target_os = "windows")]
-        {
-            let output = std::process::Command::new("powershell")
-                .args([
-                    "-NoProfile",
-                    "-Command",
-                    "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Documentation Folder'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }",
-                ])
-                .output()
-                .map_err(|e| e.to_string())?;
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if stdout.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(stdout))
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            Ok(None)
-        }
-    }
-}
-
+pub mod commands;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -845,6 +135,11 @@ pub fn run() {
             let (logbook_conn, navdata_conn) = db::init_databases(&logbook_path, &navdata_path, &search_dirs)
                 .map_err(|e| Box::<dyn std::error::Error>::from(format!("Failed to initialize databases: {}", e)))?;
 
+            // Dedicated read connection with query_only = ON in WAL mode to eliminate reader/writer lock contention
+            let logbook_read_conn = rusqlite::Connection::open(&logbook_path)
+                .map_err(|e| Box::<dyn std::error::Error>::from(format!("Failed to open logbook read connection: {}", e)))?;
+            let _ = logbook_read_conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA query_only = ON;");
+
             // Read persisted user settings directly from SQLite on cold boot
             if let Ok(Some(val)) = db::get_user_setting(&logbook_conn, "closeToTray") {
                 CLOSE_TO_TRAY.store(val == "true", Ordering::SeqCst);
@@ -852,6 +147,7 @@ pub fn run() {
 
             app.manage(DbState {
                 logbook: Mutex::new(logbook_conn),
+                logbook_read: Mutex::new(logbook_read_conn),
                 navdata: Mutex::new(navdata_conn),
             });
 
@@ -978,7 +274,10 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if CLOSE_TO_TRAY.load(Ordering::SeqCst) {
+                if window.label() == "touchdown-overlay" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                } else if CLOSE_TO_TRAY.load(Ordering::SeqCst) {
                     api.prevent_close();
                     let _ = window.hide();
                 }
@@ -995,8 +294,10 @@ pub fn run() {
             commands::get_all_user_settings,
             commands::get_flights,
             commands::get_flight_details,
+            commands::get_downsampled_flight_telemetry,
             commands::save_flight,
             commands::delete_flight,
+            commands::wipe_all_user_data,
             commands::save_telemetry_batch,
             commands::search_airports_near,
             commands::get_visited_stats,
@@ -1030,7 +331,18 @@ pub fn run() {
             commands::record_document_opened,
             commands::read_document_file,
             commands::open_user_docs_folder,
-            commands::open_directory_dialog
+            commands::open_directory_dialog,
+            commands::show_touchdown_overlay,
+            commands::hide_touchdown_overlay,
+            navigraph_auth::navigraph_start_device_auth,
+            navigraph_auth::navigraph_poll_device_token,
+            navigraph_auth::navigraph_get_auth_status,
+            navigraph_auth::navigraph_logout,
+            navigraph_airac::navigraph_get_airac_status,
+            navigraph_airac::navigraph_check_airac_packages,
+            navigraph_airac::navigraph_download_airac,
+            navigraph_procedures::navigraph_get_airport_procedures,
+            navigraph_procedures::navigraph_calculate_airway_route
         ])
         .run(tauri::generate_context!())
         .expect("error while running apollo flight application");
