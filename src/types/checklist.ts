@@ -2,6 +2,7 @@ export interface ChecklistItem {
     id: string;
     challenge: string;         // e.g. "Parking Brake", "Gear", "Flaps", "Altimeters"
     response: string;          // e.g. "SET", "DOWN & LOCKED", "TAKEOFF", "SET & CROSSCHECKED"
+    acceptedResponses?: string[]; // Voice aliases: ["down", "three green", "down and three green", "down and locked"]
     note?: string;             // Optional guidance or threshold
     checked?: boolean;         // In-flight execution status
 }

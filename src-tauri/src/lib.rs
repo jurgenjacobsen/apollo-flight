@@ -4,6 +4,7 @@ pub mod efb;
 pub mod navigraph_auth;
 pub mod navigraph_airac;
 pub mod navigraph_procedures;
+pub mod speech;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -150,6 +151,7 @@ pub fn run() {
                 logbook_read: Mutex::new(logbook_read_conn),
                 navdata: Mutex::new(navdata_conn),
             });
+            app.manage(speech::SpeechState::new());
 
             // Setup System Tray
             let open_item = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
@@ -342,7 +344,12 @@ pub fn run() {
             navigraph_airac::navigraph_check_airac_packages,
             navigraph_airac::navigraph_download_airac,
             navigraph_procedures::navigraph_get_airport_procedures,
-            navigraph_procedures::navigraph_calculate_airway_route
+            navigraph_procedures::navigraph_calculate_airway_route,
+            speech::get_speech_model_status,
+            speech::download_speech_model,
+            speech::start_speech_session,
+            speech::feed_speech_audio,
+            speech::stop_speech_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running apollo flight application");

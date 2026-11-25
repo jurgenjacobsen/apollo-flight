@@ -24,9 +24,14 @@ import {
     X,
     FileText,
     Check,
+    Mic,
+    MicOff,
+    Volume2,
 } from "lucide-react";
 import { Tooltip } from "../ui/Tooltip";
 import { ConfirmDeleteButton } from "../ui/ConfirmDeleteButton";
+import { useChecklistVoiceCopilot } from "../../hooks/useChecklistVoiceCopilot";
+import { formatKeyCodeLabel } from "../../utils/speechUtils";
 
 function matchesAircraft(
     association?: string,
@@ -97,6 +102,9 @@ export const ChecklistsView: React.FC = () => {
         importChecklists,
         currentTelemetry,
         flights,
+        voiceCopilotMicGranted,
+        setActiveView,
+        setSettingsActiveTab,
     } = useFlightStore();
 
     const [searchTerm, setSearchTerm] = useState("");
@@ -257,6 +265,9 @@ export const ChecklistsView: React.FC = () => {
 
     const handleResetSection = (checklistId: string, sectionId: string) => {
         resetChecklistSection(checklistId, sectionId);
+        if (copilot.activeSectionId === sectionId) {
+            copilot.resetCopilotState();
+        }
         setCollapsedSections((prev) => ({
             ...prev,
             [sectionId]: false,
@@ -265,8 +276,47 @@ export const ChecklistsView: React.FC = () => {
 
     const handleResetChecklist = (checklistId: string) => {
         resetChecklist(checklistId);
+        copilot.resetCopilotState();
         setCollapsedSections({});
     };
+
+    const copilot = useChecklistVoiceCopilot({
+        checklist: activeChecklist,
+        onItemCompleted: (sectionId, itemId) => {
+            if (!activeChecklist) return;
+            const latest = useFlightStore
+                .getState()
+                .checklists.find((c) => c.id === activeChecklist.id);
+            const sec = latest?.sections.find((s) => s.id === sectionId);
+            const item = sec?.items.find((i) => i.id === itemId);
+            if (!item?.checked) {
+                handleToggleItem(activeChecklist.id, sectionId, itemId);
+            }
+        },
+        onSetItemChecked: (sectionId, itemId, checked) => {
+            if (!activeChecklist) return;
+            const latest = useFlightStore
+                .getState()
+                .checklists.find((c) => c.id === activeChecklist.id);
+            const sec = latest?.sections.find((s) => s.id === sectionId);
+            const item = sec?.items.find((i) => i.id === itemId);
+            if (Boolean(item?.checked) !== checked) {
+                handleToggleItem(activeChecklist.id, sectionId, itemId);
+            }
+            if (!checked) {
+                setCollapsedSections((prev) => ({
+                    ...prev,
+                    [sectionId]: false,
+                }));
+            }
+        },
+        onSectionCompleted: (sectionId) => {
+            setCollapsedSections((prev) => ({
+                ...prev,
+                [sectionId]: true,
+            }));
+        },
+    });
 
     const handleExportSingle = (chk: Checklist) => {
         const cleanChk = resetChecklistChecks([chk])[0] || chk;
@@ -624,7 +674,49 @@ export const ChecklistsView: React.FC = () => {
                                     </div>
 
                                     {/* Checklist Actions */}
-                                    <div className="flex items-center gap-1.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <Tooltip
+                                            content={
+                                                !voiceCopilotMicGranted
+                                                    ? "Configure Microphone & Voice Co-Pilot in Settings"
+                                                    : copilot.isListening
+                                                    ? "Stop Voice Co-Pilot (Listening)"
+                                                    : "Start Interactive Hands-Free Voice Co-Pilot"
+                                            }
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (!voiceCopilotMicGranted) {
+                                                        setSettingsActiveTab("settings-checklists");
+                                                        setActiveView("settings");
+                                                        return;
+                                                    }
+                                                    if (copilot.isListening) {
+                                                        copilot.stopCopilot();
+                                                    } else {
+                                                        copilot.startCopilot();
+                                                    }
+                                                }}
+                                                className={`h-8 inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-sm transition-all shadow-xs cursor-pointer select-none ${
+                                                    copilot.isListening
+                                                        ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/20"
+                                                        : "bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+                                                }`}
+                                            >
+                                                {copilot.isListening ? (
+                                                    <Mic className="w-3.5 h-3.5 animate-pulse text-white" />
+                                                ) : (
+                                                    <MicOff className="w-3.5 h-3.5 opacity-80" />
+                                                )}
+                                                <span>
+                                                    {copilot.isListening
+                                                        ? "Co-Pilot Active"
+                                                        : "Voice Co-Pilot"}
+                                                </span>
+                                            </button>
+                                        </Tooltip>
+
                                         <Tooltip content="Reset all items in this checklist">
                                             <button
                                                 type="button"
@@ -718,6 +810,94 @@ export const ChecklistsView: React.FC = () => {
                                 })()}
                             </div>
 
+                            {/* Voice Co-Pilot Status & Interactive HUD */}
+                            {copilot.isListening && (
+                                <div className="p-3.5 px-4 bg-emerald-50/90 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-sm flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs animate-in fade-in duration-150">
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                        <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-medium">
+                                            {copilot.isSpeaking ? (
+                                                <Volume2 className="w-4 h-4 text-emerald-600 animate-pulse" />
+                                            ) : (
+                                                <Mic className="w-4 h-4 text-emerald-600 animate-pulse" />
+                                            )}
+                                            <span>
+                                                {copilot.isSpeaking
+                                                    ? "Co-Pilot Speaking Challenge..."
+                                                    : copilot.isPaused
+                                                    ? `Paused at "${copilot.currentChallenge || "section"}" — Say "Resume checklist"`
+                                                    : copilot.currentChallenge
+                                                    ? `Challenge: "${copilot.currentChallenge}" — Awaiting Response`
+                                                    : 'Say "<section> checklist" to begin (e.g. "Before Takeoff checklist")'}
+                                            </span>
+                                        </div>
+
+                                        {copilot.micMode === "ptt" && (
+                                            <span
+                                                className={`text-[11px] px-2 py-0.5 rounded font-semibold ${
+                                                    copilot.isPttActive
+                                                        ? "bg-amber-500 text-white"
+                                                        : "bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
+                                                }`}
+                                            >
+                                                {copilot.isPttActive
+                                                    ? "PTT Transmitting"
+                                                    : `Hold [${formatKeyCodeLabel(copilot.pttKey)}] to Talk`}
+                                            </span>
+                                        )}
+
+                                        {copilot.lastHeard && (
+                                            <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200">
+                                                Heard: "{copilot.lastHeard}"
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        {copilot.currentChallenge && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={copilot.previousItem}
+                                                    className="px-2.5 py-1 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-sm text-[11px] font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                                                >
+                                                    Previous
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={copilot.repeatCurrentChallenge}
+                                                    className="px-2.5 py-1 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-sm text-[11px] font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                                                >
+                                                    Say Again
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={copilot.skipCurrentItem}
+                                                    className="px-2.5 py-1 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-sm text-[11px] font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                                                >
+                                                    Skip Item
+                                                </button>
+                                                {copilot.isPaused && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={copilot.resumeCopilot}
+                                                        className="px-2.5 py-1 bg-emerald-600 text-white rounded-sm text-[11px] font-medium hover:bg-emerald-700 transition-colors cursor-pointer"
+                                                    >
+                                                        Resume
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={copilot.stopCopilot}
+                                            className="px-2.5 py-1 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900/40 rounded-sm text-[11px] font-medium hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors cursor-pointer"
+                                        >
+                                            Stop Voice
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Checklist Sections */}
                             <div className="space-y-4">
                                 {activeChecklist.sections.map((section, secIdx) => {
@@ -806,68 +986,80 @@ export const ChecklistsView: React.FC = () => {
                                             {/* Items List */}
                                             {!isCollapsed && (
                                                 <div className="divide-y divide-neutral-100 dark:divide-geist-hairline/60">
-                                                    {section.items.map((item) => (
-                                                        <div
-                                                            key={item.id}
-                                                            onClick={() =>
-                                                                handleToggleItem(
-                                                                    activeChecklist.id,
-                                                                    section.id,
-                                                                    item.id,
-                                                                )
-                                                            }
-                                                            className={`px-5 py-3 flex items-center justify-between gap-4 cursor-pointer select-none transition-colors ${
-                                                                item.checked
-                                                                    ? "bg-neutral-50/60 dark:bg-neutral-900/40 opacity-75"
-                                                                    : "hover:bg-neutral-50 dark:hover:bg-neutral-800/30"
-                                                            }`}
-                                                        >
-                                                            {/* Checkbox & Challenge */}
-                                                            <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                                                                <div
-                                                                    className={`w-4 h-4 rounded-xs flex items-center justify-center transition-colors shrink-0 ${
-                                                                        item.checked
-                                                                            ? "bg-emerald-500 text-white"
-                                                                            : "border border-neutral-300 dark:border-neutral-600 hover:border-neutral-500"
-                                                                    }`}
-                                                                >
-                                                                    {item.checked && (
-                                                                        <Check className="w-3 h-3 stroke-[3]" />
-                                                                    )}
-                                                                </div>
-
-                                                                <div className="flex-1 min-w-0">
+                                                    {section.items.map((item) => {
+                                                        const isChallenged =
+                                                            copilot.activeItemId === item.id;
+                                                        return (
+                                                            <div
+                                                                key={item.id}
+                                                                onClick={() =>
+                                                                    handleToggleItem(
+                                                                        activeChecklist.id,
+                                                                        section.id,
+                                                                        item.id,
+                                                                    )
+                                                                }
+                                                                className={`px-5 py-3 flex items-center justify-between gap-4 cursor-pointer select-none transition-colors ${
+                                                                    isChallenged
+                                                                        ? "bg-emerald-50/70 dark:bg-emerald-950/30 ring-1 ring-inset ring-emerald-500/80"
+                                                                        : item.checked
+                                                                        ? "bg-neutral-50/60 dark:bg-neutral-900/40 opacity-75"
+                                                                        : "hover:bg-neutral-50 dark:hover:bg-neutral-800/30"
+                                                                }`}
+                                                            >
+                                                                {/* Checkbox & Challenge */}
+                                                                <div className="flex items-center gap-3.5 flex-1 min-w-0">
                                                                     <div
-                                                                        className={`text-xs font-semibold ${
+                                                                        className={`w-4 h-4 rounded-xs flex items-center justify-center transition-colors shrink-0 ${
                                                                             item.checked
-                                                                                ? "line-through text-neutral-400 dark:text-neutral-500"
-                                                                                : "text-neutral-900 dark:text-[#ededed]"
+                                                                                ? "bg-emerald-500 text-white"
+                                                                                : "border border-neutral-300 dark:border-neutral-600 hover:border-neutral-500"
                                                                         }`}
                                                                     >
-                                                                        {item.challenge}
+                                                                        {item.checked && (
+                                                                            <Check className="w-3 h-3 stroke-[3]" />
+                                                                        )}
                                                                     </div>
-                                                                    {item.note && (
-                                                                        <div className="text-[11px] text-neutral-500 dark:text-neutral-400 italic mt-0.5">
-                                                                            {item.note}
+
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div
+                                                                            className={`text-xs font-semibold flex items-center gap-1.5 flex-wrap ${
+                                                                                item.checked
+                                                                                    ? "line-through text-neutral-400 dark:text-neutral-500"
+                                                                                    : "text-neutral-900 dark:text-[#ededed]"
+                                                                            }`}
+                                                                        >
+                                                                            <span>{item.challenge}</span>
+                                                                            {isChallenged && (
+                                                                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.2 rounded-xs">
+                                                                                    <Volume2 className="w-3 h-3 animate-pulse" />
+                                                                                    <span>Co-Pilot Challenge</span>
+                                                                                </span>
+                                                                            )}
                                                                         </div>
-                                                                    )}
+                                                                        {item.note && (
+                                                                            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 italic mt-0.5">
+                                                                                {item.note}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Response Badge */}
+                                                                <div className="shrink-0">
+                                                                    <span
+                                                                        className={`px-2 py-0.5 rounded-sm text-xs font-bold tracking-wide uppercase transition-colors ${
+                                                                            item.checked
+                                                                                ? "bg-neutral-100 dark:bg-neutral-800/80 text-neutral-400 dark:text-neutral-500"
+                                                                                : "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-2xs"
+                                                                        }`}
+                                                                    >
+                                                                        {item.response}
+                                                                    </span>
                                                                 </div>
                                                             </div>
-
-                                                            {/* Response Badge */}
-                                                            <div className="shrink-0">
-                                                                <span
-                                                                    className={`px-2 py-0.5 rounded-sm text-xs font-mono font-bold tracking-wide uppercase transition-colors ${
-                                                                        item.checked
-                                                                            ? "bg-neutral-100 dark:bg-neutral-800/80 text-neutral-400 dark:text-neutral-500"
-                                                                            : "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-2xs"
-                                                                    }`}
-                                                                >
-                                                                    {item.response}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
                                         </div>
@@ -1334,7 +1526,7 @@ const ChecklistEditorModal: React.FC<ChecklistEditorModalProps> = ({
                                                                 e.target.value,
                                                             )
                                                         }
-                                                        className="w-full px-2 py-1 text-xs font-mono rounded-sm border border-neutral-300 dark:border-geist-hairline bg-white dark:bg-black text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400 transition-colors"
+                                                        className="w-full px-2 py-1 text-xs rounded-sm border border-neutral-300 dark:border-geist-hairline bg-white dark:bg-black text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400 transition-colors"
                                                     />
                                                 </div>
 
