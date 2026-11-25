@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useEfbStore } from "../../store/efbStore";
 import { useFlightStore } from "../../store/flightStore";
+import { useSmoothedTelemetry } from "../../hooks/useSmoothedTelemetry";
 import { EfbHudView } from "./EfbHudView";
 import { EfbRouteView } from "./EfbRouteView";
 import { EfbIfrView } from "./EfbIfrView";
@@ -44,7 +45,8 @@ export const EfbCompanionApp: React.FC<EfbCompanionAppProps> = ({
         releaseWakeLock,
     } = useEfbStore();
 
-    const { currentTelemetry, updateTelemetry, theme, toggleTheme } = useFlightStore();
+    const { currentTelemetry: rawTelemetry, updateTelemetry, theme, toggleTheme } = useFlightStore();
+    const currentTelemetry = useSmoothedTelemetry(rawTelemetry);
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const wsClientRef = useRef<EfbWebSocketClient | null>(null);

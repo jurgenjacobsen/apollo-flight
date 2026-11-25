@@ -129,47 +129,6 @@ export const Sidebar: React.FC = () => {
                         </span>
                     </div>
                 </div>
-
-                {/* System & Connection Status */}
-                <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-geist-hairline overflow-hidden">
-                    <div className="relative min-h-[26px] flex items-center justify-center">
-                        {/* Expanded Status Pill & Telemetry Text */}
-                        <div
-                            className={`w-full transition-all duration-200 ease-in-out ${
-                                isSidebarCollapsed
-                                    ? "opacity-0 pointer-events-none absolute -translate-x-2"
-                                    : "opacity-100 translate-x-0"
-                            }`}
-                        >
-                            <StatusPill className="w-full justify-between" />
-                            {currentTelemetry.simConnected &&
-                                !currentTelemetry.isInMenu &&
-                                currentTelemetry.aircraftTitle &&
-                                currentTelemetry.aircraftTitle !==
-                                    "Standby (Waiting for MSFS)" &&
-                                currentTelemetry.aircraftTitle !==
-                                    "MSFS Main Menu / Loading" && (
-                                    <p
-                                        className="text-[11px] text-neutral-500 dark:text-geist-muted truncate px-0.5 mt-1"
-                                        title={currentTelemetry.aircraftTitle}
-                                    >
-                                        {currentTelemetry.aircraftTitle}
-                                    </p>
-                                )}
-                        </div>
-
-                        {/* Collapsed Compact Pill */}
-                        <div
-                            className={`transition-all duration-200 ease-in-out ${
-                                isSidebarCollapsed
-                                    ? "opacity-100 scale-100"
-                                    : "opacity-0 pointer-events-none absolute scale-90"
-                            }`}
-                        >
-                            <StatusPill compact />
-                        </div>
-                    </div>
-                </div>
             </div>
 
             {/* Nav List */}
@@ -191,7 +150,7 @@ export const Sidebar: React.FC = () => {
                                 <div
                                     className={`transition-all duration-200 ease-in-out ${
                                         isSidebarCollapsed
-                                            ? "my-1.5 mx-auto w-5 h-[1px] bg-neutral-200 dark:bg-[#262626] opacity-100"
+                                            ? "my-3 mx-auto w-5 h-[1px] bg-neutral-200 dark:bg-[#262626] opacity-100"
                                             : "max-h-0 opacity-0 pointer-events-none"
                                     }`}
                                 />

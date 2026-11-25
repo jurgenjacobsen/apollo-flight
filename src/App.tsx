@@ -23,6 +23,7 @@ import { isEfbMode } from "./services/efbService";
 import { useEfbStore } from "./store/efbStore";
 import { ImportModal } from "./components/modals/ImportModal";
 import { OnboardingModal } from "./components/modals/OnboardingModal";
+import { SystemErrorModal } from "./components/modals/SystemErrorModal";
 import { SimBridge } from "./components/bridge/SimBridge";
 import { TouchdownFlyoutBanner } from "./components/telemetry/TouchdownFlyoutBanner";
 import { TouchdownOverlayWindow } from "./components/telemetry/TouchdownOverlayWindow";
@@ -208,6 +209,9 @@ export const App: React.FC = () => {
                 isOpen={showOnboarding}
                 onClose={() => setShowOnboarding(false)}
             />
+
+            {/* Dedicated System Error & Alert Notification Modal */}
+            <SystemErrorModal />
 
             {/* Instant Touchdown Dynamics Flyout Banner */}
             <TouchdownFlyoutBanner />

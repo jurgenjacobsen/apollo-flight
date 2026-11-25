@@ -21,6 +21,7 @@ import {
     getCandidateAirports,
 } from "../../services/routeGenerator";
 import { Tooltip } from "../ui/Tooltip";
+import { ARCGIS_WORLD_IMAGERY_ATTRIBUTION, ARCGIS_WORLD_IMAGERY_URL } from "../../utils/mapTiles";
 import {
     MapContainer,
     TileLayer,
@@ -2612,8 +2613,8 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                         />
                                         <MapFitRouteControl onFit={handleFocusRoute} />
                                         <TileLayer
-                                            attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
-                                            url="https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                                            attribution={ARCGIS_WORLD_IMAGERY_ATTRIBUTION}
+                                            url={ARCGIS_WORLD_IMAGERY_URL}
                                             maxZoom={19}
                                         />
 

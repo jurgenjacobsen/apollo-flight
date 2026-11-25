@@ -8,6 +8,7 @@ import {
     useMap,
 } from "react-leaflet";
 import L from "leaflet";
+import { ARCGIS_WORLD_IMAGERY_ATTRIBUTION, ARCGIS_WORLD_IMAGERY_URL } from "../../utils/mapTiles";
 import {
     Navigation,
     Plane,
@@ -281,8 +282,8 @@ export const DebriefMap: React.FC<DebriefMapProps> = ({
                     >
                         <ChangeView bounds={bounds} />
                         <TileLayer
-                            attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
-                            url="https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                            attribution={ARCGIS_WORLD_IMAGERY_ATTRIBUTION}
+                            url={ARCGIS_WORLD_IMAGERY_URL}
                             maxZoom={19}
                         />
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useFlightStore } from "../../store/flightStore";
 import { formatVisibility, formatWindSpeed, formatTemperature } from "../../utils/weatherUnits";
+import { ARCGIS_WORLD_IMAGERY_ATTRIBUTION, ARCGIS_WORLD_IMAGERY_URL } from "../../utils/mapTiles";
 import { TouchdownFlyoutBanner } from "../telemetry/TouchdownFlyoutBanner";
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -199,8 +200,8 @@ export const EfbHudView: React.FC = () => {
                     className="h-full w-full z-0"
                 >
                     <TileLayer
-                        attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
-                        url="https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                        attribution={ARCGIS_WORLD_IMAGERY_ATTRIBUTION}
+                        url={ARCGIS_WORLD_IMAGERY_URL}
                         maxZoom={19}
                     />
 
