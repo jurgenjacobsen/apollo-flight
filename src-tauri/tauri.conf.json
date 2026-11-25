@@ -62,7 +62,9 @@
       "../data/airports.csv",
       "../data/countries.csv",
       "../data/runways.csv",
-      "../docs"
+      "../docs",
+      "../models",
+      "../THIRD_PARTY_NOTICES.md"
     ]
   },
   "plugins": {

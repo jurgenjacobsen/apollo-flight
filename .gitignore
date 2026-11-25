@@ -57,6 +57,10 @@ ehthumbs.db
 coverage/
 .nyc_output/
 
+# Offline Speech Models & Binaries (downloaded or bundled)
+models/*
+!models/README.md
+
 # Temporary Export Files in Root
 /*.gpx
 /*.kml

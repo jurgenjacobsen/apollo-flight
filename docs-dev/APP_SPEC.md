@@ -9,24 +9,27 @@
 
 ### Backend & Middleware (Rust / Tauri v2)
 - **Framework:** Tauri v2 (Rust-backed desktop runtime).
-- **IPC / Sim Bridge:** FSUIPC7 via Windows Message/Shared Memory IPC (`fsuipc` crate v0.5.1).
-- **Database Architecture:** Partitioned SQLite database via `rusqlite` with Write-Ahead Logging (`PRAGMA journal_mode = WAL`):
-  - `logbook.db`: Stores flights, telemetry points, visited stats, saved routes, user settings, document metadata, and schema migrations.
+- **IPC / Sim Bridge:** Abstracted `FlightDataProvider` trait (`src-tauri/src/fsuipc.rs`) with `FsuipcProvider` (FSUIPC7 via Windows shared-memory IPC, `fsuipc` crate v0.5.1) and `MockProvider` (offline replay/JSON trace testing).
+- **Database Architecture & Repository Layer:** Partitioned SQLite database via `rusqlite` with Write-Ahead Logging (`PRAGMA journal_mode = WAL`), separated writer (`logbook`) and read-only (`logbook_read`) connections, and an abstract `FlightRepository` trait (`SqliteFlightRepository` in `src-tauri/src/db/repository.rs`) decoupling Tauri commands from SQLite:
+  - `logbook.db`: Stores flights, RDP-downsampled telemetry points, visited stats, saved routes, user settings, document metadata, and schema migrations.
   - `navdata.db`: Stores OurAirports global navigation data (86,000+ aerodromes, runways, dimensions, lighting, and surfaces).
   - *Automated Partitioning:* Automatically migrates and splits legacy single-file `aerotrack.db` into `logbook.db` and `navdata.db` upon launch.
+- **Offline Speech Recognition (STT):** Embedded `libvosk.dll` + `vosk-model-small-en-us-0.15` (`src-tauri/src/speech.rs`) for 100% offline hands-free checklist recognition.
+- **SimBrief & Navigraph Integration:** PKCE OAuth 2.0 authentication and local AIRAC/procedure queries (`navigraph_auth.rs`, `navigraph_airac.rs`, `navigraph_procedures.rs`).
 - **Embedded EFB Web Server:** Lightweight asynchronous HTTP & WebSocket server built with `tokio` and `axum`, running on a configurable dynamic port (default 24820; random range 24000–29999).
-- **Async Runtime:** `tokio` for background FSUIPC polling, EFB WebSocket broadcasting, and non-blocking database operations.
-- **Serialization:** `serde`, `serde_json` for crossing the Tauri IPC bridge.
-- **Native OS Dialogs:** Native Explorer save dialogs for multi-format flight track exports (GPX, KML, GeoJSON, CSV).
-- **Backward Compatibility:** All system updates accommodate older app versions and databases via non-destructive migrations (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN`), graceful payload degradation, and automated legacy data backfills.
+- **Async Runtime:** `tokio` for background provider polling, EFB WebSocket broadcasting, and non-blocking database operations.
+- **Native OS Dialogs:** Native Explorer save dialogs for multi-format flight track exports (GPX, KML, GeoJSON, CSV, JSON).
+- **Backward Compatibility:** Non-destructive additive migrations (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN`), graceful payload degradation, and automated legacy data backfills.
 
-### Frontend (Desktop UI)
-- **Framework:** React 19 + TypeScript + Vite.
-- **Styling:** Tailwind CSS + custom accessible UI components (`Select`, `Checkbox`, `Tooltip`, collapsible accordions) following Vercel Geist design system guidelines.
-- **Mapping:** Leaflet (`react-leaflet`) with **ArcGIS World Imagery** satellite tiles (`https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`), GeoJSON vector boundaries, altitude-gradient polyline tracks, and custom plane markers.
+### Frontend (Desktop UI) & Tooling
+- **Framework:** React 19 + TypeScript 5.7 + Vite 6.
+- **Styling:** Tailwind CSS + custom accessible UI components (`Select`, `Checkbox`, `Tooltip`, `ErrorBoundary`, `SystemErrorModal`) following Vercel Geist design system guidelines.
+- **Mapping:** Leaflet (`react-leaflet`) with **ArcGIS World Imagery** satellite tiles and shared Esri attribution (`src/utils/mapTiles.ts`), GeoJSON vector boundaries, altitude-gradient polyline tracks, and custom plane markers.
 - **Charts:** Recharts for flight profiles (Altitude MSL and Ground Speed vs Time) with crosshair scrubbing.
 - **Canvas / Vector Rendering:** HTML5 Canvas for real-time instrument, Navaid (NAV1, NAV2, ADF), and Holding Pattern procedural visualizations.
-- **State Management:** Zustand with persistence (`zustand/middleware`). Full telemetry coordinate trajectories are loaded lazily on demand from SQLite via `get_flight_details` to optimize logbook and startup performance.
+- **State Management & Display Smoothing:** Zustand with persistence (`zustand/middleware`). Live telemetry displays use `useSmoothedTelemetry` (`requestAnimationFrame` exponential interpolation) with `tabular-nums` and directional attitude formatting (`Up`/`Down`, `Left`/`Right`).
+- **Live Air Traffic Harness:** Extensible `LiveTrafficProvider` registry (`src/services/trafficService.ts`) normalizing VATSIM, IVAO, and PilotEdge public JSON feeds.
+- **Testing & CI/CD:** Vitest + React Testing Library (`pnpm test`, 69 tests), Cargo unit tests (`cargo test --lib`, 23 tests), ESLint + Prettier, synchronized versioning (`scripts/sync-version.mjs`), and GitHub Actions CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) & multi-platform release ([`.github/workflows/release.yml`](../.github/workflows/release.yml)).
 
 ---
 
@@ -252,11 +255,14 @@ Registered in `src-tauri/src/lib.rs` and consumed via `safeInvoke`:
 * `get_user_setting(key: String) -> Result<Option<String>, String>`: Fetches user setting from `user_settings`.
 * `set_user_setting(key: String, value: String) -> Result<(), String>`: Persists setting key-value pair.
 * `get_all_user_settings() -> Result<HashMap<String, String>, String>`: Hydrates client settings on launch.
-* `get_flights() -> Result<Vec<FlightRecord>, String>`: Fetches flight summary headers ordered by `start_time DESC`.
-* `get_flight_details(flight_id: String) -> Result<FlightDetails, String>`: Lazily fetches a flight with full `flight_telemetry` coordinates, environmental summaries, and touchdown events.
-* `delete_flight(flight_id: String) -> Result<(), String>`: Permanently deletes flight or moves to trash.
-* `export_flight(flight_id: String, format: String) -> Result<String, String>`: Prompts native file save dialog and exports GPX, KML, GeoJSON, or CSV track.
-* `export_logbook(format: String) -> Result<String, String>`: Exports logbook summaries without telemetry.
+* `get_flights() -> Result<Vec<FlightRecord>, String>`: Fetches flight summary headers via `FlightRepository` ordered by `start_time DESC`.
+* `get_flight_details(id: String, downsample: Option<bool>) -> Result<Option<FlightDetails>, String>`: Lazily fetches a flight with optional Ramer-Douglas-Peucker downsampled `flight_telemetry`, environmental summaries, and touchdown events via `FlightRepository`.
+* `get_downsampled_flight_telemetry(id: String, max_points: Option<usize>) -> Result<Vec<TelemetryPointRecord>, String>`: Fetches downsampled track points via `FlightRepository`.
+* `delete_flight(id: String) -> Result<(), String>`: Deletes flight via `FlightRepository`.
+* `export_flight(id: String, format: String) -> Result<String, String>`: Exports GPX, KML, GeoJSON, or CSV track via `FlightRepository`.
+* `export_logbook(format: String) -> Result<String, String>`: Exports logbook summaries without telemetry via `FlightRepository`.
+* `get_speech_model_status()`, `download_speech_model()`, `start_speech_session(grammar)`, `feed_speech_audio(samples)`, `stop_speech_session()`: Offline Vosk STT model lifecycle and audio streaming.
+* `navigraph_start_device_auth()`, `navigraph_poll_device_token()`, `navigraph_get_auth_status()`, `navigraph_logout()`, `navigraph_get_airac_status()`, `navigraph_get_airport_procedures()`, `navigraph_calculate_airway_route()`: Navigraph PKCE OAuth 2.0 and AIRAC procedures.
 * `search_airports_near(lat: f64, lon: f64, radius_nm: f64) -> Result<Option<Airport>, String>`: Proximity detection within `radius_nm` (default 3.0 NM).
 * `get_visited_stats() -> Result<VisitedStats, String>`: Returns aggregated aerodrome and sovereign country stats.
 * `get_airports_count() -> Result<i64, String>`: Total count of indexed aerodromes.
@@ -269,21 +275,18 @@ Registered in `src-tauri/src/lib.rs` and consumed via `safeInvoke`:
 
 ### Module 1: Flight Tracking, Touchdown Analysis & Flight Logbook
 
-#### 1. Discrete 7-Stage Flight Lifecycle State Machine
-1. `BOARDING`: Sim connected, aircraft stationary on ground, engines off or starting.
-2. `TAXI_OUT`: On ground, ground speed between 3 kts and 35 kts.
-3. `TAKEOFF_CLIMB`: `is_on_ground` transitions `1 -> 0` with IAS > 45 kts.
-   - Triggers `flights` record insertion (`status: 'RECORDING'`).
-   - Resolves Origin ICAO from nearest airport threshold within 3 NM.
-4. `ENROUTE_CRUISE`: Airborne, vertical speed within ±150 fpm for > 60 seconds at cruise altitude.
-5. `DESCENT_APPROACH`: Sustained negative vertical speed (< -300 fpm) descending toward destination.
-6. `TOUCHDOWN_ROLLOUT`: `is_on_ground` transitions `0 -> 1`.
-   - Fires real-time `TouchdownFlyoutBanner` with instantaneous metrics.
-   - Captures vertical sink rate, ground speed, pitch, bank, G-force, wind vectors, and sideslip drift.
-   - Debounces micro-gear bounces (4-second threshold) while supporting multi-touchdown flights (touch-and-goes).
-7. `ARRIVED`: Aircraft stationary (< 2.0 kts) for > 30 seconds AND one or more engines shut down.
-   - If stopped at an intermediate airport of a saved multi-sector route, prompts user with continuation safeguard before finalizing.
-   - Resolves Destination ICAO, marks `status: 'COMPLETED'`, and updates visited records.
+#### 1. 10-Stage Aeronautical Flight Lifecycle State Machine
+Uses an Exponential Moving Average (EMA, $\alpha = 0.25$) vertical speed filter, replay/slew suppression, and approach-zone guards:
+1. `BOARDING`: Sim connected, aircraft stationary on ground (`GS < 3 kt`), engines off.
+2. `TAXI_OUT`: On ground (`3 <= GS <= 40 kt`) or engine combustion started.
+3. `TAKEOFF_CLIMB`: `GS > 20 kt`, rotor climb, or airborne climb (`VS > 200 fpm` outside approach zone). Triggers `flights` record (`status: 'RECORDING'`) and resolves Origin ICAO within 5 NM.
+4. `ENROUTE_CRUISE`: Airborne, `|smoothedVS| <= 160 fpm` at cruise altitude (`> 5,000 ft MSL` or after reaching `>= 9,000 ft`).
+5. `DESCENT_APPROACH`: `smoothedVS < -280 fpm` enroute, or `< -120 fpm` within approach zone (`< 3,500 ft AGL`) to prevent shallow glideslope traps.
+6. `GO_AROUND`: Strong climb (`smoothedVS > 400 fpm`) from `DESCENT_APPROACH` / `< 2,500 ft AGL` after reaching high altitude; increments `goAroundsCount`.
+7. `TOUCHDOWN_ROLLOUT`: `is_on_ground` transitions `0 -> 1` (not in replay/slew). Fires `TouchdownFlyoutBanner`, captures sink rate (`0x030C` normal velocity preferred), pitch/bank (`Up`/`Down`, `Left`/`Right`), G-force, and debounces bounces within 8 seconds.
+8. `TOUCH_AND_GO`: Liftoff (`smoothedVS > 150 fpm`) following a recent touchdown without full stop; increments `circuitLandingsCount`.
+9. `TAXI_IN`: Ground speed drops below `35 kt` after touchdown rollout.
+10. `ARRIVED`: Stationary (`GS < 2 kt`) for `>= 30 s` AND `allEnginesStopped == true`. Prompts on saved multi-sector intermediate stops or manual flights; otherwise resolves Destination ICAO, marks `status: 'COMPLETED'`, and updates visited stats.
 
 #### 2. Touchdown Analysis & Physics Model
 - **Instantaneous Banner (`TouchdownFlyoutBanner.tsx`):**
@@ -374,10 +377,15 @@ Embedded local Wi-Fi companion served by the Rust Axum web server:
 
 ---
 
-### Module 6: Aircraft Checklists Engine (`ChecklistsView.tsx`)
+### Module 6: Aircraft Checklists & Voice Co-Pilot (`ChecklistsView.tsx`)
 - Standard Operating Procedures (SOP) flow cards with collapsible procedure categories (Normal, Emergency, Abnormal).
 - Dynamic aircraft title association: Automatically detects active MSFS aircraft title and highlights or floats matching checklists to the top.
 - Full custom checklist creation, editing, and JSON import/export routines.
+- **Hands-Free Voice Co-Pilot (`useChecklistVoiceCopilot.ts` & `speechUtils.ts`):**
+  - 100% offline speech recognition via Rust-backed **Vosk** (`libvosk.dll` + `vosk-model-small-en-us-0.15`) paired with Web Speech TTS readbacks and Web Audio cockpit chimes.
+  - SOP section activation requires `"<section> checklist"`, confirms `"<section> checklist"`, and reads items with natural human pauses.
+  - Supports `"Say again"`, `"Next item"` / `"Skip"`, `"Previous item"` / `"Go back"` (unchecks target item), `"Stop"` / `"Resume checklist"`, `"Finish checklist"`, and `"Help"` / `"What do I say"` (`"For <item>, say <answer>"`).
+  - Normalizes aviation compounds (`take-off` / `take off` / `takeoff`), expands abbreviations for TTS, and supports both **Always On** and **Push-to-Talk (PTT)** modes with custom keybinding.
 
 ---
 
@@ -391,13 +399,14 @@ Embedded local Wi-Fi companion served by the Rust Axum web server:
 
 ### Module 8: Settings & Preferences (`SettingsView.tsx` - Rework V3)
 Redesigned with a master-detail sub-sidebar navigation deck and dedicated section pages:
-1. **General & Units:** Close to system tray toggle, dark/light theme, and measurement unit selectors (Weight: lbs/kg, Visibility: SM/m-km, Wind Speed: kt/mps, Temperature: °C/°F).
-2. **Recording Rules:** Auto-start recording triggers, detailed telemetry toggle, and flight stop rollout safeguards.
+1. **General & Units:** Close to system tray toggle, dark/light theme, measurement unit selectors (Weight: lbs/kg, Visibility: SM/m-km, Wind Speed: kt/mps, Temperature: °C/°F), and Live Air Traffic Network selector (`Off`, `VATSIM`, `IVAO`, `PilotEdge`).
+2. **Recording Rules:** Auto-start recording triggers, detailed telemetry toggle, touchdown notification mode/position/duration, and flight stop rollout safeguards.
 3. **Datasets & Airports:** Global aerodromes database status, runway dimensions cache, and in-app OurAirports live synchronization.
 4. **EFB Companion:** Server mode (Off / On / Auto), dynamic listening port with randomizer, LAN URL, and QR code pairing drawer.
 5. **Documentation:** Custom indexed directories list, folder picker dialog, manual directory entry, and live file watching switch.
-6. **Backup & Export:** Logbook page size selector (25, 50, 100, 250), full/partial Apollo JSON bundle export, JSON import modal, and Recycle Bin quick-access.
-7. **About & Runtime:** Core application version, FSUIPC7 bridge connection diagnostics, integrated software update checker and installer, and MIT open-source license.
+6. **Checklists & Voice:** Microphone permission, input/output audio device selection, Always On vs. Push-to-Talk (PTT) keybinding, and live Vosk speech test checklist.
+7. **Backup & Export:** Logbook page size selector (25, 50, 100), full/partial Apollo JSON bundle export, JSON import modal, and Recycle Bin quick-access.
+8. **About & Runtime:** Core application version, FSUIPC7 bridge connection diagnostics, integrated software update checker and installer, and MIT open-source license.
 
 ---
 
@@ -433,10 +442,15 @@ Redesigned with a master-detail sub-sidebar navigation deck and dedicated sectio
 - [x] **Phase 20:** Atmospheric & environmental weather unit preferences (Visibility: SM vs metric; Wind Speed: kt vs m/s; Temperature: °C vs °F; Weight: lbs vs kg).
 - [x] **Phase 21:** Settings UI Rework V3 (master-detail sub-sidebar navigation deck with dedicated section tabs).
 
-### Future Roadmap
-- [ ] **Phase 22: Testing Unit & Error Management:** Standalone simulated FSUIPC test harness for offline development and end-to-end integration testing.
-- [ ] **Phase 23: Pilot Onboarding & First-Run Walkthrough:** Interactive introductory tour for first-time application configuration.
-- [ ] **Phase 99: Eventual Long-Term Architecture:**
-  - [ ] Rust trait-based abstract repository layer (`FlightRepository`).
-  - [ ] Voice Recognition for Checklists (Virtual Co-Pilot via local Web Speech / whisper.cpp – see [VOICE_CHECKLISTS_SPEC.md](VOICE_CHECKLISTS_SPEC.md)).
+- [x] **Phase 22: Automated Testing, CI/CD & Error Management:**
+  - Frontend Vitest + React Testing Library suite (69 tests) and Rust Cargo unit test suite (23 tests covering `FsuipcConversions`, in-memory SQLite, OurAirports CSV, `MockProvider`, and `FlightRepository`).
+  - `ErrorBoundary`, `SystemErrorModal`, GitHub Actions PR/tag CI (`.github/workflows/ci.yml`), ESLint/Prettier tooling, and synchronized package versioning (`scripts/sync-version.mjs`).
+- [x] **Phase 23: Pilot Onboarding & First-Run Walkthrough:** Interactive onboarding modal (`OnboardingModal.tsx`).
+- [x] **Phase 99 (Completed Foundations):**
+  - [x] Rust trait-based abstract repository layer (`FlightRepository` / `SqliteFlightRepository`).
+  - [x] Offline Voice Recognition for Checklists (Vosk STT + Web Speech TTS — see [VOICE_CHECKLISTS_SPEC.md](VOICE_CHECKLISTS_SPEC.md)).
+  - [x] Adaptable Live Air Traffic ingestion harness (`VATSIM`, `IVAO`, `PilotEdge` JSON feeds) + Settings configuration.
+- [ ] **Remaining Post-V1 Roadmap:**
+  - [ ] Live Air Traffic map/EFB target rendering & native SimConnect provider (`SimConnectProvider`).
+  - [ ] Takeoff & Landing Performance Calculator (TOLD).
   - [ ] Optional cloud sync alignment (PostgreSQL / Supabase) for multi-workstation pilot profiles.
