@@ -10,26 +10,37 @@ import {
     Archive,
     Tablet,
     BookOpen,
+    Mic,
+    Ruler,
 } from "lucide-react";
 
 import packageJson from "../../../package.json";
 import { ImportModal } from "../modals/ImportModal";
 
 import { GeneralUnitsTab } from "./settings/GeneralUnitsTab";
+import { MeasurementUnitsTab } from "./settings/MeasurementUnitsTab";
 import { RecordingRulesTab } from "./settings/RecordingRulesTab";
 import { DispatchNavdataTab } from "./settings/DispatchNavdataTab";
 import { EfbCompanionTab } from "./settings/EfbCompanionTab";
 import { DocumentationTab } from "./settings/DocumentationTab";
+import { ChecklistsSettingsTab } from "./settings/ChecklistsSettingsTab";
 import { BackupExportTab } from "./settings/BackupExportTab";
 import { AboutTab } from "./settings/AboutTab";
 
 const SETTINGS_SECTIONS = [
     {
         id: "settings-window",
-        label: "General & Measurement Units",
-        shortLabel: "General & Units",
-        description: "Window lifecycle, dark theme, and measurement units",
+        label: "General Settings",
+        shortLabel: "General",
+        description: "Window lifecycle, dark theme, pagination, and live traffic feed",
         icon: AppWindow,
+    },
+    {
+        id: "settings-units",
+        label: "Units of Measurement",
+        shortLabel: "Units",
+        description: "Aircraft weight, visibility, wind speed, and temperature units",
+        icon: Ruler,
     },
     {
         id: "settings-recording",
@@ -58,6 +69,13 @@ const SETTINGS_SECTIONS = [
         shortLabel: "Documentation",
         description: "Custom document directories and real-time filesystem sync",
         icon: BookOpen,
+    },
+    {
+        id: "settings-checklists",
+        label: "Checklists & Voice Co-Pilot",
+        shortLabel: "Checklists & Voice",
+        description: "Microphone permissions, voice recognition, and virtual co-pilot settings",
+        icon: Mic,
     },
     {
         id: "settings-data",
@@ -142,20 +160,20 @@ export const SettingsView: React.FC = () => {
                                     key={sec.id}
                                     type="button"
                                     onClick={() => setActiveSection(sec.id)}
-                                    className={`w-full flex items-start gap-3 p-2.5 rounded-sm text-left transition-colors cursor-pointer select-none ${
+                                    className={`w-full flex items-center gap-3 p-2.5 rounded-sm text-left transition-colors cursor-pointer select-none ${
                                         isActive
                                             ? "bg-white dark:bg-geist-surface text-neutral-900 dark:text-white shadow-xs border border-neutral-200/80 dark:border-geist-hairline font-medium"
                                             : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100/70 dark:hover:bg-[#161616] border border-transparent"
                                     }`}
                                 >
                                     <div
-                                        className={`p-1.5 rounded-sm mt-0.5 shrink-0 ${
+                                        className={`w-[34px] h-[34px] flex items-center justify-center rounded-sm shrink-0 ${
                                             isActive
                                                 ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
                                                 : "bg-neutral-200/60 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
                                         }`}
                                     >
-                                        <Icon className="w-3.5 h-3.5" />
+                                        <Icon className="w-[18px] h-[18px]" />
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="text-xs font-medium truncate">
@@ -194,6 +212,10 @@ export const SettingsView: React.FC = () => {
                             <GeneralUnitsTab notifySaved={notifySaved} />
                         )}
 
+                        {activeSection === "settings-units" && (
+                            <MeasurementUnitsTab notifySaved={notifySaved} />
+                        )}
+
                         {activeSection === "settings-recording" && (
                             <RecordingRulesTab notifySaved={notifySaved} />
                         )}
@@ -208,6 +230,10 @@ export const SettingsView: React.FC = () => {
 
                         {activeSection === "settings-documentation" && (
                             <DocumentationTab notifySaved={notifySaved} />
+                        )}
+
+                        {activeSection === "settings-checklists" && (
+                            <ChecklistsSettingsTab notifySaved={notifySaved} />
                         )}
 
                         {activeSection === "settings-data" && (

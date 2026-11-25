@@ -1,5 +1,6 @@
 import React from "react";
 import { useFlightStore } from "../../../store/flightStore";
+import { LIVE_TRAFFIC_NETWORK_OPTIONS } from "../../../types/traffic";
 import { Sun, Moon } from "lucide-react";
 
 interface GeneralUnitsTabProps {
@@ -14,14 +15,8 @@ export const GeneralUnitsTab: React.FC<GeneralUnitsTabProps> = ({ notifySaved })
         setPageSize,
         theme,
         setTheme,
-        weightUnit,
-        setWeightUnit,
-        visibilityUnit,
-        setVisibilityUnit,
-        windSpeedUnit,
-        setWindSpeedUnit,
-        temperatureUnit,
-        setTemperatureUnit,
+        liveTrafficNetwork,
+        setLiveTrafficNetwork,
     } = useFlightStore();
 
     const handleToggleCloseToTray = async () => {
@@ -160,192 +155,40 @@ export const GeneralUnitsTab: React.FC<GeneralUnitsTabProps> = ({ notifySaved })
                     </div>
                 </div>
 
-                {/* Preference: Aircraft Weight Units */}
+                {/* Preference: Live Air Traffic Feed */}
                 <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="space-y-1 max-w-xl">
                         <div className="flex items-center gap-2">
                             <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
-                                Aircraft Weight Units
+                                Live Air Traffic Network
                             </h3>
                         </div>
                         <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                            Choose whether weight
-                            units across pages are displayed in
-                            kilograms or pounds.
+                            Select an online ATC network public JSON feed
+                            (VATSIM, IVAO, or PilotEdge) for live traffic
+                            ingestion, or disable network traffic.
                         </p>
                     </div>
 
                     <div className="shrink-0 flex items-center">
                         <div className="inline-flex items-center rounded-sm overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline p-0.5 gap-1">
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await setWeightUnit("kg");
-                                    notifySaved();
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
-                                    weightUnit === "kg"
-                                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
-                                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
-                                }`}
-                            >
-                                <span>Kilograms (kg)</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await setWeightUnit("lbs");
-                                    notifySaved();
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
-                                    weightUnit === "lbs"
-                                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
-                                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
-                                }`}
-                            >
-                                <span>Pounds (lbs)</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Preference: Atmospheric Visibility Units */}
-                <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-1 max-w-xl">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
-                                Atmospheric Visibility Units
-                            </h3>
-                        </div>
-                        <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                            Choose whether atmospheric visibility across telemetry displays, debrief charts, and EFB is shown in Statute Miles or Meters / Kilometers.
-                        </p>
-                    </div>
-
-                    <div className="shrink-0 flex items-center">
-                        <div className="inline-flex items-center rounded-sm overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline p-0.5 gap-1">
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await setVisibilityUnit("sm");
-                                    notifySaved();
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
-                                    visibilityUnit === "sm"
-                                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
-                                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
-                                }`}
-                            >
-                                <span>Statute Miles (SM)</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await setVisibilityUnit("metric");
-                                    notifySaved();
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
-                                    visibilityUnit === "metric"
-                                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
-                                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
-                                }`}
-                            >
-                                <span>Meters / Kilometers (m / km)</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Preference: Wind Speed Units */}
-                <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-1 max-w-xl">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
-                                Wind Speed Units
-                            </h3>
-                        </div>
-                        <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                            Choose whether wind velocity, gusts, and crosswind vectors are formatted in Knots (kt) or Meters per second (m/s).
-                        </p>
-                    </div>
-
-                    <div className="shrink-0 flex items-center">
-                        <div className="inline-flex items-center rounded-sm overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline p-0.5 gap-1">
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await setWindSpeedUnit("kt");
-                                    notifySaved();
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
-                                    windSpeedUnit === "kt"
-                                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
-                                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
-                                }`}
-                            >
-                                <span>Knots (kt)</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await setWindSpeedUnit("mps");
-                                    notifySaved();
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
-                                    windSpeedUnit === "mps"
-                                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
-                                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
-                                }`}
-                            >
-                                <span>Meters / sec (m/s)</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Preference: Temperature Units */}
-                <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-1 max-w-xl">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-xs sm:text-sm font-medium text-neutral-900 dark:text-white">
-                                Temperature Units
-                            </h3>
-                        </div>
-                        <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
-                            Choose whether static air temperature (OAT/TAT) and environmental metrics are formatted in Celsius (°C) or Fahrenheit (°F).
-                        </p>
-                    </div>
-
-                    <div className="shrink-0 flex items-center">
-                        <div className="inline-flex items-center rounded-sm overflow-hidden bg-neutral-100 dark:bg-[#222222] border border-neutral-300 dark:border-geist-hairline p-0.5 gap-1">
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await setTemperatureUnit("c");
-                                    notifySaved();
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
-                                    temperatureUnit === "c"
-                                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
-                                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
-                                }`}
-                            >
-                                <span>Celsius (°C)</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await setTemperatureUnit("f");
-                                    notifySaved();
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
-                                    temperatureUnit === "f"
-                                        ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
-                                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
-                                }`}
-                            >
-                                <span>Fahrenheit (°F)</span>
-                            </button>
+                            {LIVE_TRAFFIC_NETWORK_OPTIONS.map((opt) => (
+                                <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={async () => {
+                                        await setLiveTrafficNetwork(opt.value);
+                                        notifySaved();
+                                    }}
+                                    className={`px-3 py-1.5 text-xs font-semibold rounded-xs transition-colors ${
+                                        liveTrafficNetwork === opt.value
+                                            ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs"
+                                            : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                                    }`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>
