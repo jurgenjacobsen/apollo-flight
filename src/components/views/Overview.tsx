@@ -9,10 +9,13 @@ import {
     useMap,
 } from "react-leaflet";
 import L from "leaflet";
+import { ARCGIS_WORLD_IMAGERY_ATTRIBUTION, ARCGIS_WORLD_IMAGERY_URL } from "../../utils/mapTiles";
 import {
     useFlightStore,
     safeInvoke,
 } from "../../store/flightStore";
+import { useSmoothedTelemetry } from "../../hooks/useSmoothedTelemetry";
+import { formatPitchParts, formatRollParts } from "../../utils/flightFormatters";
 import { Airport, Runway } from "../../types/flight";
 import { FALLBACK_AIRPORTS } from "../../data/fallbackAirports";
 import {
@@ -341,9 +344,9 @@ const AirportPopupContent: React.FC<{
                         {runways.map((r) => (
                             <div
                                 key={r.id}
-                                className="flex items-center justify-between text-[11px] bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded font-mono"
+                                className="flex items-center justify-between text-[11px] bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded"
                             >
-                                <span className="text-neutral-800 dark:text-neutral-200">
+                                <span className="text-neutral-800 dark:text-neutral-200 tabular-nums">
                                     {r.lengthFt ?? "?"} x {r.widthFt ?? "?"} ft
                                 </span>
                                 <span className="text-[10px] text-neutral-600 dark:text-neutral-400 font-sans">
@@ -416,7 +419,7 @@ const AirportPopupContent: React.FC<{
 
 export const Overview: React.FC = () => {
     const {
-        currentTelemetry,
+        currentTelemetry: rawTelemetry,
         activeFlight,
         flightStage,
         startManualFlight,
@@ -431,6 +434,7 @@ export const Overview: React.FC = () => {
         theme,
         setActiveView,
     } = useFlightStore();
+    const currentTelemetry = useSmoothedTelemetry(rawTelemetry);
 
     // Map controls & layer data
     const [isFollow, setIsFollow] = useState(true);
@@ -738,151 +742,121 @@ export const Overview: React.FC = () => {
 
             {/* Telemetry Metric Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {/* ALTITUDE */}
                 <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
-                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
-                        <span>Altitude MSL</span>
+                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
+                        <span>Altitude</span>
                         <Gauge className="w-3.5 h-3.5 text-neutral-400" />
                     </div>
-                    <div className="text-2xl font-semibold text-neutral-900 dark:text-white tabular-nums tracking-tight">
-                        {currentTelemetry.simConnected
-                            ? currentTelemetry.altitudeMsl.toLocaleString()
-                            : "--"}{" "}
-                        <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted">
-                            {currentTelemetry.simConnected ? "ft" : ""}
-                        </span>
-                    </div>
-                    <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1 truncate">
-                        {currentTelemetry.simConnected
-                            ? `AGL ${currentTelemetry.altitudeAgl} ft`
-                            : "No Sim Connection"}
+                    <div className="px-3 py-1.5 rounded-sm border min-h-[42px] flex items-center justify-between gap-2 text-lg sm:text-xl font-semibold tabular-nums tracking-tight truncate text-neutral-900 dark:text-white bg-neutral-100 dark:bg-[#1a1a1a] border-neutral-200 dark:border-geist-hairline">
+                        {currentTelemetry.simConnected ? (
+                            <>
+                                <span className="truncate">{currentTelemetry.altitudeMsl.toLocaleString()}</span>
+                                <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted shrink-0">ft</span>
+                            </>
+                        ) : (
+                            "-"
+                        )}
                     </div>
                 </div>
 
+                {/* GROUND SPEED */}
                 <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
-                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
+                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
                         <span>Ground Speed</span>
                         <Wind className="w-3.5 h-3.5 text-neutral-400" />
                     </div>
-                    <div className="text-2xl font-semibold text-neutral-900 dark:text-white tabular-nums tracking-tight">
-                        {currentTelemetry.simConnected
-                            ? currentTelemetry.groundSpeed
-                            : "--"}{" "}
-                        <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted">
-                            {currentTelemetry.simConnected ? "kt" : ""}
-                        </span>
-                    </div>
-                    <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1 truncate">
-                        {currentTelemetry.simConnected
-                            ? `IAS ${currentTelemetry.indicatedAirspeed} · TAS ${currentTelemetry.trueAirspeed}`
-                            : "Standby"}
+                    <div className="px-3 py-1.5 rounded-sm border min-h-[42px] flex items-center justify-between gap-2 text-lg sm:text-xl font-semibold tabular-nums tracking-tight truncate text-neutral-900 dark:text-white bg-neutral-100 dark:bg-[#1a1a1a] border-neutral-200 dark:border-geist-hairline">
+                        {currentTelemetry.simConnected ? (
+                            <>
+                                <span className="truncate">{currentTelemetry.groundSpeed}</span>
+                                <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted shrink-0">kt</span>
+                            </>
+                        ) : (
+                            "-"
+                        )}
                     </div>
                 </div>
 
+                {/* HEADING */}
                 <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
-                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
-                        <span>Magnetic Heading</span>
+                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
+                        <span>Heading</span>
                         <Compass className="w-3.5 h-3.5 text-neutral-400" />
                     </div>
-                    <div className="text-2xl font-semibold text-neutral-900 dark:text-white tabular-nums tracking-tight">
+                    <div className="px-3 py-1.5 rounded-sm border min-h-[42px] flex items-center text-lg sm:text-xl font-semibold tabular-nums tracking-tight truncate text-neutral-900 dark:text-white bg-neutral-100 dark:bg-[#1a1a1a] border-neutral-200 dark:border-geist-hairline">
                         {currentTelemetry.simConnected
                             ? `${String(Math.round(currentTelemetry.heading)).padStart(3, "0")}°`
-                            : "--"}
-                    </div>
-                    <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1 truncate">
-                        {currentTelemetry.simConnected
-                            ? currentTelemetry.heading >= 315 ||
-                              currentTelemetry.heading < 45
-                                ? "North"
-                                : currentTelemetry.heading >= 45 &&
-                                    currentTelemetry.heading < 135
-                                  ? "East"
-                                  : currentTelemetry.heading >= 135 &&
-                                      currentTelemetry.heading < 225
-                                    ? "South"
-                                    : "West"
-                            : "Standby"}
+                            : "-"}
                     </div>
                 </div>
 
+                {/* VERTICAL SPEED */}
                 <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
-                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
+                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
                         <span>Vertical Speed</span>
                         <ArrowUpRight className="w-3.5 h-3.5 text-neutral-400" />
                     </div>
-                    <div
-                        className={`text-2xl font-semibold tabular-nums tracking-tight ${
-                            !currentTelemetry.simConnected
-                                ? "text-neutral-900 dark:text-white"
-                                : currentTelemetry.verticalSpeed > 100
-                                  ? "text-emerald-600 dark:text-geist-success"
-                                  : currentTelemetry.verticalSpeed < -100
-                                    ? "text-red-600 dark:text-geist-error"
-                                    : "text-neutral-900 dark:text-white"
-                        }`}
-                    >
-                        {currentTelemetry.simConnected
-                            ? currentTelemetry.verticalSpeed > 0
-                                ? `+${currentTelemetry.verticalSpeed}`
-                                : currentTelemetry.verticalSpeed
-                            : "--"}
-                        <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted ml-1">
-                            {currentTelemetry.simConnected ? "fpm" : ""}
-                        </span>
-                    </div>
-                    <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1 truncate">
-                        {currentTelemetry.simConnected
-                            ? currentTelemetry.isOnGround
-                                ? "On Runway / Surface"
-                                : "Airborne"
-                            : "Standby"}
+                    <div className="px-3 py-1.5 rounded-sm border min-h-[42px] flex items-center justify-between gap-2 text-lg sm:text-xl font-semibold tabular-nums tracking-tight truncate text-neutral-900 dark:text-white bg-neutral-100 dark:bg-[#1a1a1a] border-neutral-200 dark:border-geist-hairline">
+                        {currentTelemetry.simConnected ? (
+                            <>
+                                <span className="truncate">
+                                    {currentTelemetry.verticalSpeed > 0
+                                        ? `+${currentTelemetry.verticalSpeed}`
+                                        : currentTelemetry.verticalSpeed}
+                                </span>
+                                <span className="text-xs font-normal text-neutral-500 dark:text-geist-muted shrink-0">fpm</span>
+                            </>
+                        ) : (
+                            "-"
+                        )}
                     </div>
                 </div>
 
+                {/* ATTITUDE */}
                 <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
-                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
-                        <span>Attitude & Engine</span>
+                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
+                        <span>Attitude</span>
                         <Navigation className="w-3.5 h-3.5 text-neutral-400" />
                     </div>
-                    <div className="text-2xl font-semibold text-neutral-900 dark:text-white tabular-nums tracking-tight">
-                        {currentTelemetry.simConnected
-                            ? `${currentTelemetry.pitch}° / ${currentTelemetry.bank}°`
-                            : "-- / --"}
-                    </div>
-                    <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1 flex items-center gap-1.5 truncate">
-                        <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                                currentTelemetry.simConnected &&
-                                currentTelemetry.isEngineRunning
-                                    ? "bg-emerald-500"
-                                    : "bg-neutral-400"
-                            }`}
-                        />
-                        <span>
-                            {currentTelemetry.simConnected
-                                ? currentTelemetry.isEngineRunning
-                                    ? "Engines Running"
-                                    : "Engines Off"
-                                : "Sim Disconnected"}
-                        </span>
+                    <div className="px-2.5 py-1.5 rounded-sm border min-h-[42px] flex items-center text-xs sm:text-sm font-semibold tabular-nums tracking-tight text-neutral-900 dark:text-white bg-neutral-100 dark:bg-[#1a1a1a] border-neutral-200 dark:border-geist-hairline">
+                        {currentTelemetry.simConnected ? (() => {
+                            const pitchParts = formatPitchParts(currentTelemetry.pitch);
+                            const rollParts = formatRollParts(currentTelemetry.bank, false);
+                            return (
+                                <div className="w-full grid grid-cols-2 divide-x divide-neutral-300 dark:divide-neutral-700">
+                                    <div className="flex items-center justify-between gap-1 pr-2 min-w-0">
+                                        <span className="truncate">{pitchParts.angle}</span>
+                                        <span className="text-[11px] font-normal text-neutral-500 dark:text-geist-muted shrink-0">
+                                            {pitchParts.direction ?? ""}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-1 pl-2 min-w-0">
+                                        <span className="truncate">{rollParts.angle}</span>
+                                        <span className="text-[11px] font-normal text-neutral-500 dark:text-geist-muted shrink-0">
+                                            {rollParts.direction ?? ""}
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })() : (
+                            "-"
+                        )}
                     </div>
                 </div>
 
+                {/* STAGE */}
                 <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
-                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
+                    <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
                         <span>Flight Stage</span>
                         <Activity className="w-3.5 h-3.5 text-neutral-400" />
                     </div>
-                    <div className="text-sm font-semibold tracking-tight uppercase truncate">
-                        <span
-                            className={`inline-block px-1.5 py-0.5 rounded-sm text-[11px] border font-mono ${getStageColor(
-                                flightStage,
-                            )}`}
-                        >
-                            {flightStage.replace(/_/g, " ")}
-                        </span>
-                    </div>
-                    <div className="text-[11px] text-neutral-500 dark:text-geist-muted mt-1">
-                        Lifecycle State Machine
+                    <div
+                        className={`px-3 py-1.5 rounded-sm border min-h-[42px] flex items-center text-xs font-semibold uppercase tracking-wider truncate ${getStageColor(
+                            flightStage,
+                        )}`}
+                    >
+                        {flightStage.replace(/_/g, " ")}
                     </div>
                 </div>
             </div>
@@ -955,7 +929,7 @@ export const Overview: React.FC = () => {
                                             <span className="text-[11px] text-neutral-500 dark:text-geist-muted">
                                                 Departure Aerodrome
                                             </span>
-                                            <span className="font-mono font-medium text-neutral-900 dark:text-white">
+                                            <span className="font-medium text-neutral-900 dark:text-white">
                                                 {nearestAirport
                                                     ? `${nearestAirport.icao} • ${nearestAirport.name}`
                                                     : "Resolving nearest aerodrome..."}
@@ -1262,7 +1236,7 @@ export const Overview: React.FC = () => {
                                                 (rwy) => (
                                                     <div
                                                         key={rwy.id}
-                                                        className="flex items-center justify-between p-2 rounded bg-neutral-50 dark:bg-[#121212] border border-neutral-200 dark:border-geist-hairline text-xs font-mono"
+                                                        className="flex items-center justify-between p-2 rounded bg-neutral-50 dark:bg-[#121212] border border-neutral-200 dark:border-geist-hairline text-xs tabular-nums"
                                                     >
                                                         <div className="flex items-center gap-2">
                                                             <span className="font-bold text-neutral-900 dark:text-white">
@@ -1544,8 +1518,8 @@ export const Overview: React.FC = () => {
                                 className={theme === "dark" ? "dark-tiles" : ""}
                             >
                                 <TileLayer
-                                    attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
-                                    url="https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                                    attribution={ARCGIS_WORLD_IMAGERY_ATTRIBUTION}
+                                    url={ARCGIS_WORLD_IMAGERY_URL}
                                     maxZoom={19}
                                 />
 

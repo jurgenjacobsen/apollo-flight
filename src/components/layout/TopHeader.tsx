@@ -1,12 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useFlightStore } from "../../store/flightStore";
+import { useSmoothedTelemetry } from "../../hooks/useSmoothedTelemetry";
+import { formatAttitude } from "../../utils/flightFormatters";
 import {
-    Gauge,
-    Wind,
-    Compass,
-    ArrowUpRight,
-    Navigation,
-    Radio,
     Sun,
     Moon,
     Newspaper,
@@ -17,12 +13,13 @@ import rawChangelog from "../../data/changelog.json";
 
 export const TopHeader: React.FC = () => {
     const {
-        currentTelemetry,
+        currentTelemetry: rawTelemetry,
         activeFlight,
         theme,
         toggleTheme,
         availableUpdate,
     } = useFlightStore();
+    const currentTelemetry = useSmoothedTelemetry(rawTelemetry);
 
     const [isNewsOpen, setIsNewsOpen] = useState(false);
     const newsButtonRef = useRef<HTMLButtonElement>(null);
@@ -71,16 +68,16 @@ export const TopHeader: React.FC = () => {
 
                     <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span className="text-neutral-500 dark:text-neutral-400 font-medium">
-                            GS
+                            IAS
                         </span>
                         <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
-                            {currentTelemetry.groundSpeed}
+                            {currentTelemetry.indicatedAirspeed}
                         </span>
                         <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
                             KT
                         </span>
                         <span className="hidden md:inline text-[10px] text-neutral-500 dark:text-neutral-400 tabular-nums">
-                            ({currentTelemetry.indicatedAirspeed} IAS)
+                            ({currentTelemetry.trueAirspeed} TAS)
                         </span>
                     </div>
 
@@ -126,7 +123,7 @@ export const TopHeader: React.FC = () => {
                             ATT
                         </span>
                         <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
-                            {currentTelemetry.pitch}° / {currentTelemetry.bank}°
+                            {formatAttitude(currentTelemetry.pitch, currentTelemetry.bank, true)}
                         </span>
                     </div>
                 </div>
