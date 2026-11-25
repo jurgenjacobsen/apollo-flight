@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useFlightStore } from "../../store/flightStore";
+import { ARCGIS_WORLD_IMAGERY_ATTRIBUTION, ARCGIS_WORLD_IMAGERY_URL } from "../../utils/mapTiles";
 import {
     MapContainer,
     TileLayer,
@@ -619,38 +620,6 @@ export const ProfileView: React.FC = () => {
                         </p>
                     </div>
                 </div>
-
-                <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
-                    <div className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-300 shadow-xs">
-                        <Award className="w-3.5 h-3.5 text-amber-500" />
-                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
-                            {unlockedCount} / {totalAchievements}
-                        </span>
-                        <span className="text-neutral-500 dark:text-geist-muted">
-                            Badges
-                        </span>
-                    </div>
-
-                    <div className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-300 shadow-xs">
-                        <Globe2 className="w-3.5 h-3.5 text-neutral-400" />
-                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
-                            {visitedCount}
-                        </span>
-                        <span className="text-neutral-500 dark:text-geist-muted">
-                            Nations
-                        </span>
-                    </div>
-
-                    <div className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-300 shadow-xs">
-                        <MapPin className="w-3.5 h-3.5 text-neutral-400" />
-                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
-                            {visitedAirports.length}
-                        </span>
-                        <span className="text-neutral-500 dark:text-geist-muted">
-                            Airports
-                        </span>
-                    </div>
-                </div>
             </div>
 
             {/* Pilot Lifetime Statistics Grid */}
@@ -716,9 +685,9 @@ export const ProfileView: React.FC = () => {
                             ({achievementPercentage}%)
                         </span>
                     </div>
-                    <div className="w-full bg-neutral-200 dark:bg-[#1c1c1c] rounded-full h-1.5 mt-2 overflow-hidden">
+                    <div className="w-full bg-neutral-200 dark:bg-[#1c1c1c] rounded-xs h-1.5 mt-2 overflow-hidden">
                         <div
-                            className="bg-amber-500 h-1.5 rounded-full transition-all duration-300 ease-out"
+                            className="bg-amber-500 h-1.5 rounded-xs transition-all duration-300 ease-out"
                             style={{
                                 width: `${Math.max(4, achievementPercentage)}%`,
                             }}
@@ -869,20 +838,18 @@ export const ProfileView: React.FC = () => {
                                                     )}
                                                 </div>
 
-                                                <div className="flex items-center gap-1.5">
-                                                    <span
-                                                        className={`text-[10px] uppercase font-mono px-1.5 py-0.5 rounded-[3px] border ${rarityStyles}`}
-                                                    >
+                                                <div className="flex items-center gap-2 text-[10px]">
+                                                    <span className="uppercase tracking-wider font-medium text-neutral-500 dark:text-neutral-400">
                                                         {ach.rarity}
                                                     </span>
-
+                                                    <span className="text-neutral-300 dark:text-neutral-700">·</span>
                                                     {isUnlocked ? (
-                                                        <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-[3px] bg-emerald-500/10 border border-emerald-500/20">
+                                                        <span className="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
                                                             <CheckCircle2 className="w-3 h-3" />
                                                             <span>Unlocked</span>
                                                         </span>
                                                     ) : (
-                                                        <span className="flex items-center gap-1 text-[10px] text-neutral-400 dark:text-neutral-500 px-1.5 py-0.5 rounded-[3px] bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                                                        <span className="flex items-center gap-1 text-neutral-400 dark:text-neutral-500">
                                                             <Lock className="w-3 h-3" />
                                                             <span>Locked</span>
                                                         </span>
@@ -901,7 +868,7 @@ export const ProfileView: React.FC = () => {
                                         {/* Progress Bar & Current / Target Values */}
                                         <div className="mt-3.5 pt-2.5 border-t border-neutral-100 dark:border-[#1a1a1a]">
                                             <div className="flex items-center justify-between text-[10px] text-neutral-500 dark:text-geist-muted mb-1.5">
-                                                <span className="tabular-nums font-mono">
+                                                <span className="tabular-nums">
                                                     {ach.result.currentValue || `${pct}%`}
                                                 </span>
                                                 <span className="tabular-nums font-medium text-neutral-700 dark:text-neutral-300">
@@ -909,9 +876,9 @@ export const ProfileView: React.FC = () => {
                                                 </span>
                                             </div>
 
-                                            <div className="w-full bg-neutral-200 dark:bg-[#1c1c1c] rounded-full h-1.5 overflow-hidden">
+                                            <div className="w-full bg-neutral-200 dark:bg-[#1c1c1c] rounded-xs h-1.5 overflow-hidden">
                                                 <div
-                                                    className={`h-1.5 rounded-full transition-all duration-300 ease-out ${
+                                                    className={`h-1.5 rounded-xs transition-all duration-300 ease-out ${
                                                         isUnlocked
                                                             ? "bg-emerald-500"
                                                             : "bg-neutral-900 dark:bg-neutral-300"
@@ -1005,7 +972,7 @@ export const ProfileView: React.FC = () => {
                                         Touchdown Quality Analytics
                                     </h3>
                                 </div>
-                                <span className="text-xs text-neutral-500 font-mono">
+                                <span className="text-xs text-neutral-500 tabular-nums">
                                     {landingStats.totalCount} Total Landings
                                 </span>
                             </div>
@@ -1058,7 +1025,7 @@ export const ProfileView: React.FC = () => {
                                 <span className="text-neutral-500 dark:text-geist-muted">
                                     Average Sink Rate at Touchdown:
                                 </span>
-                                <span className="font-semibold text-neutral-900 dark:text-white font-mono">
+                                <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                                     {landingStats.avgFpm !== null
                                         ? `-${landingStats.avgFpm} FPM`
                                         : "N/A"}
@@ -1089,7 +1056,7 @@ export const ProfileView: React.FC = () => {
                                                 : "No flights recorded"}
                                         </div>
                                     </div>
-                                    <div className="font-mono font-bold text-neutral-900 dark:text-white">
+                                    <div className="tabular-nums font-bold text-neutral-900 dark:text-white">
                                         {longestFlightByDistance
                                             ? `${Math.round(longestFlightByDistance.distanceFlownNm)} NM`
                                             : "0 NM"}
@@ -1107,7 +1074,7 @@ export const ProfileView: React.FC = () => {
                                                 : "No flights recorded"}
                                         </div>
                                     </div>
-                                    <div className="font-mono font-bold text-neutral-900 dark:text-white">
+                                    <div className="tabular-nums font-bold text-neutral-900 dark:text-white">
                                         {longestFlightByTime
                                             ? formatFlightTime(longestFlightByTime.flightTimeSeconds)
                                             : "0m"}
@@ -1233,7 +1200,7 @@ export const ProfileView: React.FC = () => {
                                                             {item.type}
                                                         </h4>
                                                         {item.lastRoute && (
-                                                            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">
+                                                            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
                                                                 Last route: {item.lastRoute}
                                                             </div>
                                                         )}
@@ -1282,7 +1249,7 @@ export const ProfileView: React.FC = () => {
                                             <div className="mt-2.5 flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400">
                                                 <span>
                                                     Best Touchdown:{" "}
-                                                    <strong className="text-neutral-800 dark:text-neutral-200 font-mono">
+                                                    <strong className="text-neutral-800 dark:text-neutral-200 tabular-nums">
                                                         {item.softestLanding !== null
                                                             ? `${Math.round(item.softestLanding)} FPM`
                                                             : "N/A"}
@@ -1290,7 +1257,7 @@ export const ProfileView: React.FC = () => {
                                                 </span>
                                                 <span>
                                                     Max Alt:{" "}
-                                                    <strong className="text-neutral-800 dark:text-neutral-200 font-mono">
+                                                    <strong className="text-neutral-800 dark:text-neutral-200 tabular-nums">
                                                         {item.maxAlt > 0
                                                             ? `${item.maxAlt.toLocaleString()} FT`
                                                             : "N/A"}
@@ -1480,8 +1447,8 @@ export const ProfileView: React.FC = () => {
                                     className={`z-0 ${theme === "dark" ? "dark-tiles" : ""}`}
                                 >
                                     <TileLayer
-                                        attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
-                                        url="https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                                        attribution={ARCGIS_WORLD_IMAGERY_ATTRIBUTION}
+                                        url={ARCGIS_WORLD_IMAGERY_URL}
                                         maxZoom={19}
                                     />
 
@@ -1582,7 +1549,7 @@ export const ProfileView: React.FC = () => {
                                                         <span className="text-neutral-700 ml-1">
                                                             {apt.name}
                                                         </span>
-                                                        <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
+                                                        <div className="text-[10px] text-neutral-500 tabular-nums mt-0.5">
                                                             {apt.visitCount} {apt.visitCount === 1 ? "logged visit" : "logged visits"}
                                                         </div>
                                                     </div>
@@ -1596,7 +1563,7 @@ export const ProfileView: React.FC = () => {
                                                         <div className="text-neutral-500 mt-0.5">
                                                             {apt.countryName} ({apt.countryCode})
                                                         </div>
-                                                        <div className="text-neutral-700 font-mono mt-1 font-medium">
+                                                        <div className="text-neutral-700 tabular-nums mt-1 font-medium">
                                                             Logged Visits: {apt.visitCount}
                                                         </div>
                                                     </div>

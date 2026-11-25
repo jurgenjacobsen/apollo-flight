@@ -86,7 +86,7 @@ export const TouchdownFlyoutBanner: React.FC = () => {
 
                 <div className="flex items-center gap-2">
                     <span
-                        className={`text-[10px] uppercase font-mono font-semibold px-2 py-0.5 rounded-[3px] border ${gradeBadgeStyle}`}
+                        className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-[3px] border ${gradeBadgeStyle}`}
                     >
                         {gradeText}
                     </span>
@@ -109,7 +109,7 @@ export const TouchdownFlyoutBanner: React.FC = () => {
                     <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium">
                         Touchdown Rate
                     </div>
-                    <div className="text-xl font-bold font-mono tracking-tight text-neutral-900 dark:text-white mt-0.5 tabular-nums">
+                    <div className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white mt-0.5 tabular-nums">
                         {latestTouchdown.verticalSpeedFpm}{" "}
                         <span className="text-xs font-normal text-neutral-500">
                             fpm
@@ -121,11 +121,11 @@ export const TouchdownFlyoutBanner: React.FC = () => {
                 <div className="p-2.5 rounded-sm bg-neutral-50 dark:bg-geist-surface border border-neutral-100 dark:border-geist-hairline">
                     <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium flex items-center justify-between">
                         <span>Peak Load</span>
-                        <span className="text-[9px] text-neutral-400 font-mono">
+                        <span className="text-[9px] text-neutral-400">
                             {latestTouchdown.gForceSim ? "SIM" : "STRUT"}
                         </span>
                     </div>
-                    <div className="text-xl font-bold font-mono tracking-tight text-neutral-900 dark:text-white mt-0.5 tabular-nums">
+                    <div className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white mt-0.5 tabular-nums">
                         {gLoad.toFixed(2)}{" "}
                         <span className="text-xs font-normal text-neutral-500">
                             G
@@ -142,7 +142,7 @@ export const TouchdownFlyoutBanner: React.FC = () => {
                         <Gauge className="w-3 h-3" />
                         <span>Air & Ground Speed</span>
                     </span>
-                    <span className="font-mono font-medium tabular-nums">
+                    <span className="font-medium tabular-nums">
                         {latestTouchdown.indicatedAirspeedKt ?? latestTouchdown.groundSpeedKt}{" "}
                         <span className="text-neutral-400">IAS</span> •{" "}
                         {latestTouchdown.groundSpeedKt}{" "}
@@ -158,7 +158,7 @@ export const TouchdownFlyoutBanner: React.FC = () => {
                             <Wind className="w-3 h-3" />
                             <span>Wind Vector</span>
                         </span>
-                        <span className="font-mono font-medium tabular-nums">
+                        <span className="font-medium tabular-nums">
                             {latestTouchdown.headwindKt !== undefined && (
                                 <span>
                                     {latestTouchdown.headwindKt >= 0
@@ -183,7 +183,7 @@ export const TouchdownFlyoutBanner: React.FC = () => {
                             <Compass className="w-3 h-3" />
                             <span>Alignment / Sideslip</span>
                         </span>
-                        <span className="font-mono font-medium tabular-nums">
+                        <span className="font-medium tabular-nums">
                             {Math.abs(latestTouchdown.sideslipDeg)}°{" "}
                             {latestTouchdown.sideslipDeg > 0
                                 ? "Right Drift"
@@ -205,7 +205,7 @@ export const TouchdownFlyoutBanner: React.FC = () => {
                         <span>Bounces</span>
                     </span>
                     <span
-                        className={`font-mono text-[10px] font-semibold px-1.5 py-0.2 rounded ${
+                        className={`text-[10px] font-semibold px-1.5 py-0.2 rounded tabular-nums ${
                             bounces > 0
                                 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
                                 : "text-neutral-600 dark:text-neutral-400"

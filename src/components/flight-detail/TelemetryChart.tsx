@@ -79,7 +79,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                         >
                             <RotateCcw className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                             <span>Reset Zoom</span>
-                            <span className="text-[10px] font-mono opacity-80">
+                            <span className="text-[10px] tabular-nums opacity-80">
                                 (
                                 {new Date(
                                     zoomTimeRange.start,
@@ -169,7 +169,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                                     bottom: 25,
                                 }}
                             >
-                                <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-mono font-medium px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap">
+                                <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap tabular-nums">
                                     {
                                         chartData[
                                             Math.min(
@@ -351,7 +351,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
 
                                     return (
                                         <div className="bg-white dark:bg-[#0a0a0a] border border-neutral-200 dark:border-[#262626] rounded-md p-2.5 text-xs shadow-md space-y-1.5 min-w-[170px]">
-                                            <div className="font-mono font-medium text-neutral-500 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800 pb-1">
+                                            <div className="font-medium text-neutral-500 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800 pb-1 tabular-nums">
                                                 {data.time}
                                             </div>
                                             <div className="space-y-1">
@@ -360,7 +360,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                                                         <span className="w-1.5 h-1.5 rounded-full bg-sky-500 inline-block" />
                                                         Altitude:
                                                     </span>
-                                                    <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                                    <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                                                         {Number(
                                                             data.altitude,
                                                         ).toLocaleString()}{" "}
@@ -372,7 +372,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                                                         Ground Speed:
                                                     </span>
-                                                    <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                                    <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                                                         {data.groundSpeed}{" "}
                                                         kt
                                                     </span>
@@ -386,7 +386,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                                                                 <Wind className="w-3 h-3 text-sky-400 shrink-0" />
                                                                 Wind:
                                                             </span>
-                                                            <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                                            <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                                                                 {formatWindVector(
                                                                     data.windDirection,
                                                                     data.windSpeed,
@@ -414,7 +414,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                                                             <Thermometer className="w-3 h-3 text-amber-500 shrink-0" />
                                                             Temp (OAT/TAT):
                                                         </span>
-                                                        <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                                                             {data.oat !==
                                                             undefined
                                                                 ? formatTemperature(
@@ -439,7 +439,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                                                             <Eye className="w-3 h-3 text-indigo-400 shrink-0" />
                                                             Visibility:
                                                         </span>
-                                                        <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                                        <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                                                             {formatVisibility(
                                                                 data.visibility,
                                                                 visibilityUnit,

@@ -290,7 +290,7 @@ export const RecycleBinView: React.FC = () => {
                                                 </td>
 
                                                 {/* Flight Time */}
-                                                <td className="py-3 px-3 align-middle font-mono tabular-nums text-neutral-900 dark:text-white">
+                                                <td className="py-3 px-3 align-middle tabular-nums text-neutral-900 dark:text-white">
                                                     {Math.floor(
                                                         durationMins / 60,
                                                     )}
@@ -302,7 +302,7 @@ export const RecycleBinView: React.FC = () => {
                                                 </td>
 
                                                 {/* Distance */}
-                                                <td className="py-3 px-3 align-middle font-mono tabular-nums text-neutral-900 dark:text-white">
+                                                <td className="py-3 px-3 align-middle tabular-nums text-neutral-900 dark:text-white">
                                                     {Math.round(
                                                         flight.distanceFlownNm ||
                                                             0,
@@ -311,7 +311,7 @@ export const RecycleBinView: React.FC = () => {
                                                 </td>
 
                                                 {/* Landing Rate */}
-                                                <td className="py-3 px-3 align-middle font-mono tabular-nums">
+                                                <td className="py-3 px-3 align-middle tabular-nums">
                                                     {flight.landingRateFpm !==
                                                         undefined &&
                                                     flight.landingRateFpm !==
@@ -342,7 +342,7 @@ export const RecycleBinView: React.FC = () => {
                                                 </td>
 
                                                 {/* Deleted Date */}
-                                                <td className="py-3 px-3 align-middle text-[11px] text-neutral-500 font-mono">
+                                                <td className="py-3 px-3 align-middle text-[11px] text-neutral-500 tabular-nums">
                                                     {new Date(
                                                         flight.deletedAt,
                                                     ).toLocaleString([], {

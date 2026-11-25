@@ -46,14 +46,14 @@ export const ElevationProfileChart: React.FC<ElevationProfileChartProps> = ({
                                     <ArrowRight className="w-3 h-3 text-neutral-400" />
                                     <span>{sector.arrival.icao}</span>
                                 </div>
-                                <span className="text-[10px] font-mono font-normal text-neutral-500">
+                                <span className="text-[10px] font-normal text-neutral-500 tabular-nums">
                                     {sector.distanceNm} NM
                                 </span>
                             </div>
 
                             {/* Altitude & MORA comparison bar */}
                             <div className="space-y-1.5 pt-1">
-                                <div className="flex justify-between text-[11px] font-mono">
+                                <div className="flex justify-between text-[11px] tabular-nums">
                                     <span className="text-sky-600 dark:text-sky-400 font-semibold">
                                         Cruise: {formatFlightLevelOrAltitude(cruiseAlt)}
                                     </span>

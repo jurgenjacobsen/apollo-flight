@@ -48,7 +48,7 @@ export const AtmosphericCards: React.FC<AtmosphericCardsProps> = ({
                         <Thermometer className="w-3.5 h-3.5 text-amber-500" />
                         <span>OAT Range (Min / Max)</span>
                     </div>
-                    <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
+                    <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums">
                         {weatherStats.minOat !== undefined
                             ? formatTemperature(
                                   weatherStats.minOat,
@@ -76,7 +76,7 @@ export const AtmosphericCards: React.FC<AtmosphericCardsProps> = ({
                         <Eye className="w-3.5 h-3.5 text-indigo-400" />
                         <span>Lowest Visibility</span>
                     </div>
-                    <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
+                    <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums">
                         {formatVisibility(weatherStats.minVis, visibilityUnit)}
                     </div>
                     <p className="text-[10px] text-neutral-400 leading-tight">
@@ -90,7 +90,7 @@ export const AtmosphericCards: React.FC<AtmosphericCardsProps> = ({
                         <Compass className="w-3.5 h-3.5 text-sky-500" />
                         <span>Cruise Wind (Avg)</span>
                     </div>
-                    <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
+                    <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums">
                         {formatWindVector(
                             weatherStats.avgCruiseWindDir,
                             weatherStats.avgCruiseWindSpd,
@@ -108,7 +108,7 @@ export const AtmosphericCards: React.FC<AtmosphericCardsProps> = ({
                         <Wind className="w-3.5 h-3.5 text-rose-500" />
                         <span>Max Wind Encountered</span>
                     </div>
-                    <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums font-mono">
+                    <div className="text-sm font-semibold text-neutral-900 dark:text-white tabular-nums">
                         {formatWindVector(
                             weatherStats.maxWindDir,
                             weatherStats.maxWindSpd,

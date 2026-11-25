@@ -605,7 +605,7 @@ export const IfrTrainer: React.FC = () => {
                             </span>
                         )}
                     </div>
-                    <div className="flex items-center gap-3 text-[11px] font-mono text-neutral-500">
+                    <div className="flex items-center gap-3 text-[11px] text-neutral-500 tabular-nums">
                         {activeFlight && (
                             <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -642,7 +642,7 @@ export const IfrTrainer: React.FC = () => {
                                 type="button"
                                 onClick={() => setSelectedRange("AUTO")}
                                 title={`Auto zoom: scales from 5 NM when close up to 25 NM as distance increases (currently ${activeRange.toFixed(1)} NM)`}
-                                className={`px-1.5 py-0.5 text-[10px] font-mono rounded-xs transition-colors ${
+                                className={`px-1.5 py-0.5 text-[10px] rounded-xs transition-colors tabular-nums ${
                                     selectedRange === "AUTO"
                                         ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white font-semibold shadow-xs"
                                         : "text-neutral-500 dark:text-neutral-400 hover:text-black dark:hover:text-white"
@@ -656,7 +656,7 @@ export const IfrTrainer: React.FC = () => {
                                     type="button"
                                     onClick={() => setSelectedRange(rng)}
                                     title={`Fix zoom to ${rng} NM`}
-                                    className={`px-1.5 py-0.5 text-[10px] font-mono rounded-xs transition-colors ${
+                                    className={`px-1.5 py-0.5 text-[10px] rounded-xs transition-colors tabular-nums ${
                                         selectedRange === rng
                                             ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white font-semibold shadow-xs"
                                             : "text-neutral-500 dark:text-neutral-400 hover:text-black dark:hover:text-white"
@@ -700,7 +700,7 @@ export const IfrTrainer: React.FC = () => {
                             </button>
                         </div>
 
-                        <span className="font-mono tabular-nums">
+                        <span className="tabular-nums">
                             {navSource === "ADF"
                                 ? `QDR: ${simRadial % 360 || 360}° · Heading: ${simHdg}° · Rel: ${relativeBearing > 0 ? `+${relativeBearing}` : relativeBearing}°`
                                 : `Radial: ${simRadial % 360 || 360}° · Heading: ${simHdg}° · DME: ${simDme > 0 ? `${simDme} NM` : "No Signal"}`}
@@ -768,7 +768,7 @@ export const IfrTrainer: React.FC = () => {
                                         RADIAL CAPTURED
                                     </span>
                                 ) : (
-                                    <span className="text-xs text-amber-600 dark:text-amber-400 font-mono">
+                                    <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums">
                                         Δ {deviation.toFixed(0)}° Deviation
                                     </span>
                                 )}
@@ -782,7 +782,7 @@ export const IfrTrainer: React.FC = () => {
                                     {challenge.stationType === "NDB" ? (
                                         <>
                                             Intercept NDB Track / QDR{" "}
-                                            <span className="text-amber-500 font-mono">
+                                            <span className="text-amber-500 tabular-nums">
                                                 {challenge.targetRadial}°
                                             </span>{" "}
                                             ({challenge.direction})
@@ -790,7 +790,7 @@ export const IfrTrainer: React.FC = () => {
                                     ) : (
                                         <>
                                             Intercept VOR Radial{" "}
-                                            <span className="text-blue-500 font-mono">
+                                            <span className="text-blue-500 tabular-nums">
                                                 {challenge.targetRadial}°
                                             </span>{" "}
                                             ({challenge.direction})
@@ -803,7 +803,7 @@ export const IfrTrainer: React.FC = () => {
                                         <span className="text-neutral-500 dark:text-geist-muted block text-[11px]">
                                             Recommended Heading:
                                         </span>
-                                        <span className="font-mono font-semibold text-neutral-900 dark:text-white text-sm">
+                                        <span className="font-semibold text-neutral-900 dark:text-white text-sm tabular-nums">
                                             {challenge.recommendedHeading}°
                                         </span>
                                     </div>
@@ -811,7 +811,7 @@ export const IfrTrainer: React.FC = () => {
                                         <span className="text-neutral-500 dark:text-geist-muted block text-[11px]">
                                             Tolerance:
                                         </span>
-                                        <span className="font-mono font-semibold text-neutral-900 dark:text-white text-sm">
+                                        <span className="font-semibold text-neutral-900 dark:text-white text-sm tabular-nums">
                                             ±{challenge.toleranceDeg}°
                                         </span>
                                     </div>
@@ -842,7 +842,7 @@ export const IfrTrainer: React.FC = () => {
                                 </span>
                             </div>
                             {mode === "LIVE" && (
-                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-1">
+                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                                     <Lock className="w-2.5 h-2.5" />
                                     LOCKED / LIVE SYNCED
                                 </span>

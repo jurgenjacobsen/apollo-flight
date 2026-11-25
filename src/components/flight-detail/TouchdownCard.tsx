@@ -3,6 +3,7 @@ import { TrendingDown } from "lucide-react";
 import { TouchdownEvent, FlightRecord } from "../../types/flight";
 import { calculateTouchdownGForce } from "../../utils/touchdownPhysics";
 import { formatWindSpeed } from "../../utils/weatherUnits";
+import { formatPitchAngle, formatRollAngle } from "../../utils/flightFormatters";
 
 interface TouchdownCardProps {
     touchdowns: TouchdownEvent[];
@@ -91,7 +92,7 @@ export const TouchdownCard: React.FC<TouchdownCardProps> = ({
                                 </div>
                                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
                                     {td.bouncesCount && td.bouncesCount > 0 ? (
-                                        <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 tabular-nums">
                                             {td.bouncesCount} {td.bouncesCount === 1 ? "Bounce" : "Bounces"}
                                         </span>
                                     ) : null}
@@ -106,7 +107,7 @@ export const TouchdownCard: React.FC<TouchdownCardProps> = ({
                                 </div>
                             </div>
 
-                            <div className="flex items-baseline justify-between font-mono">
+                            <div className="flex items-baseline justify-between tabular-nums">
                                 <span className="text-lg font-bold text-neutral-900 dark:text-white">
                                     {td.verticalSpeedFpm}{" "}
                                     <span className="text-[11px] font-normal text-neutral-500">
@@ -127,7 +128,7 @@ export const TouchdownCard: React.FC<TouchdownCardProps> = ({
                             {(td.sideslipDeg !== undefined ||
                                 td.headwindKt !== undefined ||
                                 td.crosswindKt !== undefined) && (
-                                <div className="flex items-center justify-between text-[11px] text-neutral-600 dark:text-neutral-400 border-t border-neutral-100 dark:border-geist-hairline pt-1 tabular-nums font-mono">
+                                <div className="flex items-center justify-between text-[11px] text-neutral-600 dark:text-neutral-400 border-t border-neutral-100 dark:border-geist-hairline pt-1 tabular-nums">
                                     <span>
                                         {td.sideslipDeg !== undefined
                                             ? `${Math.abs(td.sideslipDeg)}° ${
@@ -165,16 +166,16 @@ export const TouchdownCard: React.FC<TouchdownCardProps> = ({
                                 </span>
                                 {(td.pitchDeg !== undefined ||
                                     td.bankDeg !== undefined) && (
-                                    <span>
+                                    <span className="tabular-nums">
                                         {td.pitchDeg !== undefined
-                                            ? `${td.pitchDeg > 0 ? "+" : ""}${td.pitchDeg}° Pitch`
+                                            ? `${formatPitchAngle(td.pitchDeg)} Pitch`
                                             : ""}
                                         {td.pitchDeg !== undefined &&
                                         td.bankDeg !== undefined
                                             ? " · "
                                             : ""}
                                         {td.bankDeg !== undefined
-                                            ? `${td.bankDeg}° Bank`
+                                            ? `${formatRollAngle(td.bankDeg, false)} Bank`
                                             : ""}
                                     </span>
                                 )}

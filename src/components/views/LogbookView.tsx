@@ -543,7 +543,7 @@ export const LogbookView: React.FC = () => {
                                         <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
                                             Export Logbook
                                         </span>
-                                        <span className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-[#202020] px-1.5 py-0.5 rounded">
+                                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-[#202020] px-1.5 py-0.5 rounded tabular-nums">
                                             {isFiltered &&
                                             exportScope === "filtered"
                                                 ? `${filteredFlights.length} of ${flights.length}`
@@ -604,7 +604,7 @@ export const LogbookView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                                                     CSV Spreadsheet
                                                 </span>
-                                                <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
                                                     .CSV
                                                 </span>
                                             </div>
@@ -630,7 +630,7 @@ export const LogbookView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                                                     JSON Document
                                                 </span>
-                                                <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
                                                     .JSON
                                                 </span>
                                             </div>
@@ -655,7 +655,7 @@ export const LogbookView: React.FC = () => {
                         <Trash2 className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
                         <span>Recycle Bin</span>
                         {recycleBin.length > 0 && (
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 tabular-nums">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 tabular-nums">
                                 {recycleBin.length}
                             </span>
                         )}
@@ -1026,7 +1026,7 @@ export const LogbookView: React.FC = () => {
                                                                 {flight.aircraftType}
                                                             </div>
                                                             {flight.totalWeight || flight.grossWeight ? (
-                                                                <div className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono tracking-tight truncate">
+                                                                <div className="text-[10px] text-neutral-400 dark:text-neutral-500 tracking-tight truncate tabular-nums">
                                                                     {formatWeight(
                                                                         flight.totalWeight || flight.grossWeight,
                                                                         weightUnit,
@@ -1268,7 +1268,7 @@ export const LogbookView: React.FC = () => {
                                     <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
                                         GPS Track
                                     </span>
-                                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
                                         .GPX
                                     </span>
                                 </div>
@@ -1292,7 +1292,7 @@ export const LogbookView: React.FC = () => {
                                     <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                                         Google Earth
                                     </span>
-                                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
                                         .KML
                                     </span>
                                 </div>
@@ -1316,7 +1316,7 @@ export const LogbookView: React.FC = () => {
                                     <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                                         GeoJSON Feature
                                     </span>
-                                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
                                         .GeoJSON
                                     </span>
                                 </div>
@@ -1340,7 +1340,7 @@ export const LogbookView: React.FC = () => {
                                     <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                                         CSV Spreadsheet
                                     </span>
-                                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
                                         .CSV
                                     </span>
                                 </div>

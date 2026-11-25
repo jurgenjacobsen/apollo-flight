@@ -907,7 +907,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                                                         `${route.departureIcao} ➔ ${route.arrivalIcao}`}
                                                                                 </span>
                                                                                 {isMultiSector && (
-                                                                                    <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-neutral-100 dark:bg-[#202020] text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-800 shrink-0">
+                                                                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-neutral-100 dark:bg-[#202020] text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-800 shrink-0 tabular-nums">
                                                                                         {
                                                                                             sectors.length
                                                                                         }{" "}
@@ -927,7 +927,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                         case "category":
                                                             return (
                                                                 <td key="category" className="py-3 px-3 align-middle" style={cellStyle}>
-                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-mono font-medium border border-blue-200/50 dark:border-blue-900/50">
+                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-medium border border-blue-200/50 dark:border-blue-900/50">
                                                                         Cat{" "}
                                                                         {route.aircraftCategory}
                                                                     </span>
@@ -935,7 +935,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                             );
                                                         case "distance":
                                                             return (
-                                                                <td key="distance" className="py-3 px-3 align-middle font-mono tabular-nums" style={cellStyle}>
+                                                                <td key="distance" className="py-3 px-3 align-middle tabular-nums" style={cellStyle}>
                                                                     <div className="font-medium text-neutral-900 dark:text-white">
                                                                         {route.totalDistanceNm}{" "}
                                                                         <span className="text-[10px] text-neutral-400 font-normal">
@@ -953,7 +953,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                             );
                                                         case "airborne":
                                                             return (
-                                                                <td key="airborne" className="py-3 px-3 align-middle font-mono tabular-nums text-neutral-900 dark:text-white" style={cellStyle}>
+                                                                <td key="airborne" className="py-3 px-3 align-middle tabular-nums text-neutral-900 dark:text-white" style={cellStyle}>
                                                                     {formatDurationHoursMinutes(
                                                                         route.totalAirborneMinutes,
                                                                     )}
@@ -961,7 +961,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                             );
                                                         case "blockTime":
                                                             return (
-                                                                <td key="blockTime" className="py-3 px-3 align-middle font-mono tabular-nums" style={cellStyle}>
+                                                                <td key="blockTime" className="py-3 px-3 align-middle tabular-nums" style={cellStyle}>
                                                                     <div className="text-neutral-900 dark:text-white">
                                                                         {formatDurationHoursMinutes(
                                                                             route.totalDurationMinutes,
@@ -981,7 +981,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                             );
                                                         case "altitude":
                                                             return (
-                                                                <td key="altitude" className="py-3 px-3 align-middle font-mono tabular-nums text-neutral-700 dark:text-neutral-300" style={cellStyle}>
+                                                                <td key="altitude" className="py-3 px-3 align-middle tabular-nums text-neutral-700 dark:text-neutral-300" style={cellStyle}>
                                                                     {route.recommendedAltitudeFt
                                                                         ? formatFlightLevelOrAltitude(
                                                                               route.recommendedAltitudeFt,
@@ -1012,7 +1012,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                             );
                                                         case "saved":
                                                             return (
-                                                                <td key="saved" className="py-3 px-3 align-middle text-[11px] text-neutral-500 dark:text-neutral-400 font-mono whitespace-nowrap truncate" style={cellStyle}>
+                                                                <td key="saved" className="py-3 px-3 align-middle text-[11px] text-neutral-500 dark:text-neutral-400 tabular-nums whitespace-nowrap truncate" style={cellStyle}>
                                                                     {new Date(
                                                                         route.createdAt,
                                                                     ).toLocaleDateString()}
@@ -1232,7 +1232,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                                             className="py-2 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
                                                                         >
                                                                             <div className="flex items-center gap-2">
-                                                                                <span className="w-4 h-4 rounded-full bg-neutral-900 text-white dark:bg-white dark:text-black flex items-center justify-center text-[9px] font-mono font-bold">
+                                                                                <span className="w-4 h-4 rounded-full bg-neutral-900 text-white dark:bg-white dark:text-black flex items-center justify-center text-[9px] font-bold tabular-nums">
                                                                                     {
                                                                                         sector.sectorIndex
                                                                                     }
@@ -1267,7 +1267,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                                                 </span>
                                                                             </div>
 
-                                                                            <div className="flex items-center gap-3 font-mono text-[11px] text-neutral-600 dark:text-neutral-300">
+                                                                            <div className="flex items-center gap-3 tabular-nums text-[11px] text-neutral-600 dark:text-neutral-300">
                                                                                 <span>
                                                                                     TRK{" "}
                                                                                     {String(

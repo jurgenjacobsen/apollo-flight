@@ -163,7 +163,7 @@ export const TouchdownOverlayWindow: React.FC = () => {
 
                     <div className="flex items-center gap-2">
                         <span
-                            className={`text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded border ${gradeBadgeStyle}`}
+                            className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${gradeBadgeStyle}`}
                         >
                             {gradeText}
                         </span>
@@ -184,7 +184,7 @@ export const TouchdownOverlayWindow: React.FC = () => {
                         <div className="text-[10px] text-neutral-400 font-medium">
                             Touchdown Rate
                         </div>
-                        <div className="text-xl font-bold font-mono tracking-tight text-white mt-0.5 tabular-nums">
+                        <div className="text-xl font-bold tracking-tight text-white mt-0.5 tabular-nums">
                             {data.verticalSpeedFpm}{" "}
                             <span className="text-xs font-normal text-neutral-400">
                                 fpm
@@ -195,11 +195,11 @@ export const TouchdownOverlayWindow: React.FC = () => {
                     <div className="p-2 rounded-lg bg-white/5 border border-white/5">
                         <div className="text-[10px] text-neutral-400 font-medium flex items-center justify-between">
                             <span>Peak Load</span>
-                            <span className="text-[9px] text-neutral-500 font-mono">
+                            <span className="text-[9px] text-neutral-500">
                                 IMPACT
                             </span>
                         </div>
-                        <div className="text-xl font-bold font-mono tracking-tight text-white mt-0.5 tabular-nums">
+                        <div className="text-xl font-bold tracking-tight text-white mt-0.5 tabular-nums">
                             {data.gForce.toFixed(2)}{" "}
                             <span className="text-xs font-normal text-neutral-400">
                                 G
@@ -215,7 +215,7 @@ export const TouchdownOverlayWindow: React.FC = () => {
                             <Gauge className="w-3 h-3 text-neutral-400" />
                             <span>Air & Ground Speed</span>
                         </span>
-                        <span className="font-mono font-medium tabular-nums">
+                        <span className="font-medium tabular-nums">
                             {data.indicatedAirspeedKt !== undefined ? `${data.indicatedAirspeedKt} IAS · ` : ""}
                             {data.groundSpeedKt} GS
                         </span>
@@ -227,7 +227,7 @@ export const TouchdownOverlayWindow: React.FC = () => {
                                 <Wind className="w-3 h-3 text-neutral-400" />
                                 <span>Wind Component</span>
                             </span>
-                            <span className="font-mono font-medium tabular-nums">
+                            <span className="font-medium tabular-nums">
                                 {data.crosswindKt !== undefined ? `${Math.abs(data.crosswindKt)} kt X-wind` : ""}
                                 {data.headwindKt !== undefined ? ` · ${data.headwindKt >= 0 ? `${data.headwindKt} kt Head` : `${Math.abs(data.headwindKt)} kt Tail`}` : ""}
                             </span>

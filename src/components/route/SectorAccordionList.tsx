@@ -223,7 +223,7 @@ export const SectorAccordionList: React.FC<SectorAccordionListProps> = ({
                                                         <div className="p-3 rounded bg-white dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline text-xs space-y-1">
                                                             <div className="font-semibold text-neutral-800 dark:text-neutral-200 flex items-center justify-between">
                                                                 <span>Corridor Minimum Safe Altitude:</span>
-                                                                <span className="font-mono text-amber-600 dark:text-amber-400">
+                                                                <span className="tabular-nums text-amber-600 dark:text-amber-400">
                                                                     {formatFlightLevelOrAltitude(sector.corridorMsaFt)} ({sector.corridorMsaFt.toLocaleString()} ft MORA)
                                                                 </span>
                                                             </div>
@@ -247,7 +247,7 @@ export const SectorAccordionList: React.FC<SectorAccordionListProps> = ({
                                                                 </h4>
                                                                 <div className="text-[11px] text-neutral-500">
                                                                     AIRAC Cycle:{" "}
-                                                                    <span className="font-semibold font-mono">
+                                                                    <span className="font-semibold">
                                                                         {airacStatus?.isInstalled
                                                                             ? airacStatus.currentCycle
                                                                                 ? `Cycle ${airacStatus.currentCycle}`
@@ -342,7 +342,7 @@ export const SectorAccordionList: React.FC<SectorAccordionListProps> = ({
                                                             <div className="pt-2 border-t border-neutral-100 dark:border-geist-hairline">
                                                                 <div className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1.5 flex items-center justify-between">
                                                                     <span>Contiguous Airway Routing ({sector.waypoints.length} Fixes):</span>
-                                                                    <span className="text-[10px] text-neutral-400 font-mono">
+                                                                    <span className="text-[10px] text-neutral-400 tabular-nums">
                                                                         {sector.distanceNm} NM Total
                                                                     </span>
                                                                 </div>

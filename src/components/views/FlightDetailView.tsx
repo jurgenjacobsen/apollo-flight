@@ -845,7 +845,7 @@ export const FlightDetailView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
                                                     GPS Track
                                                 </span>
-                                                <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
                                                     .GPX
                                                 </span>
                                             </div>
@@ -868,7 +868,7 @@ export const FlightDetailView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                                                     Google Earth
                                                 </span>
-                                                <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
                                                     .KML
                                                 </span>
                                             </div>
@@ -891,7 +891,7 @@ export const FlightDetailView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                                                     GeoJSON Feature
                                                 </span>
-                                                <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
                                                     .GeoJSON
                                                 </span>
                                             </div>
@@ -914,7 +914,7 @@ export const FlightDetailView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                                                     CSV Spreadsheet
                                                 </span>
-                                                <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
                                                     .CSV
                                                 </span>
                                             </div>
@@ -1054,7 +1054,7 @@ export const FlightDetailView: React.FC = () => {
                             </span>
                         </div>
                         {touchdowns.length > 1 && (
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 tabular-nums">
                                 {touchdowns.length} Landings
                             </span>
                         )}
@@ -1070,7 +1070,7 @@ export const FlightDetailView: React.FC = () => {
                         </div>
                         {avgTouchdownRate !== null && (
                             <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 tabular-nums">
                                     +
                                     {calculateTouchdownGForce(
                                         avgTouchdownRate,

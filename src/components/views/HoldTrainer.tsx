@@ -441,7 +441,7 @@ export const HoldTrainer: React.FC = () => {
                             </span>
                         )}
                     </div>
-                    <div className="flex items-center gap-3 text-[11px] font-mono text-neutral-500">
+                    <div className="flex items-center gap-3 text-[11px] text-neutral-500 tabular-nums">
                         {activeFlight && (
                             <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -467,7 +467,7 @@ export const HoldTrainer: React.FC = () => {
                                   ? "NAV2 VOR/DME"
                                   : "NDB Beacon (ADF)"}
                         </span>
-                        <span className="font-mono tabular-nums">
+                        <span className="tabular-nums">
                             Inbound: {inboundCourse}° · {turnDirection} turns
                         </span>
                     </div>
@@ -530,7 +530,7 @@ export const HoldTrainer: React.FC = () => {
                                 <span className="text-neutral-500 dark:text-geist-muted block text-[11px]">
                                     Arrival Angle:
                                 </span>
-                                <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                                     {relativeAngle}°
                                 </span>
                             </div>
@@ -538,7 +538,7 @@ export const HoldTrainer: React.FC = () => {
                                 <span className="text-neutral-500 dark:text-geist-muted block text-[11px]">
                                     Outbound Heading:
                                 </span>
-                                <span className="font-mono font-semibold text-neutral-900 dark:text-white tabular-nums">
+                                <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
                                     {(inboundCourse + 180) % 360}°
                                 </span>
                             </div>
@@ -557,7 +557,7 @@ export const HoldTrainer: React.FC = () => {
                                 </span>
                             </div>
                             {mode === "LIVE" && (
-                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-1">
+                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                                     <Lock className="w-2.5 h-2.5" />
                                     LOCKED / LIVE SYNCED
                                 </span>
