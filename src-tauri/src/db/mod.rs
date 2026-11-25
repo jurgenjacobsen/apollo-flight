@@ -6,6 +6,7 @@ pub mod telemetry;
 pub mod visited;
 pub mod routes;
 pub mod settings;
+pub mod repository;
 
 pub use models::*;
 pub use migrations::*;
@@ -15,6 +16,7 @@ pub use telemetry::*;
 pub use visited::*;
 pub use routes::*;
 pub use settings::*;
+pub use repository::*;
 
 #[cfg(test)]
 mod tests {
@@ -523,5 +525,18 @@ mod tests {
         // Verify: enroute straight line was simplified
         assert!(downsampled.len() < points.len());
         assert!(downsampled.len() <= 30);
+    }
+
+    #[test]
+    fn test_calculate_downsample_target() {
+        assert_eq!(calculate_downsample_target(500), 500);
+        assert_eq!(calculate_downsample_target(1000), 1000);
+        // At 5500: halfway, 87.5% retention => ~4813
+        let mid = calculate_downsample_target(5500);
+        assert_eq!(mid, 4813);
+        // At 10000: 75% retention => 7500
+        assert_eq!(calculate_downsample_target(10000), 7500);
+        // At 20000: base 75% retention floor => 15000
+        assert_eq!(calculate_downsample_target(20000), 15000);
     }
 }

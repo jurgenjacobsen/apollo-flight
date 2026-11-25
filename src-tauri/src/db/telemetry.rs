@@ -100,8 +100,8 @@ pub fn downsample_telemetry_rdp(
     }
 
     // 2. Binary search adaptive epsilon to optimize simplification toward target_points
-    let mut low_eps = 0.02;
-    let mut high_eps = 5.0;
+    let mut low_eps = 0.01;
+    let mut high_eps = 4.0;
     let mut best_kept = kept.clone();
 
     for _ in 0..8 {
@@ -138,6 +138,15 @@ pub fn downsample_telemetry_rdp(
         .collect()
 }
 
+/// Calculates target points using a linear function from 100% retention down to a 75% retention floor.
+pub fn calculate_downsample_target(total: usize) -> usize {
+    if total <= 1000 {
+        return total;
+    }
+    let retention = 1.0 - 0.25 * ((total as f64 - 1000.0) / 9000.0).clamp(0.0, 1.0);
+    ((total as f64) * retention).round() as usize
+}
+
 /// Retrieves flight details with downsampled telemetry track for optimized UI rendering (Leaflet/Recharts).
 pub fn get_flight_details_downsampled(
     conn: &Connection,
@@ -149,7 +158,7 @@ pub fn get_flight_details_downsampled(
         None => return Ok(None),
     };
 
-    let target = max_points.unwrap_or(1500);
+    let target = max_points.unwrap_or_else(|| calculate_downsample_target(raw.telemetry_points.len()));
     let simplified_points = downsample_telemetry_rdp(&raw.telemetry_points, target);
 
     Ok(Some(FlightDetails {

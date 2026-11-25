@@ -58,6 +58,9 @@ export const SimBridge: React.FC = () => {
         syncTraySetting();
     }, [closeToTray]);
 
+    // Track previous sim connected state to alert user when active flight telemetry drops
+    const wasConnectedRef = React.useRef(false);
+
     // Listen to live FSUIPC7 telemetry and system tray events from Tauri Rust backend
     useEffect(() => {
         let unlistenTelemetry: (() => void) | undefined;
@@ -73,7 +76,20 @@ export const SimBridge: React.FC = () => {
                     "fsuipc-telemetry",
                     (event: any) => {
                         if (event?.payload) {
-                            updateTelemetry(event.payload);
+                            const pkt = event.payload;
+                            const state = useFlightStore.getState();
+
+                            // Trigger dedicated modal alert if connection drops while recording a flight
+                            if (wasConnectedRef.current && !pkt.simConnected && state.activeFlight) {
+                                state.showSystemError({
+                                    title: "Simulator Connection Lost",
+                                    message: "The live telemetry link to Microsoft Flight Simulator was interrupted while a flight was recording. Logbook recording has paused.",
+                                    details: "FSUIPC7 bridge returned disconnected status (0x3364). Please check that MSFS and FSUIPC7 are still active.",
+                                    type: "warning",
+                                });
+                            }
+                            wasConnectedRef.current = Boolean(pkt.simConnected);
+                            updateTelemetry(pkt);
                         }
                     },
                 );

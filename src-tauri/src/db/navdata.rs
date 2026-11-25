@@ -1102,3 +1102,204 @@ pub fn search_route_airports(conn: &Connection, filter: &RouteSearchFilter) -> R
     Ok(results)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn setup_in_memory_navdata() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE airports (
+                icao TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                elevation_ft INTEGER,
+                country_code TEXT NOT NULL,
+                country_name TEXT NOT NULL,
+                municipality TEXT,
+                airport_type TEXT,
+                continent TEXT,
+                max_runway_length_ft INTEGER,
+                max_paved_runway_length_ft INTEGER,
+                max_unpaved_runway_length_ft INTEGER,
+                has_paved INTEGER,
+                has_unpaved INTEGER,
+                all_runways_closed INTEGER
+            );
+            CREATE TABLE runways (
+                id INTEGER PRIMARY KEY,
+                airport_ident TEXT NOT NULL,
+                length_ft INTEGER,
+                width_ft INTEGER,
+                surface TEXT,
+                is_paved INTEGER NOT NULL,
+                is_unpaved INTEGER NOT NULL,
+                lighted INTEGER NOT NULL,
+                closed INTEGER NOT NULL
+            );
+            "#,
+        )
+        .expect("create navdata schema");
+        conn
+    }
+
+    #[test]
+    fn test_parse_csv_line_handles_quotes_commas_and_trimming() {
+        let line = r#" 3622 , "KJFK" , large_airport , "John F Kennedy, ""Idlewild"" Intl" , 40.6398 , -73.7789 , "#;
+        let cols = parse_csv_line(line);
+        assert_eq!(
+            cols,
+            vec![
+                "3622",
+                "KJFK",
+                "large_airport",
+                r#"John F Kennedy, "Idlewild" Intl"#,
+                "40.6398",
+                "-73.7789",
+                "",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_surface_classification_helpers() {
+        assert!(is_paved_surface("ASP"));
+        assert!(is_paved_surface("CONC"));
+        assert!(is_paved_surface("BITUMINOUS"));
+        assert!(!is_paved_surface("TURF"));
+
+        assert!(is_unpaved_surface("TURF"));
+        assert!(is_unpaved_surface("GRASS"));
+        assert!(is_unpaved_surface("GRVL"));
+        assert!(!is_unpaved_surface("ASP"));
+
+        assert!(!is_paved_surface("WATER"));
+        assert!(!is_unpaved_surface("WATER"));
+    }
+
+    #[test]
+    fn test_import_ourairports_aerodromes_csv() {
+        let mut conn = setup_in_memory_navdata();
+        let temp_dir = std::env::temp_dir();
+        let uid = uuid::Uuid::new_v4();
+        let countries_path = temp_dir.join(format!("test_countries_{}.csv", uid));
+        let airports_path = temp_dir.join(format!("test_airports_{}.csv", uid));
+
+        {
+            let mut f = File::create(&countries_path).unwrap();
+            writeln!(f, "id,code,name,continent,wikipedia_link,keywords").unwrap();
+            writeln!(f, r#"302755,"US","United States","NA","","""#).unwrap();
+            writeln!(f, r#"302675,"AT","Austria","EU","","""#).unwrap();
+        }
+
+        {
+            let mut f = File::create(&airports_path).unwrap();
+            writeln!(
+                f,
+                "id,ident,type,name,latitude_deg,longitude_deg,elevation_ft,continent,iso_country,iso_region,municipality,scheduled_service,gps_code,iata_code,local_code"
+            )
+            .unwrap();
+            // Valid large airport
+            writeln!(
+                f,
+                r#"3622,"KJFK","large_airport","John F Kennedy International Airport",40.6398,-73.7789,13,"NA","US","US-NY","New York","yes","KJFK","JFK","JFK""#
+            )
+            .unwrap();
+            // Valid medium airport using gps_code when ident is non-ICAO
+            writeln!(
+                f,
+                r#"4300,"AT-0001","medium_airport","Innsbruck Kranebitten",47.2602,11.3440,1906,"EU","AT","AT-7","Innsbruck","yes","LOWI","INN","""#
+            )
+            .unwrap();
+            // Excluded: heliport, closed, seaplane_base, non-ICAO local strip
+            writeln!(
+                f,
+                r#"9001,"KHEL","heliport","City Heliport",40.7,-74.0,10,"NA","US","US-NY","New York","no","KHEL","","""#
+            )
+            .unwrap();
+            writeln!(
+                f,
+                r#"9002,"KCLS","closed","Old Airfield",40.8,-74.1,100,"NA","US","US-NY","Newark","no","KCLS","","""#
+            )
+            .unwrap();
+            writeln!(
+                f,
+                r#"9003,"KSEA1","seaplane_base","Lake Base",47.6,-122.3,14,"NA","US","US-WA","Seattle","no","","","""#
+            )
+            .unwrap();
+            writeln!(
+                f,
+                r#"9004,"00AA","small_airport","Local Farm Strip",39.0,-100.0,2000,"NA","US","US-KS","Hays","no","","","00AA""#
+            )
+            .unwrap();
+        }
+
+        let imported =
+            import_ourairports_files(&mut conn, &airports_path, &countries_path).expect("import airports");
+        assert_eq!(imported, 2);
+
+        let jfk = get_airport_by_icao(&conn, "KJFK").unwrap().expect("KJFK imported");
+        assert_eq!(jfk.country_name, "United States");
+        assert_eq!(jfk.continent.as_deref(), Some("NA"));
+        assert_eq!(jfk.elevation_ft, Some(13));
+
+        let lowi = get_airport_by_icao(&conn, "LOWI").unwrap().expect("LOWI imported via gps_code");
+        assert_eq!(lowi.country_name, "Austria");
+        assert_eq!(lowi.municipality.as_deref(), Some("Innsbruck"));
+
+        assert!(get_airport_by_icao(&conn, "KHEL").unwrap().is_none());
+        assert!(get_airport_by_icao(&conn, "KCLS").unwrap().is_none());
+
+        let _ = std::fs::remove_file(countries_path);
+        let _ = std::fs::remove_file(airports_path);
+    }
+
+    #[test]
+    fn test_import_ourairports_runways_csv() {
+        let mut conn = setup_in_memory_navdata();
+        let temp_dir = std::env::temp_dir();
+        let runways_path = temp_dir.join(format!("test_runways_{}.csv", uuid::Uuid::new_v4()));
+
+        {
+            let mut f = File::create(&runways_path).unwrap();
+            writeln!(
+                f,
+                "id,airport_ref,airport_ident,length_ft,width_ft,surface,lighted,closed"
+            )
+            .unwrap();
+            writeln!(f, r#"101,3622,"KJFK",14511,200,"ASP",1,0"#).unwrap();
+            writeln!(f, r#"102,4300,"LOWI",6562,148,"TURF",0,0"#).unwrap();
+            writeln!(f, r#"103,5000,"KSEA",5000,150,"WATER",0,1"#).unwrap();
+            // Non-ICAO ident should be skipped
+            writeln!(f, r#"104,9004,"00AA",2200,50,"GRASS",0,0"#).unwrap();
+        }
+
+        let imported = import_runways_file(&mut conn, &runways_path).expect("import runways");
+        assert_eq!(imported, 3);
+
+        let jfk_rwys = get_airport_runways(&conn, "KJFK").expect("query KJFK runways");
+        assert_eq!(jfk_rwys.len(), 1);
+        assert_eq!(jfk_rwys[0].length_ft, Some(14511));
+        assert!(jfk_rwys[0].is_paved);
+        assert!(!jfk_rwys[0].is_unpaved);
+        assert!(jfk_rwys[0].lighted);
+        assert!(!jfk_rwys[0].closed);
+
+        let lowi_rwys = get_airport_runways(&conn, "LOWI").expect("query LOWI runways");
+        assert_eq!(lowi_rwys.len(), 1);
+        assert!(!lowi_rwys[0].is_paved);
+        assert!(lowi_rwys[0].is_unpaved);
+
+        let ksea_rwys = get_airport_runways(&conn, "KSEA").expect("query KSEA runways");
+        assert_eq!(ksea_rwys.len(), 1);
+        assert!(!ksea_rwys[0].is_paved);
+        assert!(!ksea_rwys[0].is_unpaved);
+        assert!(ksea_rwys[0].closed);
+
+        let _ = std::fs::remove_file(runways_path);
+    }
+}
+

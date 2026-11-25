@@ -27,6 +27,7 @@ import {
     resetChecklistChecks,
 } from "../types/checklist";
 import { DocFileContent } from "../types/documentation";
+import { LiveTrafficNetwork } from "../types/traffic";
 import { DEFAULT_CHECKLISTS } from "../data/defaultChecklists";
 import { SavedRoute, GeneratedRoute, RouteSector } from "../types/route";
 import { SimBriefOFP } from "../types/simbrief";
@@ -963,7 +964,29 @@ export const computeVisitedCountries = (
     );
 };
 
+export interface SystemModalError {
+    title: string;
+    message: string;
+    details?: string;
+    type?: "error" | "warning" | "info";
+    actionLabel?: string;
+    onAction?: () => void;
+}
+
 export interface FlightState {
+    voiceCopilotMicGranted: boolean;
+    setVoiceCopilotMicGranted: (granted: boolean) => Promise<void>;
+    voiceCopilotInputDeviceId: string;
+    voiceCopilotOutputDeviceId: string;
+    voiceCopilotMicMode: "always_on" | "ptt";
+    voiceCopilotPttKey: string;
+    setVoiceCopilotInputDeviceId: (id: string) => Promise<void>;
+    setVoiceCopilotOutputDeviceId: (id: string) => Promise<void>;
+    setVoiceCopilotMicMode: (mode: "always_on" | "ptt") => Promise<void>;
+    setVoiceCopilotPttKey: (keyCode: string) => Promise<void>;
+    systemModalError: SystemModalError | null;
+    showSystemError: (error: SystemModalError) => void;
+    dismissSystemError: () => void;
     currentTelemetry: TelemetryData;
     activeFlight: FlightRecord | null;
     flightStage: FlightStage;
@@ -1003,6 +1026,7 @@ export interface FlightState {
     visibilityUnit: VisibilityUnit;
     windSpeedUnit: WindSpeedUnit;
     temperatureUnit: TemperatureUnit;
+    liveTrafficNetwork: LiveTrafficNetwork;
     dbInitialized: boolean;
     airportsCount: number;
     isSyncingAirports: boolean;
@@ -1087,6 +1111,7 @@ export interface FlightState {
     setVisibilityUnit: (unit: VisibilityUnit) => Promise<void>;
     setWindSpeedUnit: (unit: WindSpeedUnit) => Promise<void>;
     setTemperatureUnit: (unit: TemperatureUnit) => Promise<void>;
+    setLiveTrafficNetwork: (network: LiveTrafficNetwork) => Promise<void>;
     setActiveView: (view: FlightState["activeView"]) => void;
     setSettingsActiveTab: (tab: string) => void;
     setSelectedFlightId: (id: string | null) => void;
@@ -1439,6 +1464,49 @@ export const useFlightStore = create<FlightState>()(
             detectedMultiSectorRoute: null,
             nearestAirport: null,
             isLoadingFlightDetails: false,
+            voiceCopilotMicGranted: false,
+            voiceCopilotInputDeviceId: "",
+            voiceCopilotOutputDeviceId: "",
+            voiceCopilotMicMode: "always_on",
+            voiceCopilotPttKey: "Space",
+            setVoiceCopilotMicGranted: async (granted: boolean) => {
+                set({ voiceCopilotMicGranted: granted });
+                await safeInvoke("set_user_setting", {
+                    key: "voice_copilot_mic_granted",
+                    value: String(granted),
+                });
+            },
+            setVoiceCopilotInputDeviceId: async (id: string) => {
+                set({ voiceCopilotInputDeviceId: id });
+                await safeInvoke("set_user_setting", {
+                    key: "voice_copilot_input_device",
+                    value: id,
+                });
+            },
+            setVoiceCopilotOutputDeviceId: async (id: string) => {
+                set({ voiceCopilotOutputDeviceId: id });
+                await safeInvoke("set_user_setting", {
+                    key: "voice_copilot_output_device",
+                    value: id,
+                });
+            },
+            setVoiceCopilotMicMode: async (mode: "always_on" | "ptt") => {
+                set({ voiceCopilotMicMode: mode });
+                await safeInvoke("set_user_setting", {
+                    key: "voice_copilot_mic_mode",
+                    value: mode,
+                });
+            },
+            setVoiceCopilotPttKey: async (keyCode: string) => {
+                set({ voiceCopilotPttKey: keyCode });
+                await safeInvoke("set_user_setting", {
+                    key: "voice_copilot_ptt_key",
+                    value: keyCode,
+                });
+            },
+            systemModalError: null,
+            showSystemError: (error: SystemModalError) => set({ systemModalError: error }),
+            dismissSystemError: () => set({ systemModalError: null }),
             showOnboarding: false,
             setShowOnboarding: (show: boolean) => set({ showOnboarding: show }),
             completeOnboarding: async () => {
@@ -1454,6 +1522,15 @@ export const useFlightStore = create<FlightState>()(
             docContentCache: {},
             simbriefUsername: "",
             latestOfp: null,
+            liveTrafficNetwork: "off",
+
+            setLiveTrafficNetwork: async (network: LiveTrafficNetwork) => {
+                set({ liveTrafficNetwork: network });
+                await safeInvoke("set_user_setting", {
+                    key: "liveTrafficNetwork",
+                    value: network,
+                });
+            },
 
             setSimbriefUsername: async (username: string) => {
                 set({ simbriefUsername: username });
@@ -1841,8 +1918,40 @@ export const useFlightStore = create<FlightState>()(
                                     dbSettings.autoCheckUpdates === "true",
                             });
                         }
+                        if (typeof dbSettings.voice_copilot_mic_granted === "string") {
+                            set({
+                                voiceCopilotMicGranted:
+                                    dbSettings.voice_copilot_mic_granted === "true",
+                            });
+                        }
+                        if (typeof dbSettings.voice_copilot_input_device === "string") {
+                            set({ voiceCopilotInputDeviceId: dbSettings.voice_copilot_input_device });
+                        }
+                        if (typeof dbSettings.voice_copilot_output_device === "string") {
+                            set({ voiceCopilotOutputDeviceId: dbSettings.voice_copilot_output_device });
+                        }
+                        if (
+                            dbSettings.voice_copilot_mic_mode === "always_on" ||
+                            dbSettings.voice_copilot_mic_mode === "ptt"
+                        ) {
+                            set({ voiceCopilotMicMode: dbSettings.voice_copilot_mic_mode });
+                        }
+                        if (
+                            typeof dbSettings.voice_copilot_ptt_key === "string" &&
+                            dbSettings.voice_copilot_ptt_key.length > 0
+                        ) {
+                            set({ voiceCopilotPttKey: dbSettings.voice_copilot_ptt_key });
+                        }
                         if (typeof dbSettings.simbriefUsername === "string") {
                             set({ simbriefUsername: dbSettings.simbriefUsername });
+                        }
+                        if (
+                            dbSettings.liveTrafficNetwork === "off" ||
+                            dbSettings.liveTrafficNetwork === "vatsim" ||
+                            dbSettings.liveTrafficNetwork === "ivao" ||
+                            dbSettings.liveTrafficNetwork === "pilotedge"
+                        ) {
+                            set({ liveTrafficNetwork: dbSettings.liveTrafficNetwork });
                         }
                         if (typeof dbSettings.pageSize === "string") {
                             const ps = parseInt(dbSettings.pageSize, 10);

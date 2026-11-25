@@ -7,6 +7,21 @@ use chrono::Utc;
 
 pub static IS_CONNECTED_TO_SIM: AtomicBool = AtomicBool::new(false);
 
+/// Abstract telemetry source interface decoupling ingestion from specific simulator bridges.
+pub trait FlightDataProvider: Send {
+    /// Return whether currently connected to the simulator.
+    fn is_connected(&self) -> bool;
+
+    /// Attempt to establish connection to the simulator.
+    fn connect(&mut self) -> Result<(), String>;
+
+    /// Fetch latest telemetry snapshot.
+    fn poll_telemetry(&mut self) -> Result<TelemetryPacket, String>;
+
+    /// Explicitly close or reset connection.
+    fn disconnect(&mut self);
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TelemetryPacket {
@@ -369,62 +384,114 @@ pub mod win {
             timestamp: Utc::now().to_rfc3339(),
         })
     }
-}
 
-/// Starts the background telemetry streaming thread
-#[cfg(windows)]
-pub fn start_telemetry_loop(app: AppHandle, is_running: Arc<AtomicBool>) {
-    use fsuipc::user::UserHandle;
+    /// Native FSUIPC7 implementation of FlightDataProvider
+    pub struct FsuipcProvider {
+        handle: Option<UserHandle>,
+    }
 
-    std::thread::spawn(move || {
-        log::info!("Apollo Flight FSUIPC7 background worker thread started (Windows).");
+    impl FsuipcProvider {
+        pub fn new() -> Self {
+            Self { handle: None }
+        }
+    }
 
-        while is_running.load(Ordering::SeqCst) {
+    impl Default for FsuipcProvider {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    // SAFETY: FsuipcProvider exclusively owns its UserHandle on the telemetry background thread.
+    unsafe impl Send for FsuipcProvider {}
+
+    impl FlightDataProvider for FsuipcProvider {
+        fn is_connected(&self) -> bool {
+            self.handle.is_some()
+        }
+
+        fn connect(&mut self) -> Result<(), String> {
             match UserHandle::new() {
-                Ok(mut handle) => {
-                    log::info!("Successfully connected to FSUIPC7 (UIPCMAIN).");
-                    IS_CONNECTED_TO_SIM.store(true, Ordering::SeqCst);
-
-                    // Connected poll loop
-                    while is_running.load(Ordering::SeqCst) {
-                        match win::read_telemetry_batch(&mut handle) {
-                            Ok(packet) => {
-                                let _ = app.emit("fsuipc-telemetry", &packet);
-                                crate::efb::update_telemetry(&packet);
-
-                                // Dynamic adaptive poll rate:
-                                // - Above 10,000ft: 1000ms (1 Hz)
-                                // - Airborne, 1,000ft - 10,000ft: 500ms (2 Hz)
-                                // - Airborne, below 1,000ft AGL: gradual interpolation 500ms -> 20ms (50 Hz at touchdown)
-                                // - On ground: 1000ms (<10 kt taxi/parked), 100ms during high-speed rollout
-                                let sleep_ms = calculate_dynamic_sleep_ms(&packet);
-                                std::thread::sleep(Duration::from_millis(sleep_ms));
-                            }
-                            Err(err) => {
-                                log::warn!("FSUIPC7 read error or simulator disconnected: {:?}", err);
-                                break;
-                            }
-                        }
-                    }
-
-                    // Handle dropped / disconnected
-                    IS_CONNECTED_TO_SIM.store(false, Ordering::SeqCst);
-                    let mut disconnected_packet = TelemetryPacket::default();
-                    disconnected_packet.sim_connected = false;
-                    let _ = app.emit("fsuipc-telemetry", &disconnected_packet);
-                    crate::efb::update_telemetry(&disconnected_packet);
-                    log::info!("FSUIPC7 connection lost, waiting to reconnect...");
+                Ok(h) => {
+                    self.handle = Some(h);
+                    Ok(())
                 }
-                Err(_) => {
-                    // Simulator / FSUIPC7 is not currently running
-                    IS_CONNECTED_TO_SIM.store(false, Ordering::SeqCst);
-                    std::thread::sleep(Duration::from_millis(1500));
-                }
+                Err(e) => Err(e.to_string()),
             }
         }
 
-        log::info!("Apollo Flight FSUIPC7 worker thread stopped.");
+        fn poll_telemetry(&mut self) -> Result<TelemetryPacket, String> {
+            let handle = self
+                .handle
+                .as_mut()
+                .ok_or_else(|| "FSUIPC not connected".to_string())?;
+            read_telemetry_batch(handle).map_err(|e| e.to_string())
+        }
+
+        fn disconnect(&mut self) {
+            self.handle = None;
+        }
+    }
+}
+
+#[cfg(windows)]
+pub use win::FsuipcProvider;
+
+/// Starts a telemetry streaming thread driven by any FlightDataProvider implementation
+pub fn start_telemetry_provider_loop<P: FlightDataProvider + 'static>(
+    app: AppHandle,
+    is_running: Arc<AtomicBool>,
+    mut provider: P,
+) {
+    std::thread::spawn(move || {
+        log::info!("Apollo Flight telemetry provider worker thread started.");
+
+        while is_running.load(Ordering::SeqCst) {
+            if !provider.is_connected() {
+                if let Err(_) = provider.connect() {
+                    IS_CONNECTED_TO_SIM.store(false, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_millis(1500));
+                    continue;
+                }
+                log::info!("Telemetry provider connected to simulator.");
+                IS_CONNECTED_TO_SIM.store(true, Ordering::SeqCst);
+            }
+
+            // Connected poll loop
+            while is_running.load(Ordering::SeqCst) && provider.is_connected() {
+                match provider.poll_telemetry() {
+                    Ok(packet) => {
+                        let _ = app.emit("fsuipc-telemetry", &packet);
+                        crate::efb::update_telemetry(&packet);
+
+                        let sleep_ms = calculate_dynamic_sleep_ms(&packet);
+                        std::thread::sleep(Duration::from_millis(sleep_ms));
+                    }
+                    Err(err) => {
+                        log::warn!("Telemetry provider read error or disconnected: {}", err);
+                        provider.disconnect();
+                        break;
+                    }
+                }
+            }
+
+            // Handle dropped / disconnected
+            IS_CONNECTED_TO_SIM.store(false, Ordering::SeqCst);
+            let mut disconnected_packet = TelemetryPacket::default();
+            disconnected_packet.sim_connected = false;
+            let _ = app.emit("fsuipc-telemetry", &disconnected_packet);
+            crate::efb::update_telemetry(&disconnected_packet);
+            log::info!("Telemetry connection lost, waiting to reconnect...");
+        }
+
+        log::info!("Apollo Flight telemetry worker thread stopped.");
     });
+}
+
+/// Starts the default background telemetry streaming thread
+#[cfg(windows)]
+pub fn start_telemetry_loop(app: AppHandle, is_running: Arc<AtomicBool>) {
+    start_telemetry_provider_loop(app, is_running, win::FsuipcProvider::new());
 }
 
 /// Computes the adaptive dynamic telemetry poll sleep interval based on altitude and flight regime:
@@ -466,6 +533,181 @@ pub fn start_telemetry_loop(_app: AppHandle, is_running: Arc<AtomicBool>) {
             std::thread::sleep(Duration::from_millis(2000));
         }
     });
+}
+
+/// Mock telemetry provider capable of replaying synthetic test scenarios or recorded flight traces.
+pub struct MockProvider {
+    pub connected: bool,
+    pub packets: Vec<TelemetryPacket>,
+    pub cursor: usize,
+    pub loop_playback: bool,
+}
+
+impl MockProvider {
+    /// Create provider from a pre-defined packet list (supports raw flight replays and synthetic vectors).
+    pub fn new(packets: Vec<TelemetryPacket>) -> Self {
+        Self {
+            connected: true,
+            packets,
+            cursor: 0,
+            loop_playback: false,
+        }
+    }
+
+    /// Enable or disable playback looping.
+    pub fn with_loop(mut self, loop_playback: bool) -> Self {
+        self.loop_playback = loop_playback;
+        self
+    }
+
+    /// Load packets from a JSON string (supports serialized raw flight recordings).
+    pub fn from_json_str(json: &str) -> Result<Self, serde_json::Error> {
+        let packets: Vec<TelemetryPacket> = serde_json::from_str(json)?;
+        Ok(Self::new(packets))
+    }
+
+    /// Synthetic traffic pattern scenario:
+    /// Parked -> Takeoff -> Climb -> Downwind Cruise -> Approach -> Flare -> Touchdown -> Rollout
+    pub fn synthetic_pattern() -> Self {
+        let mut packets = Vec::with_capacity(7);
+
+        // 1. Parked at gate / ramp
+        let mut p1 = TelemetryPacket::default();
+        p1.aircraft_title = "Cessna 172 Skyhawk Mock".to_string();
+        p1.is_on_ground = true;
+        p1.is_engine_running = true;
+        p1.engine_combustion_mask = 1;
+        p1.all_engines_stopped = false;
+        packets.push(p1);
+
+        // 2. High-speed takeoff roll
+        let mut p2 = packets[0].clone();
+        p2.ground_speed = 55.0;
+        p2.indicated_airspeed = 55.0;
+        packets.push(p2);
+
+        // 3. Takeoff climb
+        let mut p3 = packets[0].clone();
+        p3.is_on_ground = false;
+        p3.altitude_msl = 800.0;
+        p3.altitude_agl = 800.0;
+        p3.vertical_speed = 700.0;
+        p3.ground_speed = 75.0;
+        p3.indicated_airspeed = 75.0;
+        packets.push(p3);
+
+        // 4. Pattern altitude level flight (Downwind)
+        let mut p4 = packets[0].clone();
+        p4.is_on_ground = false;
+        p4.altitude_msl = 1500.0;
+        p4.altitude_agl = 1500.0;
+        p4.vertical_speed = 0.0;
+        p4.ground_speed = 90.0;
+        p4.indicated_airspeed = 90.0;
+        packets.push(p4);
+
+        // 5. Final approach
+        let mut p5 = packets[0].clone();
+        p5.is_on_ground = false;
+        p5.altitude_msl = 300.0;
+        p5.altitude_agl = 300.0;
+        p5.vertical_speed = -450.0;
+        p5.ground_speed = 65.0;
+        p5.indicated_airspeed = 65.0;
+        packets.push(p5);
+
+        // 6. Touchdown flare
+        let mut p6 = packets[0].clone();
+        p6.is_on_ground = true;
+        p6.altitude_agl = 0.0;
+        p6.vertical_speed = -110.0;
+        p6.touchdown_normal_velocity = -110.0;
+        p6.g_force = 1.12;
+        p6.ground_speed = 50.0;
+        packets.push(p6);
+
+        // 7. Rollout / Parked
+        let mut p7 = packets[0].clone();
+        p7.is_on_ground = true;
+        p7.ground_speed = 0.0;
+        p7.all_engines_stopped = true;
+        p7.is_engine_running = false;
+        packets.push(p7);
+
+        Self::new(packets)
+    }
+
+    /// Synthetic touchdown test: Generates a flare progression ending with exact sink rate & G-force
+    pub fn synthetic_landing(sink_rate_fpm: f64, g_force: f64) -> Self {
+        let mut packets = Vec::with_capacity(4);
+
+        // Approach 500ft
+        let mut p1 = TelemetryPacket::default();
+        p1.aircraft_title = "Synthetic Landing Test".to_string();
+        p1.is_on_ground = false;
+        p1.altitude_agl = 500.0;
+        p1.vertical_speed = -500.0;
+        p1.ground_speed = 70.0;
+        packets.push(p1);
+
+        // Short final 50ft
+        let mut p2 = packets[0].clone();
+        p2.altitude_agl = 50.0;
+        p2.vertical_speed = -250.0;
+        p2.ground_speed = 60.0;
+        packets.push(p2);
+
+        // Touchdown point
+        let mut p3 = packets[0].clone();
+        p3.is_on_ground = true;
+        p3.altitude_agl = 0.0;
+        p3.vertical_speed = sink_rate_fpm;
+        p3.touchdown_normal_velocity = sink_rate_fpm;
+        p3.g_force = g_force;
+        p3.ground_speed = 55.0;
+        packets.push(p3);
+
+        // Rollout
+        let mut p4 = packets[0].clone();
+        p4.ground_speed = 20.0;
+        packets.push(p4);
+
+        Self::new(packets)
+    }
+}
+
+impl FlightDataProvider for MockProvider {
+    fn is_connected(&self) -> bool {
+        self.connected
+    }
+
+    fn connect(&mut self) -> Result<(), String> {
+        self.connected = true;
+        Ok(())
+    }
+
+    fn poll_telemetry(&mut self) -> Result<TelemetryPacket, String> {
+        if !self.connected {
+            return Err("MockProvider is disconnected".to_string());
+        }
+        if self.packets.is_empty() {
+            return Ok(TelemetryPacket::default());
+        }
+        if self.cursor >= self.packets.len() {
+            if self.loop_playback {
+                self.cursor = 0;
+            } else {
+                return Ok(self.packets.last().cloned().unwrap_or_default());
+            }
+        }
+        let packet = self.packets[self.cursor].clone();
+        self.cursor += 1;
+        Ok(packet)
+    }
+
+    fn disconnect(&mut self) {
+        self.connected = false;
+    }
 }
 
 #[cfg(test)]
@@ -513,5 +755,186 @@ mod tests {
         // On ground high-speed rollout >= 10 kt: 100ms
         pkt.ground_speed = 120.0;
         assert_eq!(calculate_dynamic_sleep_ms(&pkt), 100);
+    }
+
+    #[test]
+    fn test_flight_data_provider_lifecycle() {
+        let mut provider = MockProvider::new(vec![TelemetryPacket::default()]);
+        assert!(provider.is_connected());
+        assert!(provider.poll_telemetry().is_ok());
+
+        provider.disconnect();
+        assert!(!provider.is_connected());
+        assert!(provider.poll_telemetry().is_err());
+
+        assert!(provider.connect().is_ok());
+        assert!(provider.is_connected());
+    }
+
+    #[test]
+    fn test_mock_provider_synthetic_pattern() {
+        let mut provider = MockProvider::synthetic_pattern();
+        assert_eq!(provider.packets.len(), 7);
+
+        // 1. Parked
+        let p1 = provider.poll_telemetry().unwrap();
+        assert!(p1.is_on_ground);
+        assert_eq!(p1.ground_speed, 0.0);
+
+        // 2. Takeoff roll
+        let p2 = provider.poll_telemetry().unwrap();
+        assert!(p2.is_on_ground);
+        assert_eq!(p2.ground_speed, 55.0);
+
+        // 3. Climb
+        let p3 = provider.poll_telemetry().unwrap();
+        assert!(!p3.is_on_ground);
+        assert!(p3.vertical_speed > 0.0);
+
+        // 4. Downwind
+        let p4 = provider.poll_telemetry().unwrap();
+        assert_eq!(p4.altitude_agl, 1500.0);
+
+        // 5. Approach
+        let p5 = provider.poll_telemetry().unwrap();
+        assert!(p5.vertical_speed < 0.0);
+
+        // 6. Flare & Touchdown
+        let p6 = provider.poll_telemetry().unwrap();
+        assert!(p6.is_on_ground);
+        assert_eq!(p6.touchdown_normal_velocity, -110.0);
+        assert_eq!(p6.g_force, 1.12);
+
+        // 7. Parked
+        let p7 = provider.poll_telemetry().unwrap();
+        assert!(p7.all_engines_stopped);
+    }
+
+    #[test]
+    fn test_mock_provider_synthetic_landing() {
+        let mut provider = MockProvider::synthetic_landing(-85.0, 1.08);
+        assert_eq!(provider.packets.len(), 4);
+
+        let _approach = provider.poll_telemetry().unwrap();
+        let _short_final = provider.poll_telemetry().unwrap();
+        let touchdown = provider.poll_telemetry().unwrap();
+
+        assert!(touchdown.is_on_ground);
+        assert_eq!(touchdown.touchdown_normal_velocity, -85.0);
+        assert_eq!(touchdown.g_force, 1.08);
+    }
+
+    #[test]
+    fn test_mock_provider_from_json_str() {
+        let mut original = TelemetryPacket::default();
+        original.aircraft_title = "Golden Flight Replay".to_string();
+        let json = serde_json::to_string(&vec![original]).unwrap();
+
+        let mut provider = MockProvider::from_json_str(&json).unwrap();
+        let pkt = provider.poll_telemetry().unwrap();
+        assert_eq!(pkt.aircraft_title, "Golden Flight Replay");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_fsuipc_coordinate_scaling() {
+        use win::FsuipcConversions;
+
+        assert_eq!(FsuipcConversions::parse_latitude(0), 0.0);
+        assert_eq!(FsuipcConversions::parse_longitude(0), 0.0);
+
+        // Latitude: raw = deg * (10001750 * 2^32) / 90
+        let lat_45_raw = (45.0_f64 * (10001750.0 * 65536.0 * 65536.0) / 90.0).round() as i64;
+        assert!((FsuipcConversions::parse_latitude(lat_45_raw) - 45.0).abs() < 1e-6);
+
+        let lat_syd_raw = (-33.8688_f64 * (10001750.0 * 65536.0 * 65536.0) / 90.0).round() as i64;
+        assert!((FsuipcConversions::parse_latitude(lat_syd_raw) - (-33.8688)).abs() < 1e-6);
+
+        // Longitude: raw = deg * 2^64 / 360 (test via little-endian bytes round-trip)
+        let lon_120_raw =
+            (120.0_f64 * (65536.0 * 65536.0 * 65536.0 * 65536.0) / 360.0).round() as i64;
+        let lon_120_bytes = lon_120_raw.to_le_bytes();
+        assert!(
+            (FsuipcConversions::parse_longitude(i64::from_le_bytes(lon_120_bytes)) - 120.0).abs()
+                < 1e-6
+        );
+
+        let lon_sfo_raw =
+            (-122.4194_f64 * (65536.0 * 65536.0 * 65536.0 * 65536.0) / 360.0).round() as i64;
+        assert!((FsuipcConversions::parse_longitude(lon_sfo_raw) - (-122.4194)).abs() < 1e-6);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_fsuipc_altitude_speed_and_byte_conversions() {
+        use win::FsuipcConversions;
+
+        // Altitude MSL: 1,000 meters in 64-bit fixed point (m * 2^32) -> 3,280.84 ft
+        let alt_msl_raw = (1000.0 * 65536.0 * 65536.0) as i64;
+        let alt_msl_le = i64::from_le_bytes(alt_msl_raw.to_le_bytes());
+        assert!((FsuipcConversions::parse_altitude_msl(alt_msl_le) - 3280.84).abs() < 0.01);
+
+        // Altitude AGL: 500 units scaled by 2^16
+        let alt_agl_raw = (500i32) * 65536;
+        assert!((FsuipcConversions::parse_altitude_agl(alt_agl_raw) - 500.0).abs() < 1e-6);
+
+        // Airspeed: knots * 128
+        let ias_raw = i32::from_le_bytes((250 * 128i32).to_le_bytes());
+        assert!((FsuipcConversions::parse_airspeed(ias_raw) - 250.0).abs() < 1e-6);
+
+        // Ground speed: m/s * 65536 -> knots (100 m/s ≈ 194.384 kt)
+        let gs_raw = (100 * 65536i32).to_le_bytes();
+        assert!(
+            (FsuipcConversions::parse_ground_speed(i32::from_le_bytes(gs_raw)) - 194.3844).abs()
+                < 0.01
+        );
+
+        // Vertical speed: m/s * 256 -> fpm (-5 m/s ≈ -984.252 fpm, +10 m/s ≈ +1968.504 fpm)
+        let vs_desc = (-5 * 256i32).to_le_bytes();
+        assert!(
+            (FsuipcConversions::parse_vertical_speed(i32::from_le_bytes(vs_desc)) - (-984.252))
+                .abs()
+                < 0.01
+        );
+        let vs_climb = (10 * 256i32).to_le_bytes();
+        assert!(
+            (FsuipcConversions::parse_vertical_speed(i32::from_le_bytes(vs_climb)) - 1968.504)
+                .abs()
+                < 0.01
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_fsuipc_angles_radials_and_bearings() {
+        use win::FsuipcConversions;
+
+        // 32-bit unsigned heading: 90° = 2^30, 270° = 3 * 2^30
+        let hdg_90 = u32::from_le_bytes((1u32 << 30).to_le_bytes());
+        let hdg_270 = u32::from_le_bytes((3u32 << 30).to_le_bytes());
+        assert!((FsuipcConversions::parse_heading(hdg_90) - 90.0).abs() < 1e-6);
+        assert!((FsuipcConversions::parse_heading(hdg_270) - 270.0).abs() < 1e-6);
+
+        // 32-bit signed angle (pitch/bank): -45° = -(2^29)
+        let pitch_neg45 = i32::from_le_bytes((-(1i32 << 29)).to_le_bytes());
+        assert!((FsuipcConversions::parse_angle_32(pitch_neg45) - (-45.0)).abs() < 1e-6);
+
+        // 16-bit unsigned radial: 16384 = 90°, 49152 = 270°
+        assert!(
+            (FsuipcConversions::parse_radial(u16::from_le_bytes(16384u16.to_le_bytes())) - 90.0)
+                .abs()
+                < 1e-6
+        );
+        assert!(
+            (FsuipcConversions::parse_radial(u16::from_le_bytes(49152u16.to_le_bytes())) - 270.0)
+                .abs()
+                < 1e-6
+        );
+
+        // 16-bit signed relative bearings: -16384 = -90°, +16384 = +90°
+        let rel_neg90 = i16::from_le_bytes((-16384i16).to_le_bytes());
+        let rel_pos90 = i16::from_le_bytes(16384i16.to_le_bytes());
+        assert!((FsuipcConversions::parse_relative_bearing(rel_neg90) - (-90.0)).abs() < 1e-6);
+        assert!((FsuipcConversions::parse_nav1_relative_bearing(rel_pos90) - 90.0).abs() < 1e-6);
     }
 }
