@@ -20,39 +20,39 @@ export const SystemErrorModal: React.FC = () => {
     const isError = type === "error";
     const isWarning = type === "warning";
 
+    const iconStyle = isError
+        ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20"
+        : isWarning
+        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+        : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
+
     return (
         <div
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="system-error-title"
             aria-describedby="system-error-desc"
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200 select-none"
         >
-            <div className="w-full max-w-md bg-white dark:bg-[#111111] rounded-2xl shadow-2xl border border-neutral-200 dark:border-[#222222] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="w-full max-w-md bg-white dark:bg-geist-surface rounded-sm shadow-2xl border border-neutral-200 dark:border-geist-hairline overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 font-sans">
                 {/* Header */}
-                <div className="p-5 pb-3 flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
+                <div className="px-5 py-4 border-b border-neutral-200 dark:border-geist-hairline bg-neutral-50/60 dark:bg-[#0c0c0c] flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                         <div
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
-                                isError
-                                    ? "bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 border-red-200 dark:border-red-900/50"
-                                    : isWarning
-                                    ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200 dark:border-amber-900/50"
-                                    : "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 border-blue-200 dark:border-blue-900/50"
-                            }`}
+                            className={`p-2 rounded-sm flex items-center justify-center shrink-0 border ${iconStyle}`}
                         >
-                            {isError && <AlertTriangle className="w-5 h-5" />}
-                            {isWarning && <AlertCircle className="w-5 h-5" />}
-                            {!isError && !isWarning && <Info className="w-5 h-5" />}
+                            {isError && <AlertTriangle className="w-4 h-4" />}
+                            {isWarning && <AlertCircle className="w-4 h-4" />}
+                            {!isError && !isWarning && <Info className="w-4 h-4" />}
                         </div>
-                        <div>
-                            <h3
+                        <div className="min-w-0 flex flex-col">
+                            <span
                                 id="system-error-title"
-                                className="text-sm font-semibold text-neutral-900 dark:text-white"
+                                className="text-sm font-semibold tracking-tight text-neutral-900 dark:text-white truncate"
                             >
                                 {title}
-                            </h3>
-                            <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                            </span>
+                            <span className="text-[11px] font-medium text-neutral-500 dark:text-geist-muted">
                                 {isError ? "System Alert" : isWarning ? "Notice" : "Information"}
                             </span>
                         </div>
@@ -60,7 +60,7 @@ export const SystemErrorModal: React.FC = () => {
                     <button
                         type="button"
                         onClick={dismissSystemError}
-                        className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#222222] transition-colors"
+                        className="p-1 rounded-xs text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-geist-cardHover transition-colors shrink-0"
                         aria-label="Close dialog"
                     >
                         <X className="w-4 h-4" />
@@ -68,10 +68,10 @@ export const SystemErrorModal: React.FC = () => {
                 </div>
 
                 {/* Body */}
-                <div className="px-5 py-2 space-y-3">
+                <div className="p-5 space-y-3 select-text">
                     <p
                         id="system-error-desc"
-                        className="text-xs text-neutral-600 dark:text-[#aaaaaa] leading-relaxed"
+                        className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed"
                     >
                         {message}
                     </p>
@@ -81,7 +81,7 @@ export const SystemErrorModal: React.FC = () => {
                             <button
                                 type="button"
                                 onClick={() => setShowDetails((prev) => !prev)}
-                                className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white transition-colors cursor-pointer"
                             >
                                 <span>{showDetails ? "Hide technical details" : "Show technical details"}</span>
                                 {showDetails ? (
@@ -92,7 +92,7 @@ export const SystemErrorModal: React.FC = () => {
                             </button>
 
                             {showDetails && (
-                                <pre className="mt-2 p-2.5 bg-neutral-100 dark:bg-[#1a1a1a] rounded-lg text-[10px] font-mono text-neutral-700 dark:text-neutral-300 overflow-x-auto whitespace-pre-wrap break-all border border-neutral-200 dark:border-[#2a2a2a] max-h-36">
+                                <pre className="mt-2 p-3 bg-neutral-50 dark:bg-geist-card rounded-sm text-[11px] font-mono text-neutral-700 dark:text-neutral-300 overflow-x-auto whitespace-pre-wrap break-all border border-neutral-200 dark:border-geist-hairline max-h-40">
                                     {details}
                                 </pre>
                             )}
@@ -101,7 +101,7 @@ export const SystemErrorModal: React.FC = () => {
                 </div>
 
                 {/* Footer Controls */}
-                <div className="p-4 px-5 mt-2 border-t border-neutral-100 dark:border-[#222222] bg-neutral-50/50 dark:bg-[#141414] flex items-center justify-end gap-2">
+                <div className="px-5 py-3.5 border-t border-neutral-200 dark:border-geist-hairline bg-neutral-50/60 dark:bg-[#0c0c0c] flex items-center justify-end gap-2">
                     {onAction && actionLabel && (
                         <button
                             type="button"
@@ -109,7 +109,7 @@ export const SystemErrorModal: React.FC = () => {
                                 onAction();
                                 dismissSystemError();
                             }}
-                            className="px-4 py-2 rounded-xl text-xs font-semibold bg-neutral-900 dark:bg-white text-white dark:text-black hover:opacity-90 transition-opacity shadow-xs"
+                            className="px-3.5 py-1.5 rounded-xs text-xs font-medium bg-neutral-900 dark:bg-white text-white dark:text-black hover:opacity-90 transition-all shadow-xs"
                         >
                             {actionLabel}
                         </button>
@@ -117,7 +117,7 @@ export const SystemErrorModal: React.FC = () => {
                     <button
                         type="button"
                         onClick={dismissSystemError}
-                        className="px-4 py-2 rounded-xl text-xs font-medium border border-neutral-200 dark:border-[#333333] text-neutral-700 dark:text-[#cccccc] hover:bg-neutral-100 dark:hover:bg-[#222222] transition-colors"
+                        className="px-3.5 py-1.5 rounded-xs text-xs font-medium border border-neutral-200 dark:border-geist-hairline bg-white dark:bg-geist-card text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-geist-cardHover transition-colors"
                     >
                         Dismiss
                     </button>

@@ -116,7 +116,7 @@ export const EfbRouteView: React.FC = () => {
                 {sectors.map((sec, idx) => (
                     <div
                         key={idx}
-                        className="p-3.5 sm:p-4 rounded-sm border border-neutral-200 dark:border-geist-hairline bg-white dark:bg-geist-surface shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        className="p-4 rounded-sm border border-neutral-200 dark:border-geist-hairline bg-white dark:bg-geist-surface shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                     >
                         <div className="flex items-center gap-3">
                             <span className="w-6 h-6 rounded-sm bg-neutral-100 dark:bg-[#1a1a1a] border border-neutral-200 dark:border-geist-hairline text-neutral-700 dark:text-neutral-300 text-xs flex items-center justify-center font-semibold tabular-nums">

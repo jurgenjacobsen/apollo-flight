@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useFlightStore } from "../../store/flightStore";
+import { Tooltip } from "../ui";
 import {
     Sparkles,
     Download,
@@ -88,27 +89,29 @@ export const UpdateNotificationBanner: React.FC = () => {
                                 <span>Update & Restart</span>
                             </button>
 
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSettingsActiveTab("settings-about");
-                                    setActiveView("settings");
-                                }}
-                                title="View update options in Settings"
-                                className="px-2.5 py-1 rounded-sm text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 dark:hover:bg-[#222222] transition-colors"
-                            >
-                                Settings
-                            </button>
+                            <Tooltip content="View update options in Settings">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSettingsActiveTab("settings-about");
+                                        setActiveView("settings");
+                                    }}
+                                    className="px-2.5 py-1 rounded-sm text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 dark:hover:bg-[#222222] transition-colors"
+                                >
+                                    Settings
+                                </button>
+                            </Tooltip>
 
-                            <button
-                                type="button"
-                                onClick={dismissUpdate}
-                                title="Dismiss update notice for this session"
-                                aria-label="Dismiss update notification"
-                                className="p-1 rounded-sm text-neutral-400 hover:text-white hover:bg-neutral-800 dark:hover:bg-[#222222] transition-colors"
-                            >
-                                <X className="w-3.5 h-3.5" />
-                            </button>
+                            <Tooltip content="Dismiss update notice for this session">
+                                <button
+                                    type="button"
+                                    onClick={dismissUpdate}
+                                    aria-label="Dismiss update notification"
+                                    className="p-1 rounded-sm text-neutral-400 hover:text-white hover:bg-neutral-800 dark:hover:bg-[#222222] transition-colors"
+                                >
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            </Tooltip>
                         </>
                     )}
                 </div>

@@ -1,4 +1,5 @@
 import React from "react";
+import { Tooltip as UiTooltip } from "../ui";
 import {
     ResponsiveContainer,
     AreaChart,
@@ -61,22 +62,22 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
     visibilityUnit,
 }) => {
     return (
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
+        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-neutral-700 dark:text-neutral-300">
                 <div className="flex items-center gap-2">
-                    <Gauge className="w-3.5 h-3.5 text-neutral-500" />
-                    <span className="font-medium text-neutral-900 dark:text-white tracking-tight">
-                        Synchronized Telemetry Scrubbing
-                    </span>
+                    <Gauge className="w-4 h-4 text-neutral-600 dark:text-neutral-400 shrink-0" />
+                    <h2 className="text-xs font-semibold tracking-wider text-neutral-800 dark:text-neutral-200">
+                        Flight Telemetry
+                    </h2>
                 </div>
                 <div className="flex items-center gap-2">
                     {zoomTimeRange ? (
-                        <button
-                            type="button"
-                            onClick={() => setZoomTimeRange(null)}
-                            className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-medium rounded border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors shadow-sm"
-                            title="Reset zoom to full flight (or double-click chart)"
-                        >
+                        <UiTooltip content="Reset zoom to full flight (or double-click chart)">
+                            <button
+                                type="button"
+                                onClick={() => setZoomTimeRange(null)}
+                                className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-medium rounded-sm border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors shadow-xs"
+                            >
                             <RotateCcw className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                             <span>Reset Zoom</span>
                             <span className="text-[10px] tabular-nums opacity-80">
@@ -98,7 +99,8 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                                 })}
                                 )
                             </span>
-                        </button>
+                            </button>
+                        </UiTooltip>
                     ) : (
                         <span className="text-neutral-500 dark:text-geist-muted text-[11px]">
                             Click and drag an area to zoom · Double-click to
@@ -115,7 +117,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                     <div className="absolute inset-x-0 top-1/4 border-b border-neutral-200/50 dark:border-neutral-800/50" />
                     <div className="absolute inset-x-0 top-2/4 border-b border-neutral-200/50 dark:border-neutral-800/50" />
                     <div className="absolute inset-x-0 top-3/4 border-b border-neutral-200/50 dark:border-neutral-800/50" />
-                    <div className="relative flex flex-col items-center gap-2 px-4 py-3 rounded-md bg-white/90 dark:bg-black/70 border border-neutral-200/80 dark:border-neutral-800 backdrop-blur-sm shadow-sm">
+                    <div className="relative flex flex-col items-center gap-2 px-4 py-3 rounded-sm bg-white/90 dark:bg-black/70 border border-neutral-200/80 dark:border-neutral-800 backdrop-blur-xs shadow-xs">
                         {chartData.length === 0 &&
                         !isLoadingFlightDetails ? (
                             <div className="flex flex-col items-center gap-1.5 text-center">
@@ -124,7 +126,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                                 </span>
                                 <span className="text-[11px] text-neutral-500 max-w-xs">
                                     Raw telemetry points were excluded from
-                                    this flight record.
+                                    this flight.
                                 </span>
                             </div>
                         ) : (
@@ -169,7 +171,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                                     bottom: 25,
                                 }}
                             >
-                                <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap tabular-nums">
+                                <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded-sm shadow-xs whitespace-nowrap tabular-nums">
                                     {
                                         chartData[
                                             Math.min(
@@ -350,7 +352,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                                             : null;
 
                                     return (
-                                        <div className="bg-white dark:bg-[#0a0a0a] border border-neutral-200 dark:border-[#262626] rounded-md p-2.5 text-xs shadow-md space-y-1.5 min-w-[170px]">
+                                        <div className="bg-white dark:bg-[#0a0a0a] border border-neutral-200 dark:border-[#262626] rounded-sm p-2.5 text-xs shadow-md space-y-1.5 min-w-[170px]">
                                             <div className="font-medium text-neutral-500 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800 pb-1 tabular-nums">
                                                 {data.time}
                                             </div>
@@ -478,7 +480,7 @@ export const TelemetryChart: React.FC<TelemetryChartProps> = ({
                     </ResponsiveContainer>
                 </div>
             ) : (
-                <div className="h-44 w-full flex flex-col items-center justify-center border border-dashed border-neutral-200 dark:border-geist-hairline rounded text-center text-neutral-400">
+                <div className="h-44 w-full flex flex-col items-center justify-center border border-dashed border-neutral-200 dark:border-geist-hairline rounded-sm text-center text-neutral-400">
                     <Gauge className="w-6 h-6 mb-1.5 text-neutral-400" />
                     <span className="text-xs">
                         No telemetry profile data available

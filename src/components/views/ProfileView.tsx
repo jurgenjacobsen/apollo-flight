@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useFlightStore } from "../../store/flightStore";
+import { Tooltip } from "../ui";
 import { ARCGIS_WORLD_IMAGERY_ATTRIBUTION, ARCGIS_WORLD_IMAGERY_URL } from "../../utils/mapTiles";
 import {
     MapContainer,
@@ -809,7 +810,7 @@ export const ProfileView: React.FC = () => {
 
                                 const rarityStyles = {
                                     bronze: "border-amber-700/30 text-amber-600 dark:text-amber-500 bg-amber-500/10",
-                                    silver: "border-slate-400/30 text-slate-600 dark:text-slate-300 bg-slate-400/10",
+                                    silver: "border-neutral-400/30 text-neutral-600 dark:text-neutral-300 bg-neutral-400/10",
                                     gold: "border-yellow-500/30 text-yellow-600 dark:text-yellow-400 bg-yellow-500/10",
                                     platinum: "border-cyan-500/30 text-cyan-600 dark:text-cyan-400 bg-cyan-500/10",
                                 }[ach.rarity];
@@ -1385,19 +1386,20 @@ export const ProfileView: React.FC = () => {
 
                             {/* Map Legend & Layer Toggle */}
                             <div className="flex items-center gap-2.5 text-xs flex-wrap">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowRoutes(!showRoutes)}
-                                    className={`flex items-center gap-1.5 px-2 py-0.5 text-[11px] rounded-sm border transition-colors cursor-pointer ${
-                                        showRoutes
-                                            ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60"
-                                            : "bg-neutral-100 dark:bg-[#171717] text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-geist-hairline"
-                                    }`}
-                                    title="Toggle route connection lines"
-                                >
-                                    <RouteIcon className="w-3 h-3" />
-                                    <span>Routes ({uniqueRoutes.length})</span>
-                                </button>
+                                <Tooltip content="Toggle route connection lines">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowRoutes(!showRoutes)}
+                                        className={`flex items-center gap-1.5 px-2 py-0.5 text-[11px] rounded-sm border transition-colors cursor-pointer ${
+                                            showRoutes
+                                                ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60"
+                                                : "bg-neutral-100 dark:bg-[#171717] text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-geist-hairline"
+                                        }`}
+                                    >
+                                        <RouteIcon className="w-3 h-3" />
+                                        <span>Routes ({uniqueRoutes.length})</span>
+                                    </button>
+                                </Tooltip>
 
                                 <div className="flex items-center gap-1.5">
                                     <span className="w-3.5 h-2.5 rounded-[2px] bg-blue-500/20 border-2 border-blue-500 inline-block" />
@@ -1411,19 +1413,20 @@ export const ProfileView: React.FC = () => {
                                         Airports ({visitedAirports.length})
                                     </span>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAllBorders(!showAllBorders)}
-                                    className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-sm bg-neutral-100 dark:bg-[#171717] border border-neutral-200 dark:border-geist-hairline hover:bg-neutral-200 dark:hover:bg-[#222] transition-colors cursor-pointer"
-                                    title="Toggle global borders"
-                                >
-                                    <Layers className="w-3 h-3 text-neutral-500" />
-                                    <span>
-                                        {showAllBorders
-                                            ? "Hide Inactive Borders"
-                                            : "Show All Borders"}
-                                    </span>
-                                </button>
+                                <Tooltip content="Toggle global borders">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAllBorders(!showAllBorders)}
+                                        className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-sm bg-neutral-100 dark:bg-[#171717] border border-neutral-200 dark:border-geist-hairline hover:bg-neutral-200 dark:hover:bg-[#222] transition-colors cursor-pointer"
+                                    >
+                                        <Layers className="w-3 h-3 text-neutral-500" />
+                                        <span>
+                                            {showAllBorders
+                                                ? "Hide Inactive Borders"
+                                                : "Show All Borders"}
+                                        </span>
+                                    </button>
+                                </Tooltip>
                             </div>
                         </div>
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { Tooltip } from "../ui";
 import { useEfbStore } from "../../store/efbStore";
 import { useFlightStore } from "../../store/flightStore";
 import { EfbTab, EfbTheme } from "../../types/efb";
@@ -57,16 +58,16 @@ export const EfbHeader: React.FC<EfbHeaderProps> = ({ previewMode = false }) => 
         const isActive = activeTab === tabId;
         if (theme === "night-red") {
             return isActive
-                ? "bg-red-950/60 text-red-400 border-red-800/80 shadow-sm"
+                ? "bg-red-950/60 text-red-400 border-red-800/80 shadow-xs"
                 : "text-red-700 hover:text-red-400 hover:bg-red-950/30";
         }
         if (theme === "night-amber") {
             return isActive
-                ? "bg-amber-950/60 text-amber-400 border-amber-800/80 shadow-sm"
+                ? "bg-amber-950/60 text-amber-400 border-amber-800/80 shadow-xs"
                 : "text-amber-700 hover:text-amber-400 hover:bg-amber-950/30";
         }
         return isActive
-            ? "bg-white text-black dark:bg-white dark:text-black font-semibold shadow-sm"
+            ? "bg-white text-black dark:bg-white dark:text-black font-semibold shadow-xs"
             : "text-neutral-400 hover:text-white hover:bg-neutral-800/70";
     };
 
@@ -82,14 +83,14 @@ export const EfbHeader: React.FC<EfbHeaderProps> = ({ previewMode = false }) => 
                         Apollo <span className="font-light opacity-80">EFB</span>
                     </span>
                     {previewMode && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-xs bg-blue-500/20 text-blue-400 border border-blue-500/30">
                             PREVIEW
                         </span>
                     )}
                 </div>
 
                 {/* Status Chips */}
-                <div className="flex items-center gap-1.5 text-xs font-mono">
+                <div className="flex items-center gap-1.5 text-xs">
                     {/* Sim connection chip */}
                     <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
@@ -148,53 +149,57 @@ export const EfbHeader: React.FC<EfbHeaderProps> = ({ previewMode = false }) => 
             {/* Right row: Theme & Wake Lock Controls */}
             <div className="flex items-center gap-1.5 w-full md:w-auto justify-end pt-1 md:pt-0">
                 {/* Screen Wake Lock Toggle */}
-                <button
-                    onClick={() => {
-                        if (isWakeLockActive) {
-                            releaseWakeLock();
-                        } else {
-                            requestWakeLock();
-                        }
-                    }}
-                    title={
+                <Tooltip
+                    content={
                         isWakeLockActive
                             ? "Screen Wake Lock Active (Screen will not sleep)"
                             : "Enable Screen Wake Lock"
                     }
-                    className={`flex items-center gap-1 px-2 py-1 rounded-xs text-xs font-mono border transition-all ${
-                        isWakeLockActive
-                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                            : "bg-neutral-800/50 text-neutral-400 border-neutral-700 hover:text-white"
-                    }`}
                 >
-                    {isWakeLockActive ? (
-                        <>
-                            <Eye className="w-3.5 h-3.5 text-amber-400" />
-                            <span className="text-[10px] hidden sm:inline">AWAKE</span>
-                        </>
-                    ) : (
-                        <>
-                            <EyeOff className="w-3.5 h-3.5" />
-                            <span className="text-[10px] hidden sm:inline">SLEEP OK</span>
-                        </>
-                    )}
-                </button>
+                    <button
+                        onClick={() => {
+                            if (isWakeLockActive) {
+                                releaseWakeLock();
+                            } else {
+                                requestWakeLock();
+                            }
+                        }}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-xs text-xs border transition-all ${
+                            isWakeLockActive
+                                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                : "bg-neutral-800/50 text-neutral-400 border-neutral-700 hover:text-white"
+                        }`}
+                    >
+                        {isWakeLockActive ? (
+                            <>
+                                <Eye className="w-3.5 h-3.5 text-amber-400" />
+                                <span className="text-[10px] hidden sm:inline">AWAKE</span>
+                            </>
+                        ) : (
+                            <>
+                                <EyeOff className="w-3.5 h-3.5" />
+                                <span className="text-[10px] hidden sm:inline">SLEEP OK</span>
+                            </>
+                        )}
+                    </button>
+                </Tooltip>
 
                 {/* Theme Cycle Toggle */}
-                <button
-                    onClick={toggleTheme}
-                    title={`Theme: ${theme.toUpperCase()} (Tap to toggle Night Red/Amber)`}
-                    className="flex items-center gap-1 px-2 py-1 rounded-xs text-xs font-mono border bg-neutral-800/50 text-neutral-300 border-neutral-700 hover:text-white transition-all"
-                >
-                    <SunMoon className="w-3.5 h-3.5" />
-                    <span className="text-[10px] uppercase font-bold">
-                        {theme === "night-red"
-                            ? "RED"
-                            : theme === "night-amber"
-                              ? "AMB"
-                              : "DARK"}
-                    </span>
-                </button>
+                <Tooltip content={`Theme: ${theme.toUpperCase()} (Tap to toggle Night Red/Amber)`}>
+                    <button
+                        onClick={toggleTheme}
+                        className="flex items-center gap-1 px-2 py-1 rounded-xs text-xs border bg-neutral-800/50 text-neutral-300 border-neutral-700 hover:text-white transition-all"
+                    >
+                        <SunMoon className="w-3.5 h-3.5" />
+                        <span className="text-[10px] uppercase font-bold">
+                            {theme === "night-red"
+                                ? "RED"
+                                : theme === "night-amber"
+                                  ? "AMB"
+                                  : "DARK"}
+                        </span>
+                    </button>
+                </Tooltip>
             </div>
         </header>
     );

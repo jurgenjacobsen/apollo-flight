@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useFlightStore, safeInvoke } from "../../store/flightStore";
+import { Tooltip } from "../ui";
 import {
     LifeBuoy,
     Send,
@@ -651,34 +652,36 @@ export const FeedbackView: React.FC = () => {
                     {/* Submission Bar */}
                     <div className="p-5 bg-neutral-50 dark:bg-black/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex flex-wrap items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={handleCopyMarkdown}
-                                className="flex items-center gap-1.5 px-3 py-2 rounded-sm text-xs font-medium bg-neutral-100 hover:bg-neutral-200 dark:bg-geist-card dark:hover:bg-[#222222] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-geist-hairline transition-colors cursor-pointer"
-                                title="Copy markdown report to clipboard"
-                            >
-                                {copied ? (
-                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                ) : (
-                                    <Copy className="w-3.5 h-3.5" />
-                                )}
-                                <span>{copied ? "Copied" : "Copy"}</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleExportMarkdown}
-                                className="flex items-center gap-1.5 px-3 py-2 rounded-sm text-xs font-medium bg-neutral-100 hover:bg-neutral-200 dark:bg-geist-card dark:hover:bg-[#222222] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-geist-hairline transition-colors cursor-pointer"
-                                title="Download full report as markdown file"
-                            >
-                                {exportSuccess ? (
-                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                ) : (
-                                    <Download className="w-3.5 h-3.5" />
-                                )}
-                                <span>
-                                    {exportSuccess ? "Exported" : "Export .md"}
-                                </span>
-                            </button>
+                            <Tooltip content="Copy markdown report to clipboard">
+                                <button
+                                    type="button"
+                                    onClick={handleCopyMarkdown}
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-sm text-xs font-medium bg-neutral-100 hover:bg-neutral-200 dark:bg-geist-card dark:hover:bg-[#222222] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-geist-hairline transition-colors cursor-pointer"
+                                >
+                                    {copied ? (
+                                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                    ) : (
+                                        <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>{copied ? "Copied" : "Copy"}</span>
+                                </button>
+                            </Tooltip>
+                            <Tooltip content="Download full report as markdown file">
+                                <button
+                                    type="button"
+                                    onClick={handleExportMarkdown}
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-sm text-xs font-medium bg-neutral-100 hover:bg-neutral-200 dark:bg-geist-card dark:hover:bg-[#222222] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-geist-hairline transition-colors cursor-pointer"
+                                >
+                                    {exportSuccess ? (
+                                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                    ) : (
+                                        <Download className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>
+                                        {exportSuccess ? "Exported" : "Export .md"}
+                                    </span>
+                                </button>
+                            </Tooltip>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                             <button

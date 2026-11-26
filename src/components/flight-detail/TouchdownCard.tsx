@@ -4,6 +4,7 @@ import { TouchdownEvent, FlightRecord } from "../../types/flight";
 import { calculateTouchdownGForce } from "../../utils/touchdownPhysics";
 import { formatWindSpeed } from "../../utils/weatherUnits";
 import { formatPitchAngle, formatRollAngle } from "../../utils/flightFormatters";
+import { Tooltip } from "../ui";
 
 interface TouchdownCardProps {
     touchdowns: TouchdownEvent[];
@@ -23,7 +24,7 @@ export const TouchdownCard: React.FC<TouchdownCardProps> = ({
     if (!touchdowns || touchdowns.length === 0) return null;
 
     return (
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
+        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                     <TrendingDown className="w-4 h-4 text-neutral-500" />
@@ -78,32 +79,39 @@ export const TouchdownCard: React.FC<TouchdownCardProps> = ({
                                         Touchdown #{idx + 1}
                                     </span>
                                     {airport?.icao && (
-                                        <span
-                                            className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors ${
-                                                isDifferentFromArrival
-                                                    ? "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800"
-                                                    : "bg-neutral-100 dark:bg-[#202020] text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700"
-                                            }`}
-                                            title={`Touchdown at ${airport.name ? `${airport.name} (${airport.icao})` : airport.icao}`}
+                                        <Tooltip
+                                            content={`Touchdown at ${airport.name ? `${airport.name} (${airport.icao})` : airport.icao}`}
                                         >
-                                            {airport.icao}
-                                        </span>
+                                            <span
+                                                className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-xs border transition-colors ${
+                                                    isDifferentFromArrival
+                                                        ? "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800"
+                                                        : "bg-neutral-100 dark:bg-[#202020] text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700"
+                                                }`}
+                                            >
+                                                {airport.icao}
+                                            </span>
+                                        </Tooltip>
                                     )}
                                 </div>
                                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
                                     {td.bouncesCount && td.bouncesCount > 0 ? (
-                                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 tabular-nums">
+                                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 tabular-nums">
                                             {td.bouncesCount} {td.bouncesCount === 1 ? "Bounce" : "Bounces"}
                                         </span>
                                     ) : null}
                                     {td.gForceSim !== undefined && (
-                                        <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700" title="MSFS Simulator Physics G-Force">
-                                            +{td.gForceSim.toFixed(2)} G (Sim)
-                                        </span>
+                                        <Tooltip content="MSFS Simulator Physics G-Force">
+                                            <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700">
+                                                +{td.gForceSim.toFixed(2)} G (Sim)
+                                            </span>
+                                        </Tooltip>
                                     )}
-                                    <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700" title="Oleo Strut Calculated Deceleration Load">
-                                        +{gVal.toFixed(2)} G (Strut)
-                                    </span>
+                                    <Tooltip content="Oleo Strut Calculated Deceleration Load">
+                                        <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700">
+                                            +{gVal.toFixed(2)} G (Strut)
+                                        </span>
+                                    </Tooltip>
                                 </div>
                             </div>
 

@@ -54,7 +54,7 @@ export const AircraftSelector: React.FC<AircraftSelectorProps> = ({
                 className="w-full"
                 triggerClassName="bg-neutral-50 dark:bg-black"
             />
-            <div className="p-2 rounded bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline text-[11px] text-neutral-600 dark:text-neutral-400 space-y-0.5">
+            <div className="p-2 rounded-sm bg-neutral-50 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline text-[11px] text-neutral-600 dark:text-neutral-400 space-y-0.5">
                 <div className="flex justify-between">
                     <span>
                         Cruise TAS: {selectedProfile.cruiseSpeedTasKt} kt

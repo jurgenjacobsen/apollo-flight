@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import { Tooltip } from "../ui";
 import { useFlightStore } from "../../store/flightStore";
 import { useSmoothedTelemetry } from "../../hooks/useSmoothedTelemetry";
 import { formatPitchParts, formatRollParts } from "../../utils/flightFormatters";
@@ -118,7 +119,7 @@ export const EfbHudView: React.FC = () => {
             {/* Telemetry Metric Cards (Matching desktop Overview.tsx) */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 p-3 sm:p-4 border-b border-neutral-200 dark:border-geist-hairline bg-neutral-50 dark:bg-black">
                 {/* ALTITUDE */}
-                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
+                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-xs">
                     <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
                         <span>Altitude</span>
                         <Gauge className="w-3.5 h-3.5 text-neutral-400" />
@@ -136,7 +137,7 @@ export const EfbHudView: React.FC = () => {
                 </div>
 
                 {/* GROUND SPEED */}
-                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
+                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-xs">
                     <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
                         <span>Ground Speed</span>
                         <Wind className="w-3.5 h-3.5 text-neutral-400" />
@@ -154,7 +155,7 @@ export const EfbHudView: React.FC = () => {
                 </div>
 
                 {/* HEADING */}
-                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
+                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-xs">
                     <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
                         <span>Heading</span>
                         <Compass className="w-3.5 h-3.5 text-neutral-400" />
@@ -167,7 +168,7 @@ export const EfbHudView: React.FC = () => {
                 </div>
 
                 {/* VERTICAL SPEED */}
-                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
+                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-xs">
                     <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
                         <span>Vertical Speed</span>
                         <ArrowUpRight className="w-3.5 h-3.5 text-neutral-400" />
@@ -189,7 +190,7 @@ export const EfbHudView: React.FC = () => {
                 </div>
 
                 {/* ATTITUDE */}
-                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
+                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-xs">
                     <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
                         <span>Attitude</span>
                         <Navigation className="w-3.5 h-3.5 text-neutral-400" />
@@ -221,7 +222,7 @@ export const EfbHudView: React.FC = () => {
                 </div>
 
                 {/* STAGE */}
-                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3.5 rounded-sm shadow-xs">
+                <div className="flex flex-col justify-between bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-4 rounded-sm shadow-xs">
                     <div className="flex items-center justify-between text-neutral-500 dark:text-geist-muted text-[11px] font-medium pb-2">
                         <span>Flight Stage</span>
                         <Activity className="w-3.5 h-3.5 text-neutral-400" />
@@ -271,23 +272,24 @@ export const EfbHudView: React.FC = () => {
 
                 {/* Floating Map Controls */}
                 <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-2">
-                    <button
-                        type="button"
-                        onClick={() => setIsFollow(!isFollow)}
-                        title={isFollow ? "Follow Plane (Enabled)" : "Free Pan (Disabled)"}
-                        aria-label={isFollow ? "Disable follow plane" : "Enable follow plane"}
-                        className={`p-2.5 rounded-sm shadow-xs border transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 cursor-pointer ${
-                            isFollow
-                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black border-neutral-900 dark:border-white"
-                                : "bg-white/95 dark:bg-geist-surface/95 text-neutral-700 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1f1f1f]"
-                        }`}
-                    >
+                    <Tooltip content={isFollow ? "Follow Plane (Enabled)" : "Free Pan (Disabled)"}>
+                        <button
+                            type="button"
+                            onClick={() => setIsFollow(!isFollow)}
+                            aria-label={isFollow ? "Disable follow plane" : "Enable follow plane"}
+                            className={`p-2.5 rounded-sm shadow-xs border transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 cursor-pointer ${
+                                isFollow
+                                    ? "bg-neutral-900 text-white dark:bg-white dark:text-black border-neutral-900 dark:border-white"
+                                    : "bg-white/95 dark:bg-geist-surface/95 text-neutral-700 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-[#1f1f1f]"
+                            }`}
+                        >
                         {isFollow ? (
                             <LocateFixed className="w-4 h-4 text-sky-400 dark:text-blue-600" />
                         ) : (
                             <Locate className="w-4 h-4" />
                         )}
-                    </button>
+                        </button>
+                    </Tooltip>
                 </div>
 
                 {/* Coordinates & Nearest Airport Floating Overlay */}

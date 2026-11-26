@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Tooltip } from "../../ui";
 import { useEfbStore } from "../../../store/efbStore";
 import { QrCodeView } from "../../ui/QrCodeView";
 import {
@@ -151,20 +152,21 @@ export const EfbCompanionTab: React.FC<EfbCompanionTabProps> = ({ notifySaved })
                             disabled={efbStatus.isRunning}
                             className="w-28 px-2.5 py-1.5 text-xs font-mono bg-white dark:bg-black border border-neutral-300 dark:border-geist-hairline rounded-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:opacity-50 disabled:cursor-default"
                         />
-                        <button
-                            type="button"
-                            onClick={handleGenerateRandomEfbPort}
-                            disabled={efbStatus.isRunning}
-                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 enabled:hover:bg-neutral-200 dark:bg-[#202020] dark:enabled:hover:bg-[#2a2a2a] text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-geist-hairline transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
-                            title="Generate safe random port"
-                        >
-                            <RefreshCw
-                                className={`w-3 h-3 text-neutral-500 ${
-                                    isSpinningPort ? "animate-spin" : ""
-                                }`}
-                            />
-                            <span>Random</span>
-                        </button>
+                        <Tooltip content="Generate safe random port">
+                            <button
+                                type="button"
+                                onClick={handleGenerateRandomEfbPort}
+                                disabled={efbStatus.isRunning}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-sm bg-neutral-100 enabled:hover:bg-neutral-200 dark:bg-[#202020] dark:enabled:hover:bg-[#2a2a2a] text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-geist-hairline transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
+                            >
+                                <RefreshCw
+                                    className={`w-3 h-3 text-neutral-500 ${
+                                        isSpinningPort ? "animate-spin" : ""
+                                    }`}
+                                />
+                                <span>Random</span>
+                            </button>
+                        </Tooltip>
                     </div>
                 </div>
 
@@ -215,21 +217,22 @@ export const EfbCompanionTab: React.FC<EfbCompanionTabProps> = ({ notifySaved })
                                             Point your iPad, tablet, or smartphone camera at this QR code while connected to your local Wi-Fi network.
                                         </p>
                                         <div className="flex items-center gap-2">
-                                            <code className="text-xs font-mono font-semibold px-2.5 py-1 rounded bg-neutral-100 dark:bg-black/50 border border-neutral-200 dark:border-geist-hairline text-neutral-900 dark:text-white select-all">
+                                            <code className="text-xs font-mono font-semibold px-2.5 py-1 rounded-sm bg-neutral-100 dark:bg-black/50 border border-neutral-200 dark:border-geist-hairline text-neutral-900 dark:text-white select-all">
                                                 {efbStatus.url}
                                             </code>
-                                            <button
-                                                type="button"
-                                                onClick={handleCopyEfbUrl}
-                                                className="p-1.5 rounded-sm text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                                                title="Copy URL"
-                                            >
-                                                {isCopiedEfbUrl ? (
-                                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                                ) : (
-                                                    <Copy className="w-3.5 h-3.5" />
-                                                )}
-                                            </button>
+                                            <Tooltip content="Copy URL">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleCopyEfbUrl}
+                                                    className="p-1.5 rounded-sm text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                                                >
+                                                    {isCopiedEfbUrl ? (
+                                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                    ) : (
+                                                        <Copy className="w-3.5 h-3.5" />
+                                                    )}
+                                                </button>
+                                            </Tooltip>
                                         </div>
                                     </div>
                                 </>

@@ -8,7 +8,7 @@ import { EfbIfrView } from "./EfbIfrView";
 import { EfbScratchpadView } from "./EfbScratchpadView";
 import { EfbChecklistsView } from "./EfbChecklistsView";
 import { EfbWebSocketClient, isRunningInBrowser } from "../../services/efbService";
-import { StatusPill } from "../ui";
+import { StatusPill, Tooltip } from "../ui";
 import {
     Activity,
     Plane,
@@ -120,18 +120,19 @@ export const EfbCompanionApp: React.FC<EfbCompanionAppProps> = ({
                 {/* Brand Header */}
                 <div className="py-3.5 px-3 border-b border-neutral-200 dark:border-geist-hairline overflow-hidden">
                     <div className="flex items-center gap-2.5 w-full">
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab("hud")}
-                            title="Apollo Flight — Flight Overview"
-                            className="w-10 h-10 shrink-0 flex items-center justify-center rounded-sm hover:bg-neutral-100 dark:hover:bg-[#181818] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 cursor-pointer"
-                        >
-                            <img
-                                src="/Icon.svg"
-                                alt="Apollo Flight"
-                                className="w-7 h-7 object-contain shrink-0"
-                            />
-                        </button>
+                        <Tooltip content="Apollo Flight — Flight Overview" placement="right">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab("hud")}
+                                className="w-10 h-10 shrink-0 flex items-center justify-center rounded-sm hover:bg-neutral-100 dark:hover:bg-[#181818] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 cursor-pointer"
+                            >
+                                <img
+                                    src="/Icon.svg"
+                                    alt="Apollo Flight"
+                                    className="w-7 h-7 object-contain shrink-0"
+                                />
+                            </button>
+                        </Tooltip>
                         <div
                             className={`flex flex-col min-w-0 transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${
                                 isSidebarCollapsed
@@ -178,12 +179,16 @@ export const EfbCompanionApp: React.FC<EfbCompanionAppProps> = ({
                                     const Icon = item.icon;
                                     const isActive = activeTab === item.id;
                                     return (
-                                        <button
+                                        <Tooltip
                                             key={item.id}
-                                            type="button"
-                                            onClick={() => setActiveTab(item.id as any)}
-                                            title={item.label}
-                                            className={`w-full h-9 flex items-center rounded-sm transition-colors duration-150 relative group cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 ${
+                                            content={item.label}
+                                            placement="right"
+                                            disabled={!isSidebarCollapsed}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveTab(item.id as any)}
+                                                className={`w-full h-9 flex items-center rounded-sm transition-colors duration-150 relative group cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 ${
                                                 isSidebarCollapsed
                                                     ? "px-0 justify-center"
                                                     : "px-2.5 justify-start gap-2.5"
@@ -212,6 +217,7 @@ export const EfbCompanionApp: React.FC<EfbCompanionAppProps> = ({
                                                 {item.label}
                                             </span>
                                         </button>
+                                        </Tooltip>
                                     );
                                 })}
                             </div>
@@ -243,11 +249,18 @@ export const EfbCompanionApp: React.FC<EfbCompanionAppProps> = ({
                         </div>
                     )}
 
-                    <button
-                        type="button"
-                        onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                        title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                        className={`w-full h-9 flex items-center justify-center bg-neutral-100 hover:bg-neutral-200 dark:bg-[#171717] dark:hover:bg-[#222222] text-neutral-800 dark:text-[#ededed] text-xs rounded-sm border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 ${
+                    <Tooltip
+                        content={
+                            isSidebarCollapsed
+                                ? "Expand sidebar"
+                                : "Collapse sidebar"
+                        }
+                        placement="right"
+                    >
+                        <button
+                            type="button"
+                            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                            className={`w-full h-9 flex items-center justify-center bg-neutral-100 hover:bg-neutral-200 dark:bg-[#171717] dark:hover:bg-[#222222] text-neutral-800 dark:text-[#ededed] text-xs rounded-sm border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 ${
                             isSidebarCollapsed ? "gap-0" : "gap-2"
                         }`}
                     >
@@ -268,6 +281,7 @@ export const EfbCompanionApp: React.FC<EfbCompanionAppProps> = ({
                             Collapse Sidebar
                         </span>
                     </button>
+                    </Tooltip>
                 </div>
             </aside>
 
@@ -448,40 +462,50 @@ export const EfbCompanionApp: React.FC<EfbCompanionAppProps> = ({
                         <div className="hidden sm:block h-3 w-[1px] bg-neutral-200 dark:bg-neutral-800" />
 
                         {/* Wake Lock Screen On/Off */}
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (isWakeLockActive) {
-                                    releaseWakeLock();
-                                } else {
-                                    requestWakeLock();
-                                }
-                            }}
-                            title={isWakeLockActive ? "Screen Wake Lock Active" : "Enable Screen Wake Lock"}
-                            aria-label={isWakeLockActive ? "Disable screen wake lock" : "Enable screen wake lock"}
-                            className={`p-1 rounded-sm border transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 ${
+                        <Tooltip
+                            content={
                                 isWakeLockActive
-                                    ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
-                                    : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] border-neutral-200 dark:border-geist-hairline"
-                            }`}
+                                    ? "Screen Wake Lock Active"
+                                    : "Enable Screen Wake Lock"
+                            }
                         >
-                            {isWakeLockActive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                        </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (isWakeLockActive) {
+                                        releaseWakeLock();
+                                    } else {
+                                        requestWakeLock();
+                                    }
+                                }}
+                                aria-label={isWakeLockActive ? "Disable screen wake lock" : "Enable screen wake lock"}
+                                className={`p-1 rounded-sm border transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 ${
+                                    isWakeLockActive
+                                        ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] border-neutral-200 dark:border-geist-hairline"
+                                }`}
+                            >
+                                {isWakeLockActive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            </button>
+                        </Tooltip>
 
                         {/* Theme Toggle (Sun/Moon matching desktop TopHeader) */}
-                        <button
-                            type="button"
-                            onClick={toggleTheme}
-                            title={`Switch to ${theme === "light" ? "Dark" : "Light"} Mode`}
-                            aria-label={`Switch to ${theme === "light" ? "Dark" : "Light"} Mode`}
-                            className="p-1 rounded-sm text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
+                        <Tooltip
+                            content={`Switch to ${theme === "light" ? "Dark" : "Light"} Mode`}
                         >
-                            {theme === "light" ? (
-                                <Moon className="w-3.5 h-3.5" />
-                            ) : (
-                                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                            )}
-                        </button>
+                            <button
+                                type="button"
+                                onClick={toggleTheme}
+                                aria-label={`Switch to ${theme === "light" ? "Dark" : "Light"} Mode`}
+                                className="p-1 rounded-sm text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
+                            >
+                                {theme === "light" ? (
+                                    <Moon className="w-3.5 h-3.5" />
+                                ) : (
+                                    <Sun className="w-3.5 h-3.5 text-amber-400" />
+                                )}
+                            </button>
+                        </Tooltip>
                     </div>
                 </header>
 

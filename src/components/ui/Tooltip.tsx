@@ -243,7 +243,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
                           opacity: coords ? 1 : 0,
                           pointerEvents: "none",
                       }}
-                      className={`z-[9999] px-2.5 py-1 text-xs font-sans rounded-md shadow-md select-none transition-opacity duration-150 border bg-neutral-900 text-white border-neutral-700/80 dark:bg-[#1a1a1a] dark:text-[#ededed] dark:border-[#383838] ${className}`}
+                      className={`z-[9999] px-2.5 py-1 text-xs font-sans rounded-xs shadow-md select-none transition-opacity duration-150 border bg-neutral-900 text-white border-neutral-700/80 dark:bg-[#1a1a1a] dark:text-[#ededed] dark:border-[#383838] ${className}`}
                   >
                       {content}
 

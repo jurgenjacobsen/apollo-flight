@@ -48,7 +48,7 @@ export const QrCodeView: React.FC<QrCodeViewProps> = ({
     return (
         <canvas
             ref={canvasRef}
-            className={`rounded-xl shadow-md border border-neutral-200 dark:border-neutral-800 ${className}`}
+            className={`rounded-xs shadow-xs border border-neutral-200 dark:border-geist-hairline ${className}`}
             style={{ width: size, height: size }}
         />
     );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Trash2 } from "lucide-react";
+import { Tooltip } from "./Tooltip";
 
 export interface ConfirmDeleteButtonProps {
     /** Callback fired when user confirms the destructive action */
@@ -100,25 +101,27 @@ export const ConfirmDeleteButton: React.FC<ConfirmDeleteButtonProps> = ({
           }`;
 
     return (
-        <button
-            ref={buttonRef}
-            type="button"
-            onClick={handleClick}
-            disabled={disabled}
-            className={`${baseClasses} ${className}`}
-            title={isConfirming ? confirmTitle : title}
-        >
-            <span
-                className={`overflow-hidden transition-all duration-200 ease-in-out text-[11px] font-semibold whitespace-nowrap select-none inline-block ${
-                    isConfirming
-                        ? "max-w-[60px] opacity-100 mr-1.5 translate-x-0"
-                        : "max-w-0 opacity-0 mr-0 -translate-x-1 pointer-events-none"
-                }`}
+        <Tooltip content={isConfirming ? confirmTitle : title} disabled={disabled}>
+            <button
+                ref={buttonRef}
+                type="button"
+                onClick={handleClick}
+                disabled={disabled}
+                className={`${baseClasses} ${className}`}
+                aria-label={isConfirming ? confirmTitle : title}
             >
-                {confirmLabel}
-            </span>
-            {icon}
-            {label && <span className="text-xs">{label}</span>}
-        </button>
+                <span
+                    className={`overflow-hidden transition-all duration-200 ease-in-out text-[11px] font-semibold whitespace-nowrap select-none inline-block ${
+                        isConfirming
+                            ? "max-w-[60px] opacity-100 mr-1.5 translate-x-0"
+                            : "max-w-0 opacity-0 mr-0 -translate-x-1 pointer-events-none"
+                    }`}
+                >
+                    {confirmLabel}
+                </span>
+                {icon}
+                {label && <span className="text-xs">{label}</span>}
+            </button>
+        </Tooltip>
     );
 };

@@ -15,6 +15,11 @@ import {
     ExternalLink,
     Plane,
     Sparkles,
+    Route,
+    Bookmark,
+    ListChecks,
+    FileText,
+    Mic,
 } from "lucide-react";
 import { QrCodeView } from "../ui/QrCodeView";
 import type {
@@ -35,7 +40,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     onClose,
 }) => {
     const [currentStep, setCurrentStep] = useState<number>(1);
-    const totalSteps = 4;
+    const totalSteps = 6;
 
     const {
         currentTelemetry,
@@ -74,56 +79,69 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     const efbUrl = efbStatus?.url || `http://127.0.0.1:${efbStatus?.port || 8080}`;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-[#111111] border border-neutral-200 dark:border-[#222222] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="onboarding-modal-title"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200 select-none"
+        >
+            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] font-sans">
                 {/* Header */}
-                <div className="p-6 border-b border-neutral-100 dark:border-[#222222] flex items-center justify-between bg-neutral-50/50 dark:bg-[#141414]">
-                    <div className="flex items-center space-x-3">
-                        <div className="p-2.5 rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-black">
-                            <Plane className="w-5 h-5" />
+                <div className="px-5 py-4 border-b border-neutral-200 dark:border-geist-hairline flex items-center justify-between bg-neutral-50/60 dark:bg-[#0c0c0c]">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline text-neutral-700 dark:text-neutral-300">
+                            <Plane className="w-4 h-4" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-[#ededed]">
+                            <h2
+                                id="onboarding-modal-title"
+                                className="text-sm sm:text-base font-semibold tracking-tight text-neutral-900 dark:text-white"
+                            >
                                 Welcome to Apollo Flight
                             </h2>
-                            <p className="text-xs text-neutral-500 dark:text-[#888888]">
+                            <p className="text-xs text-neutral-500 dark:text-geist-muted tabular-nums">
                                 Step {currentStep} of {totalSteps} · Initial Setup
                             </p>
                         </div>
                     </div>
                     <button
+                        type="button"
                         onClick={handleSkip}
-                        className="text-xs font-medium text-neutral-400 hover:text-neutral-700 dark:hover:text-[#cccccc] transition-colors px-2.5 py-1 rounded-md"
+                        className="text-xs font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white transition-colors px-2.5 py-1 rounded-xs hover:bg-neutral-100 dark:hover:bg-geist-cardHover"
                     >
                         Skip Tour
                     </button>
                 </div>
 
                 {/* Stepper Progress Indicator */}
-                <div className="px-6 pt-4 pb-2">
+                <div className="px-5 pt-4 pb-2 border-b border-neutral-100 dark:border-geist-hairline">
                     <div className="flex items-center justify-between">
                         {[
                             { num: 1, label: "Sim Bridge", icon: Activity },
                             { num: 2, label: "Units", icon: Scale },
                             { num: 3, label: "Aerodromes", icon: Database },
-                            { num: 4, label: "EFB Companion", icon: Tablet },
+                            { num: 4, label: "Routes", icon: Route },
+                            { num: 5, label: "Checklists & Docs", icon: ListChecks },
+                            { num: 6, label: "EFB Companion", icon: Tablet },
                         ].map((s) => {
                             const Icon = s.icon;
                             const isActive = currentStep === s.num;
                             const isDone = currentStep > s.num;
 
                             return (
-                                <div
+                                <button
                                     key={s.num}
-                                    className="flex flex-col items-center flex-1 relative"
+                                    type="button"
+                                    onClick={() => setCurrentStep(s.num)}
+                                    className="flex flex-col items-center flex-1 relative group cursor-pointer"
                                 >
                                     <div
-                                        className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-semibold transition-all duration-200 ${
+                                        className={`w-8 h-8 rounded-sm flex items-center justify-center text-xs font-semibold transition-colors border ${
                                             isDone
-                                                ? "bg-emerald-500 text-white shadow-sm"
+                                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
                                                 : isActive
-                                                ? "bg-neutral-900 dark:bg-white text-white dark:text-black shadow-md ring-4 ring-neutral-100 dark:ring-neutral-800"
-                                                : "bg-neutral-100 dark:bg-[#1a1a1a] text-neutral-400 dark:text-[#666666]"
+                                                ? "bg-neutral-900 dark:bg-white text-white dark:text-black border-transparent shadow-xs"
+                                                : "bg-neutral-100 dark:bg-geist-card text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-geist-hairline group-hover:text-neutral-700 dark:group-hover:text-neutral-300"
                                         }`}
                                     >
                                         {isDone ? (
@@ -135,49 +153,49 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                                     <span
                                         className={`text-[11px] mt-1.5 font-medium ${
                                             isActive
-                                                ? "text-neutral-900 dark:text-[#ededed]"
-                                                : "text-neutral-400 dark:text-[#666666]"
+                                                ? "text-neutral-900 dark:text-white"
+                                                : "text-neutral-400 dark:text-neutral-500"
                                         }`}
                                     >
                                         {s.label}
                                     </span>
-                                </div>
+                                </button>
                             );
                         })}
                     </div>
                 </div>
 
                 {/* Step Body */}
-                <div className="p-6 overflow-y-auto flex-1">
+                <div className="p-5 sm:p-6 overflow-y-auto flex-1">
                     {/* STEP 1: Sim Bridge Diagnostics */}
                     {currentStep === 1 && (
-                        <div className="space-y-5 animate-in fade-in duration-200">
+                        <div className="space-y-4 animate-in fade-in duration-200">
                             <div>
-                                <h3 className="text-base font-semibold text-neutral-900 dark:text-[#ededed]">
+                                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
                                     SimConnect & FSUIPC7 Status
                                 </h3>
-                                <p className="text-xs text-neutral-500 dark:text-[#888888] mt-1">
-                                    Apollo Flight streams real-time 50 Hz flight dynamics, engine states, and weather via FSUIPC7.
+                                <p className="text-xs text-neutral-500 dark:text-geist-muted mt-1">
+                                    Apollo Flight streams real-time flight and weather data via FSUIPC7.
                                 </p>
                             </div>
 
                             <div
-                                className={`p-4 rounded-xl border flex items-center justify-between ${
+                                className={`p-4 rounded-sm border flex items-center justify-between ${
                                     currentTelemetry.simConnected
                                         ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40 text-emerald-900 dark:text-emerald-300"
                                         : "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-300"
                                 }`}
                             >
-                                <div className="flex items-center space-x-3">
+                                <div className="flex items-center gap-3">
                                     <div
-                                        className={`w-3 h-3 rounded-full animate-pulse ${
+                                        className={`w-2.5 h-2.5 rounded-full ${
                                             currentTelemetry.simConnected
                                                 ? "bg-emerald-500"
                                                 : "bg-amber-500"
                                         }`}
                                     />
                                     <div>
-                                        <div className="font-semibold text-sm">
+                                        <div className="font-semibold text-xs sm:text-sm">
                                             {currentTelemetry.simConnected
                                                 ? "Bridge Connected (Ready to Fly)"
                                                 : "Waiting for FSUIPC7 / MSFS"}
@@ -193,14 +211,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                                     </div>
                                 </div>
                                 {currentTelemetry.simConnected && (
-                                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                                 )}
                             </div>
 
-                            <div className="bg-neutral-50 dark:bg-[#161616] border border-neutral-200 dark:border-[#222222] rounded-xl p-4 text-xs space-y-2 text-neutral-600 dark:text-[#999999]">
-                                <div className="font-semibold text-neutral-900 dark:text-[#ededed] flex items-center space-x-1.5">
-                                    <AlertCircle className="w-4 h-4 text-neutral-400" />
-                                    <span>First Time Checklist:</span>
+                            <div className="bg-neutral-50 dark:bg-geist-card/50 border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 text-xs space-y-2 text-neutral-600 dark:text-neutral-400">
+                                <div className="font-semibold text-neutral-900 dark:text-white flex items-center gap-1.5">
+                                    <span>First Time Checklist</span>
                                 </div>
                                 <ul className="list-disc list-inside space-y-1 pl-1">
                                     <li>Ensure FSUIPC7 is installed (free edition works out-of-the-box).</li>
@@ -213,161 +230,151 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
                     {/* STEP 2: Preferred Measurement Units */}
                     {currentStep === 2 && (
-                        <div className="space-y-5 animate-in fade-in duration-200">
+                        <div className="space-y-4 animate-in fade-in duration-200">
                             <div>
-                                <h3 className="text-base font-semibold text-neutral-900 dark:text-[#ededed]">
+                                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
                                     Measurement Units & Preferences
                                 </h3>
-                                <p className="text-xs text-neutral-500 dark:text-[#888888] mt-1">
+                                <p className="text-xs text-neutral-500 dark:text-geist-muted mt-1">
                                     Configure your cockpit units. You can update these anytime in Settings.
                                 </p>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3.5">
-                                {/* Weight Unit */}
-                                <div className="p-3.5 rounded-xl border border-neutral-200 dark:border-[#222222] bg-neutral-50/50 dark:bg-[#141414] space-y-2">
-                                    <div className="text-xs font-semibold text-neutral-700 dark:text-[#cccccc]">
-                                        Aircraft Weight
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {[
+                                    {
+                                        title: "Aircraft Weight",
+                                        value: weightUnit,
+                                        onChange: (v: string) => setWeightUnit(v as WeightUnit),
+                                        options: [
+                                            { id: "kg", label: "Kilograms (kg)" },
+                                            { id: "lbs", label: "Pounds (lbs)" },
+                                        ],
+                                    },
+                                    {
+                                        title: "Wind Speed",
+                                        value: windSpeedUnit,
+                                        onChange: (v: string) => setWindSpeedUnit(v as WindSpeedUnit),
+                                        options: [
+                                            { id: "kt", label: "Knots (kt)" },
+                                            { id: "mps", label: "Meters / sec (m/s)" },
+                                        ],
+                                    },
+                                    {
+                                        title: "Altitude & Runways",
+                                        value: lengthUnit,
+                                        onChange: (v: string) => setLengthUnit(v as LengthUnit),
+                                        options: [
+                                            { id: "ft", label: "Feet (ft)" },
+                                            { id: "m", label: "Meters (m)" },
+                                        ],
+                                    },
+                                    {
+                                        title: "Temperature",
+                                        value: temperatureUnit,
+                                        onChange: (v: string) => setTemperatureUnit(v as TemperatureUnit),
+                                        options: [
+                                            { id: "c", label: "Celsius (°C)" },
+                                            { id: "f", label: "Fahrenheit (°F)" },
+                                        ],
+                                    },
+                                    {
+                                        title: "Atmospheric Visibility",
+                                        value: visibilityUnit,
+                                        onChange: (v: string) => setVisibilityUnit(v as VisibilityUnit),
+                                        spanTwo: true,
+                                        options: [
+                                            { id: "sm", label: "Statute Miles (SM)" },
+                                            { id: "metric", label: "Metric (m / km)" },
+                                        ],
+                                    },
+                                ].map((group) => (
+                                    <div
+                                        key={group.title}
+                                        className={`p-4 rounded-sm border border-neutral-200 dark:border-geist-hairline bg-neutral-50/50 dark:bg-geist-card/50 space-y-2 ${
+                                            group.spanTwo ? "sm:col-span-2" : ""
+                                        }`}
+                                    >
+                                        <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">
+                                            {group.title}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-1 bg-neutral-100 dark:bg-[#181818] p-1 rounded-sm border border-neutral-200 dark:border-geist-hairline">
+                                            {group.options.map((opt) => (
+                                                <button
+                                                    key={opt.id}
+                                                    type="button"
+                                                    onClick={() => group.onChange(opt.id)}
+                                                    className={`py-1 text-xs rounded-xs transition-colors ${
+                                                        group.value === opt.id
+                                                            ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs font-semibold"
+                                                            : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white font-medium"
+                                                    }`}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                        {(["kg", "lbs"] as WeightUnit[]).map((u) => (
-                                            <button
-                                                key={u}
-                                                onClick={() => setWeightUnit(u)}
-                                                className={`py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                                                    weightUnit === u
-                                                        ? "bg-neutral-900 dark:bg-white text-white dark:text-black border-transparent shadow-sm"
-                                                        : "bg-white dark:bg-[#1a1a1a] text-neutral-600 dark:text-[#888888] border-neutral-200 dark:border-[#2b2b2b]"
-                                                }`}
-                                            >
-                                                {u.toUpperCase()}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Speed Unit */}
-                                <div className="p-3.5 rounded-xl border border-neutral-200 dark:border-[#222222] bg-neutral-50/50 dark:bg-[#141414] space-y-2">
-                                    <div className="text-xs font-semibold text-neutral-700 dark:text-[#cccccc]">
-                                        Wind & Airspeed
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                        {(["kt", "mps"] as WindSpeedUnit[]).map((u) => (
-                                            <button
-                                                key={u}
-                                                onClick={() => setWindSpeedUnit(u)}
-                                                className={`py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                                                    windSpeedUnit === u
-                                                        ? "bg-neutral-900 dark:bg-white text-white dark:text-black border-transparent shadow-sm"
-                                                        : "bg-white dark:bg-[#1a1a1a] text-neutral-600 dark:text-[#888888] border-neutral-200 dark:border-[#2b2b2b]"
-                                                }`}
-                                            >
-                                                {u.toUpperCase()}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Altitude / Runway Length */}
-                                <div className="p-3.5 rounded-xl border border-neutral-200 dark:border-[#222222] bg-neutral-50/50 dark:bg-[#141414] space-y-2">
-                                    <div className="text-xs font-semibold text-neutral-700 dark:text-[#cccccc]">
-                                        Altitude & Runways
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                        {(["ft", "m"] as LengthUnit[]).map((u) => (
-                                            <button
-                                                key={u}
-                                                onClick={() => setLengthUnit(u)}
-                                                className={`py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                                                    lengthUnit === u
-                                                        ? "bg-neutral-900 dark:bg-white text-white dark:text-black border-transparent shadow-sm"
-                                                        : "bg-white dark:bg-[#1a1a1a] text-neutral-600 dark:text-[#888888] border-neutral-200 dark:border-[#2b2b2b]"
-                                                }`}
-                                            >
-                                                {u === "ft" ? "Feet (ft)" : "Meters (m)"}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Temperature Unit */}
-                                <div className="p-3.5 rounded-xl border border-neutral-200 dark:border-[#222222] bg-neutral-50/50 dark:bg-[#141414] space-y-2">
-                                    <div className="text-xs font-semibold text-neutral-700 dark:text-[#cccccc]">
-                                        Temperature
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                        {(["c", "f"] as TemperatureUnit[]).map((u) => (
-                                            <button
-                                                key={u}
-                                                onClick={() => setTemperatureUnit(u)}
-                                                className={`py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                                                    temperatureUnit === u
-                                                        ? "bg-neutral-900 dark:bg-white text-white dark:text-black border-transparent shadow-sm"
-                                                        : "bg-white dark:bg-[#1a1a1a] text-neutral-600 dark:text-[#888888] border-neutral-200 dark:border-[#2b2b2b]"
-                                                }`}
-                                            >
-                                                °{u.toUpperCase()}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+                                ))}
                             </div>
                         </div>
                     )}
 
                     {/* STEP 3: OurAirports Database Hydration */}
                     {currentStep === 3 && (
-                        <div className="space-y-5 animate-in fade-in duration-200">
+                        <div className="space-y-4 animate-in fade-in duration-200">
                             <div>
-                                <h3 className="text-base font-semibold text-neutral-900 dark:text-[#ededed]">
+                                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
                                     Global Aerodromes Database
                                 </h3>
-                                <p className="text-xs text-neutral-500 dark:text-[#888888] mt-1">
+                                <p className="text-xs text-neutral-500 dark:text-geist-muted mt-1">
                                     Apollo Flight includes offline search and nearest-aerodrome lookup for over 75,000 global runways.
                                 </p>
                             </div>
 
-                            <div className="p-4 rounded-xl border border-neutral-200 dark:border-[#222222] bg-neutral-50/50 dark:bg-[#141414] flex items-center justify-between">
-                                <div className="space-y-1">
-                                    <div className="text-xs font-medium text-neutral-500 dark:text-[#888888]">
+                            <div className="p-4 rounded-sm border border-neutral-200 dark:border-geist-hairline bg-neutral-50/50 dark:bg-geist-card/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="space-y-0.5">
+                                    <div className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
                                         Indexed Airports
                                     </div>
-                                    <div className="text-2xl font-bold text-neutral-900 dark:text-[#ededed] font-mono">
+                                    <div className="text-2xl font-bold text-neutral-900 dark:text-white tabular-nums tracking-tight">
                                         {airportsCount > 0
                                             ? airportsCount.toLocaleString()
                                             : "0"}
                                     </div>
                                 </div>
-                                <div className="flex items-center space-x-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                     {airportsCount >= 1000 ? (
-                                        <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
+                                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
                                             <CheckCircle2 className="w-4 h-4" />
-                                            <span>Global Dataset Ready</span>
+                                            <span>Dataset Ready</span>
                                         </div>
                                     ) : airportsCount > 0 ? (
-                                        <div className="flex items-center space-x-2">
-                                            <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
+                                        <>
+                                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
                                                 <CheckCircle2 className="w-4 h-4" />
                                                 <span>Core Database Ready</span>
                                             </div>
                                             <button
+                                                type="button"
                                                 onClick={() => syncOurAirports()}
                                                 disabled={isSyncingAirports}
-                                                className="px-3 py-1.5 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-black font-semibold text-xs flex items-center space-x-1.5 hover:opacity-90 disabled:opacity-50 transition-all shadow-sm"
+                                                className="px-3 py-1.5 rounded-xs bg-neutral-900 dark:bg-white text-white dark:text-black font-medium text-xs flex items-center gap-1.5 hover:opacity-90 disabled:opacity-50 transition-all shadow-xs"
                                             >
                                                 <RefreshCw
-                                                    className={`w-3 h-3 ${
+                                                    className={`w-3.5 h-3.5 ${
                                                         isSyncingAirports ? "animate-spin" : ""
                                                     }`}
                                                 />
                                                 <span>{isSyncingAirports ? "Syncing..." : "Sync Full (Online)"}</span>
                                             </button>
-                                        </div>
+                                        </>
                                     ) : (
                                         <button
+                                            type="button"
                                             onClick={() => syncOurAirports()}
                                             disabled={isSyncingAirports}
-                                            className="px-4 py-2 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-black font-semibold text-xs flex items-center space-x-2 hover:opacity-90 disabled:opacity-50 transition-all shadow-sm"
+                                            className="px-3.5 py-1.5 rounded-xs bg-neutral-900 dark:bg-white text-white dark:text-black font-medium text-xs flex items-center gap-1.5 hover:opacity-90 disabled:opacity-50 transition-all shadow-xs"
                                         >
                                             <RefreshCw
                                                 className={`w-3.5 h-3.5 ${
@@ -381,14 +388,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                             </div>
 
                             {isSyncingAirports && syncProgress && (
-                                <div className="p-4 rounded-xl border border-neutral-200 dark:border-[#222222] bg-white dark:bg-[#161616] space-y-2">
-                                    <div className="flex justify-between text-xs text-neutral-600 dark:text-[#888888]">
+                                <div className="p-4 rounded-sm border border-neutral-200 dark:border-geist-hairline bg-white dark:bg-geist-card space-y-2">
+                                    <div className="flex justify-between text-xs text-neutral-600 dark:text-neutral-400">
                                         <span>{syncProgress.message}</span>
-                                        <span className="font-mono font-semibold">
+                                        <span className="font-semibold tabular-nums">
                                             {syncProgress.percent}%
                                         </span>
                                     </div>
-                                    <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-2 rounded-full overflow-hidden">
+                                    <div className="w-full bg-neutral-100 dark:bg-geist-hairline h-1.5 rounded-full overflow-hidden">
                                         <div
                                             className="bg-neutral-900 dark:bg-white h-full transition-all duration-300"
                                             style={{ width: `${syncProgress.percent}%` }}
@@ -397,7 +404,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                                 </div>
                             )}
 
-                            <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-[#161616] border border-neutral-200 dark:border-[#222222] text-xs text-neutral-600 dark:text-[#999999] space-y-1">
+                            <div className="p-4 rounded-sm bg-neutral-50 dark:bg-geist-card/50 border border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-400 space-y-1">
                                 {airportsCount >= 1000 ? (
                                     <p>
                                         Over {airportsCount.toLocaleString()} worldwide aerodromes, unpaved strips, and runway dimensions are indexed locally. Zero cloud dependency during flights.
@@ -411,37 +418,126 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         </div>
                     )}
 
-                    {/* STEP 4: EFB Companion Pairing */}
+                    {/* STEP 4: Routes & Dispatch */}
                     {currentStep === 4 && (
-                        <div className="space-y-5 animate-in fade-in duration-200">
+                        <div className="space-y-4 animate-in fade-in duration-200">
                             <div>
-                                <h3 className="text-base font-semibold text-neutral-900 dark:text-[#ededed]">
+                                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
+                                    Procedural Route Generator &amp; Saved Routes
+                                </h3>
+                                <p className="text-xs text-neutral-500 dark:text-geist-muted mt-1">
+                                    Plan realistic single-leg or multi-sector dispatches and manage your flight library.
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="p-4 rounded-sm border border-neutral-200 dark:border-geist-hairline bg-neutral-50/50 dark:bg-geist-card/50 space-y-2">
+                                    <div className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-white">
+                                        <Route className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
+                                        <span>New Route Generator</span>
+                                    </div>
+                                    <ul className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1.5 leading-relaxed">
+                                        <li>• Generate 1–6 sectors using ICAO aircraft categories (Cat A–F) with realistic turnaround times.</li>
+                                        <li>• Terrain-aware Minimum Safe Altitude (MSA) clamping and runway length/surface filtering.</li>
+                                        <li>• Optional Navigraph AIRAC SID/STAR/airway routing and live map preview.</li>
+                                    </ul>
+                                </div>
+
+                                <div className="p-4 rounded-sm border border-neutral-200 dark:border-geist-hairline bg-neutral-50/50 dark:bg-geist-card/50 space-y-2">
+                                    <div className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-white">
+                                        <Bookmark className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
+                                        <span>Saved Routes &amp; Dispatch</span>
+                                    </div>
+                                    <ul className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1.5 leading-relaxed">
+                                        <li>• Filter dispatches by All, Favorites, Drafts, or Flown and edit individual sectors anytime.</li>
+                                        <li>• Dispatch a saved route in one click when your aircraft is within 25 NM of the origin.</li>
+                                        <li>• Syncs active flight plan legs directly to the EFB Companion.</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div className="p-4 rounded-sm bg-neutral-50 dark:bg-geist-card/50 border border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-400">
+                                Multi-sector flights prompt you at intermediate stops so you can continue the next leg seamlessly.
+                            </div>
+                        </div>
+                    )}
+
+                    {/* STEP 5: Checklists & Documentation */}
+                    {currentStep === 5 && (
+                        <div className="space-y-4 animate-in fade-in duration-200">
+                            <div>
+                                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
+                                    Aircraft Checklists &amp; Documentation
+                                </h3>
+                                <p className="text-xs text-neutral-500 dark:text-geist-muted mt-1">
+                                    Run hands-free SOP flows and keep your flight briefings and manuals indexed offline.
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="p-4 rounded-sm border border-neutral-200 dark:border-geist-hairline bg-neutral-50/50 dark:bg-geist-card/50 space-y-2">
+                                    <div className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-white">
+                                        <ListChecks className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
+                                        <span>Checklists &amp; Voice Co-Pilot</span>
+                                    </div>
+                                    <ul className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1.5 leading-relaxed">
+                                        <li>• Normal, Emergency, and Abnormal checklists with automatic active-aircraft matching.</li>
+                                        <li>• Create custom checklists or import/export JSON templates.</li>
+                                        <li>• 100% offline voice control with Always-On or Push-to-Talk in Settings.</li>
+                                    </ul>
+                                </div>
+
+                                <div className="p-4 rounded-sm border border-neutral-200 dark:border-geist-hairline bg-neutral-50/50 dark:bg-geist-card/50 space-y-2">
+                                    <div className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-white">
+                                        <FileText className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
+                                        <span>Documentation &amp; Briefings</span>
+                                    </div>
+                                    <ul className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1.5 leading-relaxed">
+                                        <li>• Built-in Markdown and PDF viewer for SOPs, charts, and flight briefings.</li>
+                                        <li>• Add custom local folders in Settings with live filesystem watching.</li>
+                                        <li>• Rename titles inline and organize manuals with custom tags.</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div className="p-4 rounded-sm bg-neutral-50 dark:bg-geist-card/50 border border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-400">
+                                You can configure Push-to-Talk, test your microphone, or add custom doc folders anytime in Settings.
+                            </div>
+                        </div>
+                    )}
+
+                    {/* STEP 6: EFB Companion Pairing */}
+                    {currentStep === 6 && (
+                        <div className="space-y-4 animate-in fade-in duration-200">
+                            <div>
+                                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white tracking-tight">
                                     EFB Companion Cockpit (iPad / Tablet)
                                 </h3>
-                                <p className="text-xs text-neutral-500 dark:text-[#888888] mt-1">
+                                <p className="text-xs text-neutral-500 dark:text-geist-muted mt-1">
                                     Open your live moving map and flight instruments on a tablet, phone, or second screen without installing an app.
                                 </p>
                             </div>
 
-                            <div className="p-4 rounded-xl border border-neutral-200 dark:border-[#222222] bg-neutral-50/50 dark:bg-[#141414] flex flex-col sm:flex-row items-center gap-4">
-                                <div className="bg-white p-2.5 rounded-xl border border-neutral-200 shadow-sm">
+                            <div className="p-4 rounded-sm border border-neutral-200 dark:border-geist-hairline bg-neutral-50/50 dark:bg-geist-card/50 flex flex-col sm:flex-row items-center gap-4">
+                                <div>
                                     <QrCodeView value={efbUrl} size={110} />
                                 </div>
                                 <div className="space-y-2 text-center sm:text-left flex-1">
-                                    <div className="text-xs font-semibold text-neutral-800 dark:text-[#dddddd]">
+                                    <div className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
                                         Scan with Tablet Camera or Open:
                                     </div>
                                     <a
                                         href={efbUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-xs font-mono font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-center sm:justify-start space-x-1"
+                                        className="text-xs font-mono font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-center sm:justify-start gap-1"
                                     >
                                         <span>{efbUrl}</span>
                                         <ExternalLink className="w-3 h-3" />
                                     </a>
-                                    <div className="flex items-center justify-center sm:justify-start space-x-2 pt-1">
+                                    <div className="flex items-center justify-center sm:justify-start gap-2 pt-1">
                                         <button
+                                            type="button"
                                             onClick={async () => {
                                                 if (!efbStatus?.isRunning) {
                                                     setIsStartingServer(true);
@@ -453,10 +549,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                                                 }
                                             }}
                                             disabled={efbStatus?.isRunning || isStartingServer}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                                            className={`px-3 py-1.5 rounded-xs text-xs font-medium border transition-colors ${
                                                 efbStatus?.isRunning
-                                                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40"
-                                                    : "bg-white dark:bg-[#222222] text-neutral-700 dark:text-[#cccccc] border-neutral-200 dark:border-[#333333] hover:bg-neutral-100"
+                                                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                                                    : "bg-white dark:bg-geist-card text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-geist-hairline hover:bg-neutral-100 dark:hover:bg-geist-cardHover"
                                             }`}
                                         >
                                             {efbStatus?.isRunning
@@ -469,7 +565,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                                 </div>
                             </div>
 
-                            <div className="text-xs text-neutral-500 dark:text-[#888888] space-y-1">
+                            <div className="text-xs text-neutral-500 dark:text-geist-muted space-y-1">
                                 <p>• Tablet and PC must be on the same local Wi-Fi network.</p>
                                 <p>• Real-time updates stream via lightweight local WebSockets.</p>
                             </div>
@@ -478,12 +574,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 </div>
 
                 {/* Footer Controls */}
-                <div className="p-4 px-6 border-t border-neutral-100 dark:border-[#222222] bg-neutral-50/50 dark:bg-[#141414] flex items-center justify-between">
+                <div className="px-5 py-3.5 border-t border-neutral-200 dark:border-geist-hairline bg-neutral-50/60 dark:bg-[#0c0c0c] flex items-center justify-between">
                     <div>
                         {currentStep > 1 && (
                             <button
+                                type="button"
                                 onClick={() => setCurrentStep((s) => s - 1)}
-                                className="px-4 py-2 rounded-xl text-xs font-semibold text-neutral-600 dark:text-[#aaaaaa] hover:bg-neutral-200/50 dark:hover:bg-[#222222] transition-colors flex items-center space-x-1.5"
+                                className="px-3.5 py-1.5 rounded-xs text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-200/50 dark:hover:bg-geist-cardHover transition-colors flex items-center gap-1.5"
                             >
                                 <ArrowLeft className="w-3.5 h-3.5" />
                                 <span>Back</span>
@@ -491,21 +588,22 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         )}
                     </div>
 
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center gap-2">
                         {currentStep < totalSteps ? (
                             <button
+                                type="button"
                                 onClick={() => setCurrentStep((s) => s + 1)}
-                                className="px-5 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-black text-xs font-semibold hover:opacity-90 transition-all flex items-center space-x-1.5 shadow-sm"
+                                className="px-4 py-1.5 rounded-xs bg-neutral-900 dark:bg-white text-white dark:text-black text-xs font-medium hover:opacity-90 transition-all flex items-center gap-1.5 shadow-xs"
                             >
                                 <span>Continue</span>
                                 <ArrowRight className="w-3.5 h-3.5" />
                             </button>
                         ) : (
                             <button
+                                type="button"
                                 onClick={handleFinish}
-                                className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-all flex items-center space-x-1.5 shadow-md shadow-emerald-600/20"
+                                className="px-4 py-1.5 rounded-xs bg-neutral-900 dark:bg-white text-white dark:text-black text-xs font-medium hover:opacity-90 transition-all flex items-center gap-1.5 shadow-xs"
                             >
-                                <Sparkles className="w-4 h-4" />
                                 <span>Finish & Start Flying</span>
                             </button>
                         )}

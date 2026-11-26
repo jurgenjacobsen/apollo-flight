@@ -1,5 +1,6 @@
 import React from "react";
 import { GeneratedRoute } from "../../types/route";
+import { Tooltip } from "../ui";
 import { formatFlightLevelOrAltitude } from "../../data/aircraftCategories";
 import { Mountain, ShieldAlert, ArrowRight } from "lucide-react";
 
@@ -13,7 +14,7 @@ export const ElevationProfileChart: React.FC<ElevationProfileChartProps> = ({
     if (!route.sectors || route.sectors.length === 0) return null;
 
     return (
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
+        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-xs">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Mountain className="w-4 h-4 text-amber-500" />
@@ -65,13 +66,14 @@ export const ElevationProfileChart: React.FC<ElevationProfileChartProps> = ({
                                 {/* Visual Relative Step Bar */}
                                 <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-2 rounded-full overflow-hidden relative">
                                     {cruiseAlt > 0 && (
-                                        <div
-                                            className="bg-sky-500 h-full rounded-full transition-all"
-                                            style={{
-                                                width: `${Math.min(100, Math.max(15, (morAlt / Math.max(cruiseAlt, morAlt)) * 100))}%`,
-                                            }}
-                                            title={`MORA: ${morAlt} ft / Cruise: ${cruiseAlt} ft`}
-                                        />
+                                        <Tooltip content={`MORA: ${morAlt} ft / Cruise: ${cruiseAlt} ft`}>
+                                            <div
+                                                className="bg-sky-500 h-full rounded-full transition-all"
+                                                style={{
+                                                    width: `${Math.min(100, Math.max(15, (morAlt / Math.max(cruiseAlt, morAlt)) * 100))}%`,
+                                                }}
+                                            />
+                                        </Tooltip>
                                     )}
                                 </div>
 

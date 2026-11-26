@@ -51,16 +51,11 @@ export const Sidebar: React.FC = () => {
             label: "Operations",
             items: [
                 { id: "dashboard", label: "Overview", icon: House },
+                { id: "logbook", label: "Logbook", icon: BookOpen },
                 { id: "new-route", label: "New Route", icon: Route },
                 { id: "saved-routes", label: "Saved Routes", icon: Bookmark },
                 { id: "checklists", label: "Checklists", icon: ListChecks },
                 { id: "documentation", label: "Documentation", icon: FileText },
-                { id: "logbook", label: "Flight Logbook", icon: BookOpen },
-                {
-                    id: "flight-detail",
-                    label: "Telemetry Analysis",
-                    icon: Layers,
-                },
                 { id: "visited", label: "Pilot Profile", icon: User },
             ],
         },
@@ -105,7 +100,7 @@ export const Sidebar: React.FC = () => {
                         <button
                             type="button"
                             onClick={() => setActiveView("dashboard")}
-                            className="w-10 h-10 shrink-0 flex items-center justify-center rounded-md hover:bg-neutral-100 dark:hover:bg-[#181818] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 cursor-pointer"
+                            className="w-10 h-10 shrink-0 flex items-center justify-center rounded-sm hover:bg-neutral-100 dark:hover:bg-[#181818] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 cursor-pointer"
                         >
                             <img
                                 src="/Icon.svg"
@@ -177,7 +172,7 @@ export const Sidebar: React.FC = () => {
                                             onClick={() =>
                                                 setActiveView(item.id as any)
                                             }
-                                            className={`w-full h-9 flex items-center rounded-md transition-all duration-200 ease-in-out relative group cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 ${
+                                            className={`w-full h-9 flex items-center rounded-sm transition-all duration-200 ease-in-out relative group cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 ${
                                                 isSidebarCollapsed
                                                     ? "px-0 justify-center"
                                                     : "px-2.5 justify-start gap-2.5"
@@ -235,7 +230,7 @@ export const Sidebar: React.FC = () => {
             {/* Sidebar Collapse Action & Flight Recorder */}
             <div className="p-2.5 border-t border-neutral-200 dark:border-geist-hairline bg-neutral-50/50 dark:bg-geist-surface space-y-2 overflow-hidden transition-all duration-300">
                 {activeFlight && (
-                    <div className="bg-red-50 dark:bg-[#140a0a] border border-red-200 dark:border-red-900/60 rounded-md p-2 overflow-hidden transition-all duration-200">
+                    <div className="bg-red-50 dark:bg-[#140a0a] border border-red-200 dark:border-red-900/60 rounded-sm p-2 overflow-hidden transition-all duration-200">
                         <div
                             className={`flex items-center justify-between mb-1.5 overflow-hidden transition-all duration-200 ${
                                 isSidebarCollapsed
@@ -261,12 +256,7 @@ export const Sidebar: React.FC = () => {
                             <button
                                 type="button"
                                 onClick={() => endActiveFlight()}
-                            title={
-                                isSidebarCollapsed
-                                    ? `Recording: ${activeFlight.departureIcao} ➔ ${activeFlight.arrivalIcao} (Click to Finalize)`
-                                    : undefined
-                            }
-                            className={`w-full h-8 flex items-center justify-center bg-red-600 hover:bg-red-500 text-white text-xs rounded-md transition-colors duration-150 font-medium cursor-pointer shadow-xs ${
+                            className={`w-full h-8 flex items-center justify-center bg-red-600 hover:bg-red-500 text-white text-xs rounded-sm transition-colors duration-150 font-medium cursor-pointer shadow-xs ${
                                 isSidebarCollapsed ? "gap-0" : "gap-1.5"
                             }`}
                         >
@@ -294,7 +284,7 @@ export const Sidebar: React.FC = () => {
                     <button
                         type="button"
                         onClick={toggleSidebar}
-                        className={`w-full h-9 flex items-center justify-center bg-neutral-100 hover:bg-neutral-200 dark:bg-[#171717] dark:hover:bg-[#222222] text-neutral-800 dark:text-[#ededed] text-xs rounded-md border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 font-medium cursor-pointer ${
+                        className={`w-full h-9 flex items-center justify-center bg-neutral-100 hover:bg-neutral-200 dark:bg-[#171717] dark:hover:bg-[#222222] text-neutral-800 dark:text-[#ededed] text-xs rounded-sm border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 font-medium cursor-pointer ${
                             isSidebarCollapsed ? "gap-0" : "gap-2"
                         }`}
                     >

@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
+import { Tooltip } from "../ui";
 import {
     useFlightStore,
     safeInvoke,
@@ -782,15 +783,15 @@ export const FlightDetailView: React.FC = () => {
 
                     {/* Export Menu (consistent with LogbookView) */}
                     <div className="relative shrink-0" ref={exportMenuRef}>
-                        <button
-                            onClick={() => setShowExportMenu(!showExportMenu)}
-                            className={`h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border transition-colors duration-150 select-none cursor-pointer ${
-                                showExportMenu
-                                    ? "bg-neutral-200 dark:bg-[#282828] text-neutral-900 dark:text-white border-neutral-300 dark:border-neutral-600"
-                                    : "bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-geist-hairline shadow-xs"
-                            }`}
-                            title="Export Flight Telemetry (.GPX, .KML, .GeoJSON, .CSV)"
-                        >
+                        <Tooltip content="Export Flight Telemetry (.GPX, .KML, .GeoJSON, .CSV)">
+                            <button
+                                onClick={() => setShowExportMenu(!showExportMenu)}
+                                className={`h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border transition-colors duration-150 select-none cursor-pointer ${
+                                    showExportMenu
+                                        ? "bg-neutral-200 dark:bg-[#282828] text-neutral-900 dark:text-white border-neutral-300 dark:border-neutral-600"
+                                        : "bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-geist-hairline shadow-xs"
+                                }`}
+                            >
                             {copiedFormat ? (
                                 <Check className="w-3.5 h-3.5 text-emerald-500" />
                             ) : (
@@ -808,7 +809,8 @@ export const FlightDetailView: React.FC = () => {
                                         : ""
                                 }`}
                             />
-                        </button>
+                            </button>
+                        </Tooltip>
 
                         {showExportMenu && (
                             <div className="absolute right-0 mt-1 w-64 bg-white dark:bg-[#161616] border border-neutral-200 dark:border-[#2a2a2a] rounded-sm shadow-xl py-1 z-50 text-left text-neutral-900 dark:text-neutral-100 animate-in fade-in zoom-in-95 duration-100 select-none">
@@ -845,7 +847,7 @@ export const FlightDetailView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
                                                     GPS Track
                                                 </span>
-                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded-sm">
                                                     .GPX
                                                 </span>
                                             </div>
@@ -868,7 +870,7 @@ export const FlightDetailView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                                                     Google Earth
                                                 </span>
-                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded-sm">
                                                     .KML
                                                 </span>
                                             </div>
@@ -891,7 +893,7 @@ export const FlightDetailView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                                                     GeoJSON Feature
                                                 </span>
-                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded-sm">
                                                     .GeoJSON
                                                 </span>
                                             </div>
@@ -914,7 +916,7 @@ export const FlightDetailView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                                                     CSV Spreadsheet
                                                 </span>
-                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded-sm">
                                                     .CSV
                                                 </span>
                                             </div>
@@ -930,15 +932,16 @@ export const FlightDetailView: React.FC = () => {
                     </div>
 
                     {/* Return to Logbook */}
-                    <button
-                        type="button"
-                        onClick={() => setActiveView("logbook")}
-                        className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline shadow-xs transition-colors duration-150 select-none cursor-pointer"
-                        title="Return to Logbook"
-                    >
-                        <ArrowLeft className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
-                        <span>Logbook</span>
-                    </button>
+                    <Tooltip content="Return to Logbook">
+                        <button
+                            type="button"
+                            onClick={() => setActiveView("logbook")}
+                            className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline shadow-xs transition-colors duration-150 select-none cursor-pointer"
+                        >
+                            <ArrowLeft className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
+                            <span>Logbook</span>
+                        </button>
+                    </Tooltip>
 
                     {/* Expanding Delete Confirmation Button */}
                     <ConfirmDeleteButton
@@ -955,7 +958,7 @@ export const FlightDetailView: React.FC = () => {
 
             {/* Summary Stat Cards */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm">
+                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs">
                     <div className="flex items-center gap-1.5 text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
                         <Clock className="w-3.5 h-3.5 text-neutral-400" />
                         <span>Block Time</span>
@@ -983,7 +986,7 @@ export const FlightDetailView: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm">
+                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs">
                     <div className="flex items-center gap-1.5 text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
                         <Compass className="w-3.5 h-3.5 text-neutral-400" />
                         <span>Distance</span>
@@ -996,7 +999,7 @@ export const FlightDetailView: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm">
+                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs">
                     <div className="flex items-center gap-1.5 text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
                         <Gauge className="w-3.5 h-3.5 text-neutral-400" />
                         <span>Max Altitude</span>
@@ -1009,7 +1012,7 @@ export const FlightDetailView: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm">
+                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs">
                     <div className="flex items-center gap-1.5 text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
                         <Wind className="w-3.5 h-3.5 text-neutral-400" />
                         <span>Peak GS</span>
@@ -1022,7 +1025,7 @@ export const FlightDetailView: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm">
+                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs">
                     <div className="flex items-center gap-1.5 text-neutral-500 dark:text-geist-muted text-[11px] font-medium mb-1">
                         <Scale className="w-3.5 h-3.5 text-neutral-400" />
                         <span>Gross Weight</span>
@@ -1043,7 +1046,7 @@ export const FlightDetailView: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm">
+                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs">
                     <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-1.5 text-neutral-500 dark:text-geist-muted text-[11px] font-medium">
                             <TrendingDown className="w-3.5 h-3.5 text-neutral-400" />
@@ -1054,7 +1057,7 @@ export const FlightDetailView: React.FC = () => {
                             </span>
                         </div>
                         {touchdowns.length > 1 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 tabular-nums">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 tabular-nums">
                                 {touchdowns.length} Landings
                             </span>
                         )}
@@ -1070,7 +1073,7 @@ export const FlightDetailView: React.FC = () => {
                         </div>
                         {avgTouchdownRate !== null && (
                             <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 tabular-nums">
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 tabular-nums">
                                     +
                                     {calculateTouchdownGForce(
                                         avgTouchdownRate,

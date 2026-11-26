@@ -1,4 +1,5 @@
 import React from "react";
+import { Tooltip } from "../ui";
 import {
     MapContainer,
     TileLayer,
@@ -159,12 +160,12 @@ export const DebriefMap: React.FC<DebriefMapProps> = ({
     visibilityUnit,
 }) => {
     return (
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 flex flex-col space-y-3 shadow-sm">
+        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 flex flex-col space-y-3 shadow-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-neutral-700 dark:text-neutral-300">
                 <div className="flex items-center gap-2">
                     <Navigation className="w-3.5 h-3.5 text-neutral-500" />
                     <span className="font-medium text-neutral-900 dark:text-white tracking-tight">
-                        Altitude-Gradient GPS Track
+                        Flight Recording Map
                     </span>
                 </div>
 
@@ -174,59 +175,19 @@ export const DebriefMap: React.FC<DebriefMapProps> = ({
                         <span className="text-neutral-500 dark:text-neutral-400 text-[10px]">
                             0 ft
                         </span>
-                        <div
-                            className="w-28 sm:w-36 h-2 rounded-full border border-neutral-200 dark:border-neutral-700 shadow-inner"
-                            style={{
-                                background:
-                                    "linear-gradient(to right, #22c55e 0%, #84cc16 22%, #eab308 44%, #f97316 71%, #ef4444 100%)",
-                            }}
-                            title="Altitude color gradient: 0 ft to 45,000+ ft"
-                        />
+                        <Tooltip content="Altitude color gradient: 0 ft to 45,000+ ft">
+                            <div
+                                className="w-28 sm:w-36 h-2 rounded-full border border-neutral-200 dark:border-neutral-700 shadow-inner"
+                                style={{
+                                    background:
+                                        "linear-gradient(to right, #22c55e 0%, #84cc16 22%, #eab308 44%, #f97316 71%, #ef4444 100%)",
+                                }}
+                            />
+                        </Tooltip>
                         <span className="text-neutral-500 dark:text-neutral-400 text-[10px]">
                             45,000+ ft
                         </span>
                     </div>
-                    {activeScrubPoint && (
-                        <span className="flex flex-wrap items-center gap-1.5 text-neutral-500 dark:text-neutral-400 tabular-nums border-l border-neutral-200 dark:border-neutral-800 pl-2">
-                            <span
-                                className="w-2 h-2 rounded-full inline-block shrink-0 shadow-sm"
-                                style={{
-                                    backgroundColor: getAltitudeColor(
-                                        activeScrubPoint.altitudeMsl,
-                                    ),
-                                }}
-                            />
-                            <span className="tabular-nums">
-                                Sample:{" "}
-                                {activeScrubPoint.altitudeMsl.toLocaleString()}{" "}
-                                ft ·{" "}
-                                {String(
-                                    activeScrubPoint.groundSpeed,
-                                ).padStart(3, "0")}{" "}
-                                kt
-                            </span>
-                            {activeScrubPoint.windSpeed !== undefined &&
-                                activeScrubPoint.windDirection !==
-                                    undefined && (
-                                    <span className="border-l border-neutral-300 dark:border-neutral-700 pl-1.5 flex items-center gap-1">
-                                        <Wind className="w-3 h-3 text-sky-500 shrink-0 inline" />
-                                        {formatWindVector(
-                                            activeScrubPoint.windDirection,
-                                            activeScrubPoint.windSpeed,
-                                            windSpeedUnit,
-                                        )}
-                                    </span>
-                                )}
-                            {activeScrubPoint.oat !== undefined && (
-                                <span className="border-l border-neutral-300 dark:border-neutral-700 pl-1.5">
-                                    {formatTemperature(
-                                        activeScrubPoint.oat,
-                                        temperatureUnit,
-                                    )}
-                                </span>
-                            )}
-                        </span>
-                    )}
                 </div>
             </div>
 
@@ -236,7 +197,7 @@ export const DebriefMap: React.FC<DebriefMapProps> = ({
                 points.length === 0 ? (
                     <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden bg-neutral-100/60 dark:bg-[#111111]/80">
                         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
-                        <div className="relative flex flex-col items-center gap-2 px-4 py-3 rounded-md bg-white/90 dark:bg-black/70 border border-neutral-200/80 dark:border-neutral-800 backdrop-blur-sm shadow-sm">
+                        <div className="relative flex flex-col items-center gap-2 px-4 py-3 rounded-sm bg-white/90 dark:bg-black/70 border border-neutral-200/80 dark:border-neutral-800 backdrop-blur-xs shadow-xs">
                             {points.length === 0 &&
                             !isLoadingFlightDetails ? (
                                 <div className="flex flex-col items-center gap-1.5 text-center">
@@ -424,16 +385,17 @@ export const DebriefMap: React.FC<DebriefMapProps> = ({
                                                     Touchdown #{idx + 1}
                                                 </span>
                                                 {airport?.icao && (
-                                                    <span
-                                                        className="text-[10px] font-mono px-1 py-0.2 rounded bg-neutral-100 text-neutral-800 border border-neutral-300"
-                                                        title={
+                                                    <Tooltip
+                                                        content={
                                                             airport.name
                                                                 ? `Touchdown at ${airport.name} (${airport.icao})`
                                                                 : `Touchdown at ${airport.icao}`
                                                         }
                                                     >
-                                                        {airport.icao}
-                                                    </span>
+                                                        <span className="text-[10px] font-mono px-1 py-0.2 rounded-sm bg-neutral-100 text-neutral-800 border border-neutral-300">
+                                                            {airport.icao}
+                                                        </span>
+                                                    </Tooltip>
                                                 )}
                                             </div>
                                             <div>

@@ -33,9 +33,9 @@ export const AtmosphericCards: React.FC<AtmosphericCardsProps> = ({
     if (!weatherStats.hasWeather) return null;
 
     return (
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
+        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-xs">
             <div className="flex items-center gap-2">
-                <Wind className="w-4 h-4 text-sky-500" />
+                <Wind className="w-3.5 h-3.5 text-neutral-500" />
                 <h3 className="text-xs font-medium tracking-tight text-neutral-900 dark:text-white">
                     Atmospheric & Environmental Totals
                 </h3>

@@ -1,4 +1,5 @@
 import React from "react";
+import { Tooltip } from "../ui";
 import { useEfbStore } from "../../store/efbStore";
 import { ListChecks, Check, RotateCcw } from "lucide-react";
 
@@ -68,15 +69,16 @@ export const EfbChecklistsView: React.FC = () => {
                                     <span className="text-xs text-neutral-500 dark:text-geist-muted tabular-nums">
                                         {completedCount} / {totalCount} ({percent}%)
                                     </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => resetChecklistGroup(group.id)}
-                                        title="Reset group"
-                                        aria-label={`Reset ${group.title}`}
-                                        className="text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors duration-150 p-1 rounded-sm hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 cursor-pointer"
-                                    >
-                                        <RotateCcw className="w-3.5 h-3.5" />
-                                    </button>
+                                    <Tooltip content="Reset group">
+                                        <button
+                                            type="button"
+                                            onClick={() => resetChecklistGroup(group.id)}
+                                            aria-label={`Reset ${group.title}`}
+                                            className="text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors duration-150 p-1 rounded-sm hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 cursor-pointer"
+                                        >
+                                            <RotateCcw className="w-3.5 h-3.5" />
+                                        </button>
+                                    </Tooltip>
                                 </div>
                             </div>
 

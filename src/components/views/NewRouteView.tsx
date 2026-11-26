@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useFlightStore } from "../../store/flightStore";
 import { Select } from "../ui/Select";
+import { Checkbox } from "../ui/Checkbox";
 import {
     AircraftCategory,
     AirportTypePreference,
@@ -1083,17 +1085,20 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                 </div>
 
                 <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
-                    <button
-                        type="button"
-                        onClick={() => handleImportSimbrief()}
-                        disabled={isImportingSimbrief}
-                        className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-sm text-xs font-medium bg-white hover:bg-neutral-100 dark:bg-[#1a1a1a] dark:hover:bg-[#252525] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors duration-150 shadow-xs shrink-0 select-none disabled:opacity-50"
-                        title={
+                    <Tooltip
+                        content={
                             simbriefUsername
                                 ? `Import latest OFP for SimBrief user '${simbriefUsername}'`
                                 : "Link SimBrief account and import OFP"
                         }
                     >
+                        <span className="inline-flex shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => handleImportSimbrief()}
+                                disabled={isImportingSimbrief}
+                                className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-sm text-xs font-medium bg-white hover:bg-neutral-100 dark:bg-[#1a1a1a] dark:hover:bg-[#252525] text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-geist-hairline transition-colors duration-150 shadow-xs shrink-0 select-none disabled:opacity-50"
+                            >
                         <Download
                             className={`w-3.5 h-3.5 ${isImportingSimbrief ? "animate-spin" : ""}`}
                         />
@@ -1103,6 +1108,8 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                 : "Import from SimBrief"}
                         </span>
                     </button>
+                        </span>
+                    </Tooltip>
 
                     <button
                         onClick={handleGenerateRoute}
@@ -1120,8 +1127,9 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
             </div>
 
             {/* SimBrief Import Prompt Modal */}
-            {isSimbriefModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+            {isSimbriefModalOpen &&
+                createPortal(
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
                     <div className="bg-white dark:bg-[#111111] border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-xl w-full max-w-md p-5 space-y-4">
                         <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-geist-hairline">
                             <div className="flex items-center gap-2">
@@ -1190,8 +1198,9 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                             </button>
                         </div>
                     </div>
-                </div>
-            )}
+                </div>,
+                    document.body,
+                )}
 
             {generationError && (
                 <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 p-3 rounded-sm text-xs text-red-700 dark:text-red-400 flex items-center gap-2">
@@ -1204,7 +1213,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 {/* Left Column: Route Configuration Form (lg:col-span-4) */}
                 <div className="lg:col-span-4 space-y-4">
-                    <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-4 shadow-sm">
+                    <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-4 shadow-xs">
                         <div className="flex items-center gap-2 pb-2.5 border-b border-neutral-200 dark:border-geist-hairline">
                             <Sliders className="w-4 h-4 text-neutral-500" />
                             <h2 className="text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
@@ -1272,7 +1281,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 }
                                                 className={`flex items-center justify-center gap-1.5 py-1 text-[11px] font-medium rounded-sm transition-colors ${
                                                     areaType === "preset"
-                                                        ? "bg-white dark:bg-geist-surface text-neutral-900 dark:text-white shadow-sm font-semibold"
+                                                        ? "bg-white dark:bg-geist-surface text-neutral-900 dark:text-white shadow-xs font-semibold"
                                                         : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300"
                                                 }`}
                                             >
@@ -1288,7 +1297,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 }
                                                 className={`flex items-center justify-center gap-1.5 py-1 text-[11px] font-medium rounded-sm transition-colors ${
                                                     areaType === "circle"
-                                                        ? "bg-sky-600 text-white shadow-sm font-semibold"
+                                                        ? "bg-sky-600 text-white shadow-xs font-semibold"
                                                         : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300"
                                                 }`}
                                             >
@@ -1304,7 +1313,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 }
                                                 className={`flex items-center justify-center gap-1.5 py-1 text-[11px] font-medium rounded-sm transition-colors ${
                                                     areaType === "polygon"
-                                                        ? "bg-purple-600 text-white shadow-sm font-semibold"
+                                                        ? "bg-purple-600 text-white shadow-xs font-semibold"
                                                         : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300"
                                                 }`}
                                             >
@@ -1357,7 +1366,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
 
                                         {/* Circle Area Controls */}
                                         {areaType === "circle" && (
-                                            <div className="space-y-2 p-2 rounded bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/50">
+                                            <div className="space-y-2 p-2 rounded-sm bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/50">
                                                 <div className="flex items-center justify-between text-[11px]">
                                                     <span className="font-semibold text-sky-900 dark:text-sky-200">
                                                         Circle Radius:
@@ -1388,7 +1397,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                                 ),
                                                             )
                                                         }
-                                                        className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-sky-600"
+                                                        className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-800 rounded-full appearance-none cursor-pointer accent-sky-600"
                                                     />
                                                 </div>
 
@@ -1408,7 +1417,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                                     nm,
                                                                 )
                                                             }
-                                                            className={`px-1.5 py-0.5 rounded border transition-colors ${
+                                                            className={`px-1.5 py-0.5 rounded-sm border transition-colors ${
                                                                 circleRadiusNm ===
                                                                 nm
                                                                     ? "bg-sky-600 text-white border-sky-600 font-semibold"
@@ -1434,23 +1443,24 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                         °
                                                     </div>
                                                     <div className="flex items-center gap-2 shrink-0">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                setCircleCenter(
-                                                                    mapViewportRef
-                                                                        .current
-                                                                        .center,
-                                                                )
-                                                            }
-                                                            className="text-sky-700 dark:text-sky-400 font-medium hover:underline flex items-center gap-1"
-                                                            title="Center circle on your current map view"
-                                                        >
-                                                            <Scan className="w-3 h-3" />
-                                                            <span>
-                                                                Center on View
-                                                            </span>
-                                                        </button>
+                                                        <Tooltip content="Center circle on your current map view">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    setCircleCenter(
+                                                                        mapViewportRef
+                                                                            .current
+                                                                            .center,
+                                                                    )
+                                                                }
+                                                                className="text-sky-700 dark:text-sky-400 font-medium hover:underline flex items-center gap-1"
+                                                            >
+                                                                <Scan className="w-3 h-3" />
+                                                                <span>
+                                                                    Center on View
+                                                                </span>
+                                                            </button>
+                                                        </Tooltip>
                                                         {(nearestAirport ||
                                                             currentTelemetry.latitude !==
                                                                 0) && (
@@ -1481,7 +1491,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
 
                                         {/* Polygon Area Controls */}
                                         {areaType === "polygon" && (
-                                            <div className="space-y-2 p-2 rounded bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/50">
+                                            <div className="space-y-2 p-2 rounded-sm bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/50">
                                                 <div className="flex items-center justify-between text-[11px]">
                                                     <span className="font-semibold text-purple-900 dark:text-purple-200">
                                                         Custom Polygon Boundary:
@@ -1513,47 +1523,53 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                         onClick={
                                                             handleQuickBoxPolygon
                                                         }
-                                                        className="flex-1 flex items-center justify-center gap-1 py-1 px-2 rounded bg-white dark:bg-black text-[11px] font-medium border border-neutral-200 dark:border-neutral-800 hover:border-purple-400 text-neutral-700 dark:text-neutral-300 transition-colors"
+                                                        className="flex-1 flex items-center justify-center gap-1 py-1 px-2 rounded-sm bg-white dark:bg-black text-[11px] font-medium border border-neutral-200 dark:border-neutral-800 hover:border-purple-400 text-neutral-700 dark:text-neutral-300 transition-colors"
                                                     >
                                                         <Scan className="w-3 h-3 text-purple-600" />
                                                         <span>Box Region</span>
                                                     </button>
-                                                    <button
-                                                        type="button"
-                                                        disabled={
-                                                            polygonCoords.length ===
-                                                            0
-                                                        }
-                                                        onClick={() =>
-                                                            setPolygonCoords(
-                                                                (prev) =>
-                                                                    prev.slice(
-                                                                        0,
-                                                                        -1,
-                                                                    ),
-                                                            )
-                                                        }
-                                                        className="flex items-center justify-center gap-1 py-1 px-2 rounded bg-white dark:bg-black text-[11px] font-medium border border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 text-neutral-600 dark:text-neutral-400 transition-colors disabled:opacity-40"
-                                                        title="Undo last added vertex"
-                                                    >
-                                                        <Undo2 className="w-3 h-3" />
-                                                        <span>Undo</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        disabled={
-                                                            polygonCoords.length ===
-                                                            0
-                                                        }
-                                                        onClick={() =>
-                                                            setPolygonCoords([])
-                                                        }
-                                                        className="flex items-center justify-center gap-1 py-1 px-2 rounded bg-white dark:bg-black text-[11px] font-medium border border-neutral-200 dark:border-neutral-800 hover:border-red-400 text-red-600 dark:text-red-400 transition-colors disabled:opacity-40"
-                                                        title="Clear all vertices"
-                                                    >
-                                                        <Trash2 className="w-3 h-3" />
-                                                        <span>Clear</span>
-                                                    </button>
+                                                    <Tooltip content="Undo last added vertex">
+                                                        <span className="inline-flex">
+                                                            <button
+                                                                type="button"
+                                                                disabled={
+                                                                    polygonCoords.length ===
+                                                                    0
+                                                                }
+                                                                onClick={() =>
+                                                                    setPolygonCoords(
+                                                                        (prev) =>
+                                                                            prev.slice(
+                                                                                0,
+                                                                                -1,
+                                                                            ),
+                                                                    )
+                                                                }
+                                                                className="flex items-center justify-center gap-1 py-1 px-2 rounded-sm bg-white dark:bg-black text-[11px] font-medium border border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 text-neutral-600 dark:text-neutral-400 transition-colors disabled:opacity-40"
+                                                            >
+                                                                <Undo2 className="w-3 h-3" />
+                                                                <span>Undo</span>
+                                                            </button>
+                                                        </span>
+                                                    </Tooltip>
+                                                    <Tooltip content="Clear all vertices">
+                                                        <span className="inline-flex">
+                                                            <button
+                                                                type="button"
+                                                                disabled={
+                                                                    polygonCoords.length ===
+                                                                    0
+                                                                }
+                                                                onClick={() =>
+                                                                    setPolygonCoords([])
+                                                                }
+                                                                className="flex items-center justify-center gap-1 py-1 px-2 rounded-sm bg-white dark:bg-black text-[11px] font-medium border border-neutral-200 dark:border-neutral-800 hover:border-red-400 text-red-600 dark:text-red-400 transition-colors disabled:opacity-40"
+                                                            >
+                                                                <Trash2 className="w-3 h-3" />
+                                                                <span>Clear</span>
+                                                            </button>
+                                                        </span>
+                                                    </Tooltip>
                                                 </div>
 
                                                 <p className="text-[10px] text-purple-800 dark:text-purple-300 leading-tight">
@@ -1690,7 +1706,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 <span className="text-[10px] font-medium text-neutral-600 dark:text-neutral-400">
                                                     Apply Limitation To:
                                                 </span>
-                                                <div className="flex items-center p-0.5 bg-neutral-200/60 dark:bg-neutral-800 rounded text-[10px]">
+                                                <div className="flex items-center p-0.5 bg-neutral-200/60 dark:bg-neutral-800 rounded-sm text-[10px]">
                                                     <button
                                                         type="button"
                                                         onClick={() =>
@@ -1698,7 +1714,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                                 "total",
                                                             )
                                                         }
-                                                        className={`px-2 py-0.5 rounded transition-colors ${
+                                                        className={`px-2 py-0.5 rounded-sm transition-colors ${
                                                             limitScope ===
                                                             "total"
                                                                 ? "bg-neutral-900 text-white dark:bg-white dark:text-black font-semibold shadow-xs"
@@ -1714,7 +1730,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                                 "sector",
                                                             )
                                                         }
-                                                        className={`px-2 py-0.5 rounded transition-colors ${
+                                                        className={`px-2 py-0.5 rounded-sm transition-colors ${
                                                             limitScope ===
                                                             "sector"
                                                                 ? "bg-neutral-900 text-white dark:bg-white dark:text-black font-semibold shadow-xs"
@@ -2078,7 +2094,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                     <label className="block text-[10px] text-neutral-600 dark:text-neutral-400">
                                                         Min Length ({runwayUnit})
                                                     </label>
-                                                    <span className="text-[9px] text-neutral-400">
+                                                    <span className="text-[10px] text-neutral-400">
                                                         Optional
                                                     </span>
                                                 </div>
@@ -2113,7 +2129,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                     <label className="block text-[10px] text-neutral-600 dark:text-neutral-400">
                                                         Max Length ({runwayUnit})
                                                     </label>
-                                                    <span className="text-[9px] text-neutral-400">
+                                                    <span className="text-[10px] text-neutral-400">
                                                         Optional
                                                     </span>
                                                 </div>
@@ -2145,7 +2161,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                             </div>
                                         </div>
 
-                                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
+                                        <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-normal">
                                             Verified via OurAirports runway dataset. Aerodromes with closed runways are excluded.
                                         </p>
                                     </div>
@@ -2181,25 +2197,29 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                     placeholder="DEP ICAO"
                                                     className="w-full h-8 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm pl-2.5 pr-8 text-xs uppercase text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400"
                                                 />
-                                                <button
-                                                    type="button"
-                                                    onClick={handleRandomizeDep}
-                                                    disabled={isRandomizingDep}
-                                                    title="Quick-randomize departure aerodrome"
-                                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
-                                                >
-                                                    <Dices className={`w-3.5 h-3.5 ${isRandomizingDep ? "animate-spin text-blue-500" : ""}`} />
-                                                </button>
+                                                <Tooltip content="Quick-randomize departure aerodrome">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleRandomizeDep}
+                                                        disabled={isRandomizingDep}
+                                                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+                                                        aria-label="Quick-randomize departure aerodrome"
+                                                    >
+                                                        <Dices className={`w-3.5 h-3.5 ${isRandomizingDep ? "animate-spin text-blue-500" : ""}`} />
+                                                    </button>
+                                                </Tooltip>
                                             </div>
 
-                                            <button
-                                                type="button"
-                                                onClick={handleSwapAirports}
-                                                title="Swap Departure and Destination"
-                                                className="p-1.5 rounded-sm hover:bg-neutral-100 dark:hover:bg-[#222] border border-neutral-200 dark:border-geist-hairline text-neutral-500 transition-colors shrink-0"
-                                            >
-                                                <ArrowLeftRight className="w-3.5 h-3.5" />
-                                            </button>
+                                            <Tooltip content="Swap Departure and Destination">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSwapAirports}
+                                                    className="p-1.5 rounded-sm hover:bg-neutral-100 dark:hover:bg-[#222] border border-neutral-200 dark:border-geist-hairline text-neutral-500 transition-colors shrink-0"
+                                                    aria-label="Swap Departure and Destination"
+                                                >
+                                                    <ArrowLeftRight className="w-3.5 h-3.5" />
+                                                </button>
+                                            </Tooltip>
 
                                             <div className="relative flex-1">
                                                 <input
@@ -2214,40 +2234,32 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                     placeholder="ARR ICAO"
                                                     className="w-full h-8 bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-geist-hairline rounded-sm pl-2.5 pr-8 text-xs uppercase text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400"
                                                 />
-                                                <button
-                                                    type="button"
-                                                    onClick={handleRandomizeArr}
-                                                    disabled={isRandomizingArr}
-                                                    title="Quick-randomize arrival aerodrome"
-                                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
-                                                >
-                                                    <Dices className={`w-3.5 h-3.5 ${isRandomizingArr ? "animate-spin text-blue-500" : ""}`} />
-                                                </button>
+                                                <Tooltip content="Quick-randomize arrival aerodrome">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleRandomizeArr}
+                                                        disabled={isRandomizingArr}
+                                                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+                                                        aria-label="Quick-randomize arrival aerodrome"
+                                                    >
+                                                        <Dices className={`w-3.5 h-3.5 ${isRandomizingArr ? "animate-spin text-blue-500" : ""}`} />
+                                                    </button>
+                                                </Tooltip>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
+                                        <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-normal">
                                             Lock one aerodrome and roll random paired destinations, or leave empty for unconstrained generation.
                                         </p>
                                     </div>
 
                                     {/* Ground Time Calculation Option */}
                                     <div className="pt-2 border-t border-neutral-200/60 dark:border-geist-hairline">
-                                        <label className="flex items-center gap-2 cursor-pointer select-none">
-                                            <input
-                                                type="checkbox"
-                                                checked={includeGroundTime}
-                                                onChange={(e) =>
-                                                    setIncludeGroundTime(e.target.checked)
-                                                }
-                                                className="rounded border-neutral-300 dark:border-neutral-700 text-neutral-900 focus:ring-0"
-                                            />
-                                            <span className="text-xs text-neutral-700 dark:text-neutral-300 font-medium">
-                                                Include Ground / Taxi Time in Total Duration
-                                            </span>
-                                        </label>
-                                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 pl-5 leading-normal">
-                                            Accounts for taxi-out ({selectedProfile.taxiOutMinutes}m) and taxi-in ({selectedProfile.taxiInMinutes}m) per sector.
-                                        </p>
+                                        <Checkbox
+                                            checked={includeGroundTime}
+                                            onChange={setIncludeGroundTime}
+                                            label="Include Ground / Taxi Time in Total Duration"
+                                            description={`Accounts for taxi-out (${selectedProfile.taxiOutMinutes}m) and taxi-in (${selectedProfile.taxiInMinutes}m) per sector.`}
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -2258,7 +2270,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                             <button
                                 onClick={handleGenerateRoute}
                                 disabled={isGenerating}
-                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-sm text-xs font-semibold bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors shadow-sm disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-sm text-xs font-semibold bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors shadow-xs disabled:opacity-50"
                             >
                                 <Sparkles
                                     className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
@@ -2276,7 +2288,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                 {/* Right Column: Route Map & Sector Breakdown Deck (lg:col-span-8) */}
                 <div className="lg:col-span-8 space-y-4">
                     {generationError && (
-                        <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-sm text-xs text-red-700 dark:text-red-300 flex items-start gap-2 shadow-sm">
+                        <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-sm text-xs text-red-700 dark:text-red-300 flex items-start gap-2 shadow-xs">
                             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                             <div>
                                 <strong className="font-semibold">
@@ -2290,7 +2302,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                     {route ? (
                         <>
                             {/* Route Summary Ribbon */}
-                            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                                 <div className="space-y-1">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-geist-muted">
@@ -2304,7 +2316,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 ),
                                             ].join(" ➔ ")}
                                         </span>
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400">
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400">
                                             Cat {route.aircraftCategory}
                                         </span>
                                     </div>
@@ -2343,7 +2355,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                                 </span>
                                             )}
                                             {route.simbriefSummary.airacCycle && (
-                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 font-mono">
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 font-mono">
                                                     AIRAC {route.simbriefSummary.airacCycle}
                                                 </span>
                                             )}
@@ -2419,32 +2431,35 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                     </button>
 
                                     {airacStatus?.isInstalled && (
-                                        <button
-                                            onClick={handleAutoRouteAllSectors}
-                                            disabled={isRoutingAirways}
-                                            title="Auto-route flight plan via Navigraph AIRAC DFD v2 airways"
-                                            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-sm text-xs font-medium border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/50 transition-colors disabled:opacity-50"
-                                        >
-                                            <GitBranch
-                                                className={`w-3.5 h-3.5 ${
-                                                    isRoutingAirways
-                                                        ? "animate-spin"
-                                                        : ""
-                                                }`}
-                                            />
-                                            <span>
-                                                {isRoutingAirways
-                                                    ? "Routing..."
-                                                    : "Airways"}
+                                        <Tooltip content="Auto-route flight plan via Navigraph AIRAC DFD v2 airways">
+                                            <span className="inline-flex flex-1 sm:flex-initial">
+                                                <button
+                                                    onClick={handleAutoRouteAllSectors}
+                                                    disabled={isRoutingAirways}
+                                                    className="w-full flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-sm text-xs font-medium border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/50 transition-colors disabled:opacity-50"
+                                                >
+                                                    <GitBranch
+                                                        className={`w-3.5 h-3.5 ${
+                                                            isRoutingAirways
+                                                                ? "animate-spin"
+                                                                : ""
+                                                        }`}
+                                                    />
+                                                    <span>
+                                                        {isRoutingAirways
+                                                            ? "Routing..."
+                                                            : "Airways"}
+                                                    </span>
+                                                </button>
                                             </span>
-                                        </button>
+                                        </Tooltip>
                                     )}
                                 </div>
                             </div>
 
                             {/* Metrics Bar */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm">
+                                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs">
                                     <div className="flex items-center justify-between text-neutral-500 text-[10px] font-medium mb-0.5">
                                         <span>Total Distance</span>
                                         <Milestone className="w-3 h-3 text-neutral-400" />
@@ -2463,7 +2478,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                     </div>
                                 </div>
 
-                                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm">
+                                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs">
                                     <div className="flex items-center justify-between text-neutral-500 text-[10px] font-medium mb-0.5">
                                         <span>Airborne Flight Time</span>
                                         <Clock className="w-3 h-3 text-neutral-400" />
@@ -2478,7 +2493,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                     </div>
                                 </div>
 
-                                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm">
+                                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs">
                                     <div className="flex items-center justify-between text-neutral-500 text-[10px] font-medium mb-0.5">
                                         <span>Total Block Time</span>
                                         <Gauge className="w-3 h-3 text-neutral-400" />
@@ -2495,7 +2510,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                     </div>
                                 </div>
 
-                                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm">
+                                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs">
                                     <div className="flex items-center justify-between text-neutral-500 text-[10px] font-medium mb-0.5">
                                         <span>Max Cruise Level</span>
                                         <Plane className="w-3 h-3 text-neutral-400" />
@@ -2556,7 +2571,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                         </>
                     ) : (
                         <div className="space-y-4">
-                            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                                 <div>
                                     <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
                                         {areaType === "circle"
@@ -2577,7 +2592,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                 <button
                                     onClick={handleGenerateRoute}
                                     disabled={isGenerating}
-                                    className="px-4 py-2 rounded-sm text-xs font-semibold bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors shadow-sm disabled:opacity-50 shrink-0 flex items-center gap-1.5"
+                                    className="px-4 py-2 rounded-sm text-xs font-semibold bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black transition-colors shadow-xs disabled:opacity-50 shrink-0 flex items-center gap-1.5"
                                 >
                                     <Sparkles
                                         className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`}
@@ -2590,7 +2605,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                 </button>
                             </div>
 
-                            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-sm overflow-hidden">
+                            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-xs overflow-hidden">
                                 <div className="h-[420px] w-full rounded-sm overflow-hidden relative z-0">
                                     <MapContainer
                                         center={circleCenter}

@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useFlightStore } from "../../store/flightStore";
 import { ApolloExportBundle } from "../../types/flight";
 import {
@@ -178,7 +179,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
     if (!isOpen) return null;
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
             <div
                 className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-white dark:bg-[#121212] border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-2xl overflow-hidden text-neutral-900 dark:text-neutral-100 font-sans"
@@ -304,7 +305,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                         <div className="text-[10px] text-neutral-400">
                                             Exported At
                                         </div>
-                                        <div className="font-mono text-neutral-800 dark:text-neutral-200">
+                                        <div className="tabular-nums text-neutral-800 dark:text-neutral-200">
                                             {new Date(
                                                 bundle.exportedAt,
                                             ).toLocaleDateString()}
@@ -340,7 +341,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                 </div>
 
                                 {bundle.metadata.hasTelemetry === false && (
-                                    <div className="p-2.5 rounded bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 text-[11px] text-blue-700 dark:text-blue-300">
+                                    <div className="p-2.5 rounded-sm bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 text-[11px] text-blue-700 dark:text-blue-300">
                                         <strong>Note:</strong> This file
                                         contains flight summaries without raw
                                         telemetry tracks. Great-circle route
@@ -540,7 +541,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                                                     }
                                                                 </td>
                                                                 <td className="py-2 px-3 text-right">
-                                                                    <div className="inline-flex rounded border border-neutral-300 dark:border-neutral-700 p-0.5 text-[10px]">
+                                                                    <div className="inline-flex rounded-sm border border-neutral-300 dark:border-neutral-700 p-0.5 text-[10px]">
                                                                         <button
                                                                             type="button"
                                                                             onClick={() =>
@@ -628,6 +629,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     )}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 };

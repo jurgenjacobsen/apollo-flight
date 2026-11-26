@@ -1,4 +1,5 @@
 import React from "react";
+import { Tooltip } from "../../ui";
 import { useFlightStore } from "../../../store/flightStore";
 import packageJson from "../../../../package.json";
 import { RefreshCw, Download } from "lucide-react";
@@ -140,7 +141,7 @@ export const AboutTab: React.FC<AboutTabProps> = ({ notifySaved }) => {
                             }
                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 ${
                                 availableUpdate
-                                    ? "bg-emerald-600 enabled:hover:bg-emerald-500 text-white focus-visible:ring-emerald-400 shadow-sm"
+                                    ? "bg-emerald-600 enabled:hover:bg-emerald-500 text-white focus-visible:ring-emerald-400 shadow-xs"
                                     : "bg-neutral-900 enabled:hover:bg-neutral-800 dark:bg-white dark:enabled:hover:bg-neutral-200 text-white dark:text-black shadow-xs focus-visible:ring-neutral-400"
                             }`}
                         >
@@ -176,17 +177,18 @@ export const AboutTab: React.FC<AboutTabProps> = ({ notifySaved }) => {
                             )}
                         </button>
                         {availableUpdate && !isInstallingUpdate && (
-                            <button
-                                type="button"
-                                onClick={handleCheckForUpdates}
-                                disabled={isCheckingUpdate}
-                                title="Check again"
-                                className="p-1.5 rounded-sm text-neutral-500 enabled:hover:text-neutral-900 dark:enabled:hover:text-white enabled:hover:bg-neutral-100 dark:enabled:hover:bg-neutral-800 transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
-                            >
-                                <RefreshCw
-                                    className={`w-3.5 h-3.5 ${isCheckingUpdate ? "animate-spin" : ""}`}
-                                />
-                            </button>
+                            <Tooltip content="Check again">
+                                <button
+                                    type="button"
+                                    onClick={handleCheckForUpdates}
+                                    disabled={isCheckingUpdate}
+                                    className="p-1.5 rounded-sm text-neutral-500 enabled:hover:text-neutral-900 dark:enabled:hover:text-white enabled:hover:bg-neutral-100 dark:enabled:hover:bg-neutral-800 transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
+                                >
+                                    <RefreshCw
+                                        className={`w-3.5 h-3.5 ${isCheckingUpdate ? "animate-spin" : ""}`}
+                                    />
+                                </button>
+                            </Tooltip>
                         )}
                     </div>
                 </div>

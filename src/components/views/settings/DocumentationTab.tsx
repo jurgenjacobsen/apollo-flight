@@ -151,7 +151,7 @@ export const DocumentationTab: React.FC<DocumentationTabProps> = ({ notifySaved 
                                 {docCustomDirs.map((dir) => (
                                     <div
                                         key={dir}
-                                        className="flex items-center justify-between p-2 rounded bg-neutral-50 dark:bg-[#141414] border border-neutral-200 dark:border-geist-hairline text-xs"
+                                        className="flex items-center justify-between p-2 rounded-sm bg-neutral-50 dark:bg-[#141414] border border-neutral-200 dark:border-geist-hairline text-xs"
                                     >
                                         <div className="flex items-center gap-2 min-w-0">
                                             <FolderOpen className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
@@ -175,7 +175,7 @@ export const DocumentationTab: React.FC<DocumentationTabProps> = ({ notifySaved 
                             </div>
                         </div>
                     ) : (
-                        <div className="p-3 rounded bg-neutral-50 dark:bg-[#141414] border border-dashed border-neutral-200 dark:border-geist-hairline text-center text-xs text-neutral-400">
+                        <div className="p-3 rounded-sm bg-neutral-50 dark:bg-[#141414] border border-dashed border-neutral-200 dark:border-geist-hairline text-center text-xs text-neutral-400">
                             No custom directories added yet. Files in the default /user-docs and /docs folders are indexed automatically.
                         </div>
                     )}

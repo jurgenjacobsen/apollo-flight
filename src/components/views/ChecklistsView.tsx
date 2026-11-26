@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef } from "react";
-import { useFlightStore } from "../../store/flightStore";
+import { createPortal } from "react-dom";
+import { useFlightStore, safeInvoke } from "../../store/flightStore";
 import {
     Checklist,
     ChecklistSection,
@@ -20,6 +21,8 @@ import {
     Edit3,
     ChevronDown,
     ChevronRight,
+    ChevronsDownUp,
+    ChevronsUpDown,
     AlertCircle,
     X,
     FileText,
@@ -27,9 +30,11 @@ import {
     Mic,
     MicOff,
     Volume2,
+    Headphones,
 } from "lucide-react";
 import { Tooltip } from "../ui/Tooltip";
 import { ConfirmDeleteButton } from "../ui/ConfirmDeleteButton";
+import { Select } from "../ui/Select";
 import { useChecklistVoiceCopilot } from "../../hooks/useChecklistVoiceCopilot";
 import { formatKeyCodeLabel } from "../../utils/speechUtils";
 
@@ -318,19 +323,82 @@ export const ChecklistsView: React.FC = () => {
         },
     });
 
-    const handleExportSingle = (chk: Checklist) => {
-        const cleanChk = resetChecklistChecks([chk])[0] || chk;
-        const jsonStr = JSON.stringify(cleanChk, null, 2);
+    const saveJsonFile = async (
+        filename: string,
+        data: unknown,
+        successText: string,
+    ) => {
+        const jsonStr = JSON.stringify(data, null, 2);
+
+        const notifySuccess = () => {
+            setFeedbackMessage({ type: "success", text: successText });
+            setTimeout(() => setFeedbackMessage(null), 3500);
+        };
+
+        // 1. Native File System Access API
+        if (typeof window !== "undefined" && "showSaveFilePicker" in window) {
+            try {
+                const handle = await (window as any).showSaveFilePicker({
+                    suggestedName: filename,
+                    types: [
+                        {
+                            description: "JSON File (*.json)",
+                            accept: {
+                                "application/json": [".json"],
+                            },
+                        },
+                    ],
+                });
+                const writable = await handle.createWritable();
+                await writable.write(jsonStr);
+                await writable.close();
+                notifySuccess();
+                return;
+            } catch (err: any) {
+                if (err?.name === "AbortError") {
+                    return;
+                }
+            }
+        }
+
+        // 2. Native Tauri backend SaveFileDialog fallback
+        try {
+            const savedPath = await safeInvoke<string | null>(
+                "save_file_dialog",
+                {
+                    defaultFilename: filename,
+                    content: jsonStr,
+                    filterName: "JSON File",
+                    filterExt: "json",
+                },
+            );
+            if (savedPath) {
+                notifySuccess();
+                return;
+            } else if (savedPath === null) {
+                return;
+            }
+        } catch (err) {
+            console.warn("[ChecklistsView] save_file_dialog failed:", err);
+        }
+
+        // 3. Direct browser blob download fallback
         const blob = new Blob([jsonStr], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        const filename = `${chk.title.toLowerCase().replace(/[^a-z0-9]/g, "_")}_checklist.json`;
         a.href = url;
         a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        notifySuccess();
+    };
+
+    const handleExportSingle = (chk: Checklist) => {
+        const cleanChk = resetChecklistChecks([chk])[0] || chk;
+        const filename = `${chk.title.toLowerCase().replace(/[^a-z0-9]/g, "_")}_checklist.json`;
+        void saveJsonFile(filename, cleanChk, `Exported "${chk.title}".`);
     };
 
     const handleExportAll = () => {
@@ -340,16 +408,12 @@ export const ChecklistsView: React.FC = () => {
             exportedAt: new Date().toISOString(),
             checklists: resetChecklistChecks(checklists),
         };
-        const jsonStr = JSON.stringify(bundle, null, 2);
-        const blob = new Blob([jsonStr], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `apollo_checklists_backup_${new Date().toISOString().slice(0, 10)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const filename = `apollo_checklists_backup_${new Date().toISOString().slice(0, 10)}.json`;
+        void saveJsonFile(
+            filename,
+            bundle,
+            `Exported all ${checklists.length} checklists.`,
+        );
     };
 
     const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -445,7 +509,7 @@ export const ChecklistsView: React.FC = () => {
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border transition-colors duration-150 select-none bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline shadow-xs cursor-pointer"
+                            className="h-8 inline-flex items-center justify-center gap-1.5 px-3 text-xs font-medium rounded-sm border transition-colors duration-150 select-none shrink-0 bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline shadow-xs cursor-pointer"
                         >
                             <Upload className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
                             <span>Import</span>
@@ -456,7 +520,7 @@ export const ChecklistsView: React.FC = () => {
                         <button
                             type="button"
                             onClick={handleExportAll}
-                            className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border transition-colors duration-150 select-none bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline shadow-xs cursor-pointer"
+                            className="h-8 inline-flex items-center justify-center gap-1.5 px-3 text-xs font-medium rounded-sm border transition-colors duration-150 select-none shrink-0 bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-800 dark:text-neutral-200 border-neutral-200 dark:border-geist-hairline shadow-xs cursor-pointer"
                         >
                             <Download className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
                             <span>Export All</span>
@@ -466,7 +530,7 @@ export const ChecklistsView: React.FC = () => {
                     <button
                         type="button"
                         onClick={openCreateModal}
-                        className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm bg-neutral-900 enabled:hover:bg-neutral-800 dark:bg-white dark:enabled:hover:bg-neutral-200 text-white dark:text-black shadow-xs transition-colors cursor-pointer select-none"
+                        className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-sm text-xs font-medium bg-neutral-900 hover:bg-black dark:bg-[#ededed] dark:hover:bg-white text-white dark:text-black border border-neutral-900 dark:border-neutral-200 transition-colors duration-150 shadow-xs shrink-0 select-none cursor-pointer"
                     >
                         <Plus className="w-3.5 h-3.5" />
                         <span>New Checklist</span>
@@ -717,6 +781,64 @@ export const ChecklistsView: React.FC = () => {
                                             </button>
                                         </Tooltip>
 
+                                        <Tooltip
+                                            content={
+                                                activeChecklist.sections.length > 0 &&
+                                                activeChecklist.sections.every(
+                                                    (s) => collapsedSections[s.id],
+                                                )
+                                                    ? "Expand all sections"
+                                                    : "Collapse all sections"
+                                            }
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const allCollapsed =
+                                                        activeChecklist.sections.length >
+                                                            0 &&
+                                                        activeChecklist.sections.every(
+                                                            (s) =>
+                                                                collapsedSections[
+                                                                    s.id
+                                                                ],
+                                                        );
+                                                    setCollapsedSections((prev) => {
+                                                        const next = { ...prev };
+                                                        for (const sec of activeChecklist.sections) {
+                                                            next[sec.id] =
+                                                                !allCollapsed;
+                                                        }
+                                                        return next;
+                                                    });
+                                                }}
+                                                className="p-1.5 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020] border border-neutral-200 dark:border-geist-hairline rounded-sm transition-colors shadow-xs"
+                                                aria-label={
+                                                    activeChecklist.sections.length >
+                                                        0 &&
+                                                    activeChecklist.sections.every(
+                                                        (s) =>
+                                                            collapsedSections[
+                                                                s.id
+                                                            ],
+                                                    )
+                                                        ? "Expand all sections"
+                                                        : "Collapse all sections"
+                                                }
+                                            >
+                                                {activeChecklist.sections.length >
+                                                    0 &&
+                                                activeChecklist.sections.every(
+                                                    (s) =>
+                                                        collapsedSections[s.id],
+                                                ) ? (
+                                                    <ChevronsUpDown className="w-3.5 h-3.5" />
+                                                ) : (
+                                                    <ChevronsDownUp className="w-3.5 h-3.5" />
+                                                )}
+                                            </button>
+                                        </Tooltip>
+
                                         <Tooltip content="Reset all items in this checklist">
                                             <button
                                                 type="button"
@@ -812,13 +934,13 @@ export const ChecklistsView: React.FC = () => {
 
                             {/* Voice Co-Pilot Status & Interactive HUD */}
                             {copilot.isListening && (
-                                <div className="p-3.5 px-4 bg-emerald-50/90 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-sm flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs animate-in fade-in duration-150">
+                                <div className="px-4 py-3 bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs animate-in fade-in duration-150">
                                     <div className="flex items-center gap-3 flex-wrap">
-                                        <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-medium">
+                                        <div className="flex items-center gap-2 text-neutral-900 dark:text-[#ededed] font-medium">
                                             {copilot.isSpeaking ? (
-                                                <Volume2 className="w-4 h-4 text-emerald-600 animate-pulse" />
+                                                <Volume2 className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
                                             ) : (
-                                                <Mic className="w-4 h-4 text-emerald-600 animate-pulse" />
+                                                <Mic className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
                                             )}
                                             <span>
                                                 {copilot.isSpeaking
@@ -833,7 +955,7 @@ export const ChecklistsView: React.FC = () => {
 
                                         {copilot.micMode === "ptt" && (
                                             <span
-                                                className={`text-[11px] px-2 py-0.5 rounded font-semibold ${
+                                                className={`text-[11px] px-2 py-0.5 rounded-sm font-semibold ${
                                                     copilot.isPttActive
                                                         ? "bg-amber-500 text-white"
                                                         : "bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
@@ -844,15 +966,16 @@ export const ChecklistsView: React.FC = () => {
                                                     : `Hold [${formatKeyCodeLabel(copilot.pttKey)}] to Talk`}
                                             </span>
                                         )}
-
-                                        {copilot.lastHeard && (
-                                            <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200">
-                                                Heard: "{copilot.lastHeard}"
-                                            </span>
-                                        )}
                                     </div>
 
-                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                    <div className="min-w-full flex items-center gap-1.5">
+                                        <Headphones className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
+                                        <span className="text-[11px] font-medium">
+                                            Heard: <span className="text-emerald-700 dark:text-emerald-200">"{copilot.lastHeard}"</span>
+                                        </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 flex-wrap min-w-full">
                                         {copilot.currentChallenge && (
                                             <>
                                                 <button
@@ -986,7 +1109,7 @@ export const ChecklistsView: React.FC = () => {
                                             {/* Items List */}
                                             {!isCollapsed && (
                                                 <div className="divide-y divide-neutral-100 dark:divide-geist-hairline/60">
-                                                    {section.items.map((item) => {
+                                                    {section.items.map((item, i) => {
                                                         const isChallenged =
                                                             copilot.activeItemId === item.id;
                                                         return (
@@ -999,7 +1122,7 @@ export const ChecklistsView: React.FC = () => {
                                                                         item.id,
                                                                     )
                                                                 }
-                                                                className={`px-5 py-3 flex items-center justify-between gap-4 cursor-pointer select-none transition-colors ${
+                                                                className={`px-5 py-3 flex items-center justify-between gap-4 cursor-pointer select-none transition-colors ${i === section.items.length-1 ? "rounded-b-sm" : ""} ${
                                                                     isChallenged
                                                                         ? "bg-emerald-50/70 dark:bg-emerald-950/30 ring-1 ring-inset ring-emerald-500/80"
                                                                         : item.checked
@@ -1275,7 +1398,7 @@ const ChecklistEditorModal: React.FC<ChecklistEditorModalProps> = ({
         });
     };
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
             <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150">
                 {/* Modal Header */}
@@ -1341,34 +1464,52 @@ const ChecklistEditorModal: React.FC<ChecklistEditorModalProps> = ({
                             </label>
 
                             <div className="flex items-center gap-3">
-                                <select
+                                <Select<string>
                                     value={
                                         isCustomAircraft
                                             ? "__CUSTOM__"
                                             : aircraftAssociation
                                     }
-                                    onChange={(e) => {
-                                        if (e.target.value === "__CUSTOM__") {
+                                    onChange={(val) => {
+                                        if (val === "__CUSTOM__") {
                                             setIsCustomAircraft(true);
                                         } else {
                                             setIsCustomAircraft(false);
-                                            setAircraftAssociation(e.target.value);
+                                            setAircraftAssociation(val);
                                         }
                                     }}
-                                    className="flex-1 px-3 py-1.5 text-xs rounded-sm border border-neutral-300 dark:border-geist-hairline bg-white dark:bg-black text-neutral-900 dark:text-white focus-visible:outline-none focus-visible:border-neutral-400 transition-colors"
-                                >
-                                    <option value="">-- No Aircraft Linked --</option>
-                                    <optgroup label="Flown In Logbook / Sim">
-                                        {availableAircraftOptions.map((opt) => (
-                                            <option key={opt} value={opt}>
-                                                {opt}
-                                            </option>
-                                        ))}
-                                    </optgroup>
-                                    <option value="__CUSTOM__">
-                                        + Enter Custom Aircraft Name...
-                                    </option>
-                                </select>
+                                    className="w-full"
+                                    ariaLabel="Associated Aircraft"
+                                    groups={[
+                                        {
+                                            label: "General",
+                                            options: [
+                                                {
+                                                    value: "",
+                                                    label: "-- No Aircraft Linked --",
+                                                },
+                                                {
+                                                    value: "__CUSTOM__",
+                                                    label: "+ Enter Custom Aircraft Name...",
+                                                },
+                                            ],
+                                        },
+                                        ...(availableAircraftOptions.length > 0
+                                            ? [
+                                                  {
+                                                      label: "Flown In Logbook / Sim",
+                                                      options:
+                                                          availableAircraftOptions.map(
+                                                              (opt) => ({
+                                                                  value: opt,
+                                                                  label: opt,
+                                                              }),
+                                                          ),
+                                                  },
+                                              ]
+                                            : []),
+                                    ]}
+                                />
                             </div>
 
                             {isCustomAircraft && (
@@ -1446,26 +1587,28 @@ const ChecklistEditorModal: React.FC<ChecklistEditorModalProps> = ({
                                                 className="flex-1 px-2.5 py-1 text-xs font-semibold rounded-sm border border-neutral-300 dark:border-geist-hairline bg-white dark:bg-black text-neutral-900 dark:text-white placeholder:text-neutral-400 focus-visible:outline-none focus-visible:border-neutral-400 transition-colors"
                                             />
 
-                                            <select
+                                            <Select<ChecklistProcedureType>
                                                 value={sec.procedureType || "normal"}
-                                                onChange={(e) =>
+                                                onChange={(val) =>
                                                     handleUpdateSectionProcedureType(
                                                         secIdx,
-                                                        e.target.value as ChecklistProcedureType,
+                                                        val,
                                                     )
                                                 }
-                                                className={`h-7 px-2 text-[11px] font-semibold rounded-sm border transition-colors focus-visible:outline-none cursor-pointer ${
+                                                ariaLabel="Section procedure type"
+                                                triggerClassName={`!h-7 !px-2 !text-[11px] !font-semibold ${
                                                     sec.procedureType === "emergency"
-                                                        ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800"
+                                                        ? "!bg-rose-50 dark:!bg-rose-950/60 !text-rose-700 dark:!text-rose-300 !border-rose-300 dark:!border-rose-800"
                                                         : sec.procedureType === "abnormal"
-                                                          ? "bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800"
-                                                          : "bg-white dark:bg-black text-sky-700 dark:text-sky-300 border-neutral-300 dark:border-neutral-700"
+                                                          ? "!bg-amber-50 dark:!bg-amber-950/60 !text-amber-800 dark:!text-amber-300 !border-amber-300 dark:!border-amber-800"
+                                                          : "!text-sky-700 dark:!text-sky-300"
                                                 }`}
-                                            >
-                                                <option value="normal">Normal</option>
-                                                <option value="abnormal">Abnormal</option>
-                                                <option value="emergency">Emergency</option>
-                                            </select>
+                                                options={[
+                                                    { value: "normal", label: "Normal" },
+                                                    { value: "abnormal", label: "Abnormal" },
+                                                    { value: "emergency", label: "Emergency" },
+                                                ]}
+                                            />
                                         </div>
 
                                         <button
@@ -1598,6 +1741,7 @@ const ChecklistEditorModal: React.FC<ChecklistEditorModalProps> = ({
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 };

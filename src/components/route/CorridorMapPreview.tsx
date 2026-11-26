@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { Tooltip } from "../ui";
 import { ARCGIS_WORLD_IMAGERY_ATTRIBUTION, ARCGIS_WORLD_IMAGERY_URL } from "../../utils/mapTiles";
 import {
     MapContainer,
@@ -52,18 +53,19 @@ export function MapFitRouteControl({ onFit }: { onFit: () => void }) {
     return (
         <div className="leaflet-top leaflet-left !top-[74px]">
             <div className="leaflet-control leaflet-bar">
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        onFit();
-                    }}
-                    title="Fit Entire Route / Reset Zoom"
-                    className="w-[30px] h-[30px] flex items-center justify-center bg-white dark:bg-[#1a1a1a] hover:bg-neutral-100 dark:hover:bg-[#262626] text-neutral-700 dark:text-neutral-200 cursor-pointer transition-colors border-0 select-none shadow-xs"
-                >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                </button>
+                <Tooltip content="Fit Entire Route / Reset Zoom">
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            onFit();
+                        }}
+                        className="w-[30px] h-[30px] flex items-center justify-center bg-white dark:bg-[#1a1a1a] hover:bg-neutral-100 dark:hover:bg-[#262626] text-neutral-700 dark:text-neutral-200 cursor-pointer transition-colors border-0 select-none shadow-xs"
+                    >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
+                </Tooltip>
             </div>
         </div>
     );
@@ -255,7 +257,7 @@ export const CorridorMapPreview: React.FC<CorridorMapPreviewProps> = ({
     handleAddPolygonVertexAt,
 }) => {
     return (
-        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-xs overflow-hidden">
             <div className="h-[420px] w-full rounded-sm overflow-hidden relative z-0">
                 <MapContainer
                     center={circleCenter}

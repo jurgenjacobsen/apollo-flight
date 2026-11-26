@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useFlightStore } from "../../store/flightStore";
 import { NavSource } from "../../types/flight";
+import { Tooltip } from "../ui";
 import {
     RotateCw,
     RefreshCw,
@@ -330,39 +331,42 @@ export const HoldTrainer: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-2">
                     {/* NAV Source Switcher */}
                     <div className="inline-flex rounded-sm p-0.5 bg-neutral-200 dark:bg-[#181818] border border-neutral-300 dark:border-geist-hairline">
-                        <button
-                            onClick={() => setNavSource("NAV1")}
-                            title="Use NAV1 Radio as holding fix reference"
-                            className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
-                                navSource === "NAV1"
-                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-sm"
-                                    : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
-                            }`}
-                        >
-                            NAV1
-                        </button>
-                        <button
-                            onClick={() => setNavSource("NAV2")}
-                            title="Use NAV2 Radio as holding fix reference"
-                            className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
-                                navSource === "NAV2"
-                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-sm"
-                                    : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
-                            }`}
-                        >
-                            NAV2
-                        </button>
-                        <button
-                            onClick={() => setNavSource("ADF")}
-                            title="Use ADF / NDB as holding fix reference"
-                            className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
-                                navSource === "ADF"
-                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-sm"
-                                    : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
-                            }`}
-                        >
-                            ADF (NDB)
-                        </button>
+                        <Tooltip content="Use NAV1 Radio as holding fix reference">
+                            <button
+                                onClick={() => setNavSource("NAV1")}
+                                className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
+                                    navSource === "NAV1"
+                                        ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-xs"
+                                        : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
+                                }`}
+                            >
+                                NAV1
+                            </button>
+                        </Tooltip>
+                        <Tooltip content="Use NAV2 Radio as holding fix reference">
+                            <button
+                                onClick={() => setNavSource("NAV2")}
+                                className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
+                                    navSource === "NAV2"
+                                        ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-xs"
+                                        : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
+                                }`}
+                            >
+                                NAV2
+                            </button>
+                        </Tooltip>
+                        <Tooltip content="Use ADF / NDB as holding fix reference">
+                            <button
+                                onClick={() => setNavSource("ADF")}
+                                className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
+                                    navSource === "ADF"
+                                        ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-xs"
+                                        : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
+                                }`}
+                            >
+                                ADF (NDB)
+                            </button>
+                        </Tooltip>
                     </div>
 
                     {/* Live vs Practice Mode */}
@@ -371,24 +375,23 @@ export const HoldTrainer: React.FC = () => {
                             onClick={() => setMode("LIVE")}
                             className={`px-3 py-1 text-xs font-medium rounded-sm flex items-center gap-1.5 transition-colors ${
                                 mode === "LIVE"
-                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-sm"
+                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-xs"
                                     : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
                             }`}
                         >
                             <PlaneTakeoff className="w-3.5 h-3.5 text-emerald-500" />
                             <span>Live MSFS Sync</span>
                             {activeFlight && (
-                                <span
-                                    className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"
-                                    title="Ongoing flight active"
-                                />
+                                <Tooltip content="Ongoing flight active">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                </Tooltip>
                             )}
                         </button>
                         <button
                             onClick={() => setMode("PRACTICE")}
                             className={`px-3 py-1 text-xs font-medium rounded-sm flex items-center gap-1.5 transition-colors ${
                                 mode === "PRACTICE"
-                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-sm"
+                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-xs"
                                     : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
                             }`}
                         >
@@ -457,7 +460,7 @@ export const HoldTrainer: React.FC = () => {
             {/* Main Grid: Visualizer and Analysis Panel */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Top-down Canvas visualizer */}
-                <div className="lg:col-span-2 bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 flex flex-col items-center justify-center shadow-sm">
+                <div className="lg:col-span-2 bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 flex flex-col items-center justify-center shadow-xs">
                     <div className="w-full flex items-center justify-between text-xs text-neutral-500 dark:text-geist-muted mb-2">
                         <span>
                             Fix:{" "}
@@ -497,7 +500,7 @@ export const HoldTrainer: React.FC = () => {
 
                 {/* Sector Entry Analysis & Interactive Controls */}
                 <div className="space-y-4">
-                    <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
+                    <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-xs">
                         <span className="text-xs font-medium text-neutral-500 dark:text-geist-muted uppercase tracking-wider block">
                             Procedural Entry Assessment
                         </span>
@@ -546,7 +549,7 @@ export const HoldTrainer: React.FC = () => {
                     </div>
 
                     {/* Interactive Parameters */}
-                    <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
+                    <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-xs">
                         <div className="flex items-center justify-between pb-2 border-b border-neutral-200 dark:border-geist-hairline">
                             <div className="flex items-center gap-2">
                                 <Sliders className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />

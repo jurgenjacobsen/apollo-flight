@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useFlightStore } from "../../store/flightStore";
 import { NavSource } from "../../types/flight";
+import { Tooltip } from "../ui";
 import {
     Compass,
     CheckCircle2,
@@ -504,39 +505,42 @@ export const IfrTrainer: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-2">
                     {/* Radio Source Switcher */}
                     <div className="inline-flex rounded-sm p-0.5 bg-neutral-200 dark:bg-[#181818] border border-neutral-300 dark:border-geist-hairline">
-                        <button
-                            onClick={() => handleSelectNavSource("NAV1")}
-                            title="Select NAV1 VOR/ILS receiver"
-                            className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
-                                navSource === "NAV1"
-                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-sm"
-                                    : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
-                            }`}
-                        >
-                            NAV1
-                        </button>
-                        <button
-                            onClick={() => handleSelectNavSource("NAV2")}
-                            title="Select NAV2 VOR receiver"
-                            className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
-                                navSource === "NAV2"
-                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-sm"
-                                    : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
-                            }`}
-                        >
-                            NAV2
-                        </button>
-                        <button
-                            onClick={() => handleSelectNavSource("ADF")}
-                            title="Select ADF / NDB receiver"
-                            className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
-                                navSource === "ADF"
-                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-sm"
-                                    : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
-                            }`}
-                        >
-                            ADF (NDB)
-                        </button>
+                        <Tooltip content="Select NAV1 VOR/ILS receiver">
+                            <button
+                                onClick={() => handleSelectNavSource("NAV1")}
+                                className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
+                                    navSource === "NAV1"
+                                        ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-xs"
+                                        : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
+                                }`}
+                            >
+                                NAV1
+                            </button>
+                        </Tooltip>
+                        <Tooltip content="Select NAV2 VOR receiver">
+                            <button
+                                onClick={() => handleSelectNavSource("NAV2")}
+                                className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
+                                    navSource === "NAV2"
+                                        ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-xs"
+                                        : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
+                                }`}
+                            >
+                                NAV2
+                            </button>
+                        </Tooltip>
+                        <Tooltip content="Select ADF / NDB receiver">
+                            <button
+                                onClick={() => handleSelectNavSource("ADF")}
+                                className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
+                                    navSource === "ADF"
+                                        ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-xs"
+                                        : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
+                                }`}
+                            >
+                                ADF (NDB)
+                            </button>
+                        </Tooltip>
                     </div>
 
                     {/* Mode Selector */}
@@ -545,24 +549,23 @@ export const IfrTrainer: React.FC = () => {
                             onClick={() => setMode("LIVE")}
                             className={`px-3 py-1 text-xs font-medium rounded-sm flex items-center gap-1.5 transition-colors ${
                                 mode === "LIVE"
-                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-sm"
+                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-xs"
                                     : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
                             }`}
                         >
                             <PlaneTakeoff className="w-3.5 h-3.5 text-emerald-500" />
                             <span>Live MSFS Sync</span>
                             {activeFlight && (
-                                <span
-                                    className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"
-                                    title="Ongoing flight active"
-                                />
+                                <Tooltip content="Ongoing flight active">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                </Tooltip>
                             )}
                         </button>
                         <button
                             onClick={() => setMode("PRACTICE")}
                             className={`px-3 py-1 text-xs font-medium rounded-sm flex items-center gap-1.5 transition-colors ${
                                 mode === "PRACTICE"
-                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-sm"
+                                    ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white shadow-xs"
                                     : "text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
                             }`}
                         >
@@ -621,7 +624,7 @@ export const IfrTrainer: React.FC = () => {
             {/* Main Grid: Visualizer and Challenge Status */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Canvas Visualizer */}
-                <div className="lg:col-span-2 bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 flex flex-col items-center justify-center shadow-sm">
+                <div className="lg:col-span-2 bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 flex flex-col items-center justify-center shadow-xs">
                     <div className="w-full flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500 dark:text-geist-muted mb-2">
                         <span>
                             Station:{" "}
@@ -638,66 +641,77 @@ export const IfrTrainer: React.FC = () => {
                             <span className="text-[10px] uppercase font-semibold text-neutral-400 dark:text-neutral-500 px-1.5">
                                 Range
                             </span>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedRange("AUTO")}
-                                title={`Auto zoom: scales from 5 NM when close up to 25 NM as distance increases (currently ${activeRange.toFixed(1)} NM)`}
-                                className={`px-1.5 py-0.5 text-[10px] rounded-xs transition-colors tabular-nums ${
-                                    selectedRange === "AUTO"
-                                        ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white font-semibold shadow-xs"
-                                        : "text-neutral-500 dark:text-neutral-400 hover:text-black dark:hover:text-white"
-                                }`}
+                            <Tooltip
+                                content={`Auto zoom: scales from 5 NM when close up to 25 NM as distance increases (currently ${activeRange.toFixed(1)} NM)`}
                             >
-                                Auto ({activeRange.toFixed(1)} NM)
-                            </button>
-                            {([5, 10, 15, 20, 25] as const).map((rng) => (
                                 <button
-                                    key={rng}
                                     type="button"
-                                    onClick={() => setSelectedRange(rng)}
-                                    title={`Fix zoom to ${rng} NM`}
+                                    onClick={() => setSelectedRange("AUTO")}
                                     className={`px-1.5 py-0.5 text-[10px] rounded-xs transition-colors tabular-nums ${
-                                        selectedRange === rng
+                                        selectedRange === "AUTO"
                                             ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white font-semibold shadow-xs"
                                             : "text-neutral-500 dark:text-neutral-400 hover:text-black dark:hover:text-white"
                                     }`}
                                 >
-                                    {rng} NM
+                                    Auto ({activeRange.toFixed(1)} NM)
                                 </button>
+                            </Tooltip>
+                            {([5, 10, 15, 20, 25] as const).map((rng) => (
+                                <Tooltip key={rng} content={`Fix zoom to ${rng} NM`}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedRange(rng)}
+                                        className={`px-1.5 py-0.5 text-[10px] rounded-xs transition-colors tabular-nums ${
+                                            selectedRange === rng
+                                                ? "bg-white dark:bg-[#282828] text-neutral-900 dark:text-white font-semibold shadow-xs"
+                                                : "text-neutral-500 dark:text-neutral-400 hover:text-black dark:hover:text-white"
+                                        }`}
+                                    >
+                                        {rng} NM
+                                    </button>
+                                </Tooltip>
                             ))}
                             <div className="h-3 w-[1px] bg-neutral-200 dark:bg-neutral-800 mx-0.5" />
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const cur =
-                                        selectedRange === "AUTO"
-                                            ? activeRange
-                                            : selectedRange;
-                                    const next = Math.max(5, cur - 2.5);
-                                    setSelectedRange(Math.round(next * 2) / 2);
-                                }}
-                                disabled={activeRange <= 5}
-                                title="Zoom in (closer to station, min 5 NM)"
-                                className="p-1 rounded-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white disabled:opacity-30 transition-colors"
-                            >
-                                <ZoomIn className="w-3 h-3" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const cur =
-                                        selectedRange === "AUTO"
-                                            ? activeRange
-                                            : selectedRange;
-                                    const next = Math.min(25, cur + 2.5);
-                                    setSelectedRange(Math.round(next * 2) / 2);
-                                }}
-                                disabled={activeRange >= 25}
-                                title="Zoom out (further from station, max 25 NM)"
-                                className="p-1 rounded-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white disabled:opacity-30 transition-colors"
-                            >
-                                <ZoomOut className="w-3 h-3" />
-                            </button>
+                            <Tooltip content="Zoom in (closer to station, min 5 NM)">
+                                <span className="inline-flex">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const cur =
+                                                selectedRange === "AUTO"
+                                                    ? activeRange
+                                                    : selectedRange;
+                                            const next = Math.max(5, cur - 2.5);
+                                            setSelectedRange(Math.round(next * 2) / 2);
+                                        }}
+                                        disabled={activeRange <= 5}
+                                        className="p-1 rounded-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white disabled:opacity-30 transition-colors"
+                                        aria-label="Zoom in"
+                                    >
+                                        <ZoomIn className="w-3 h-3" />
+                                    </button>
+                                </span>
+                            </Tooltip>
+                            <Tooltip content="Zoom out (further from station, max 25 NM)">
+                                <span className="inline-flex">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const cur =
+                                                selectedRange === "AUTO"
+                                                    ? activeRange
+                                                    : selectedRange;
+                                            const next = Math.min(25, cur + 2.5);
+                                            setSelectedRange(Math.round(next * 2) / 2);
+                                        }}
+                                        disabled={activeRange >= 25}
+                                        className="p-1 rounded-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white disabled:opacity-30 transition-colors"
+                                        aria-label="Zoom out"
+                                    >
+                                        <ZoomOut className="w-3 h-3" />
+                                    </button>
+                                </span>
+                            </Tooltip>
                         </div>
 
                         <span className="tabular-nums">
@@ -708,48 +722,57 @@ export const IfrTrainer: React.FC = () => {
                     </div>
 
                     <div className="relative group/canvas flex items-center justify-center">
-                        <canvas
-                            ref={canvasRef}
-                            width={400}
-                            height={400}
-                            onWheel={handleCanvasWheel}
-                            className="w-full max-w-[400px] aspect-square rounded-full border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] shadow-xs cursor-crosshair"
-                            title="Use mouse scroll or range buttons to zoom in / out (5 NM - 25 NM)"
-                        />
+                        <Tooltip content="Use mouse scroll or range buttons to zoom in / out (5 NM - 25 NM)">
+                            <canvas
+                                ref={canvasRef}
+                                width={400}
+                                height={400}
+                                onWheel={handleCanvasWheel}
+                                className="w-full max-w-[400px] aspect-square rounded-full border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] shadow-xs cursor-crosshair"
+                            />
+                        </Tooltip>
                         {/* Quick floating zoom overlay */}
-                        <div className="absolute top-2 right-2 opacity-0 group-hover/canvas:opacity-100 transition-opacity flex items-center gap-1 bg-white/90 dark:bg-black/90 backdrop-blur-xs border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-sm">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const cur =
-                                        selectedRange === "AUTO"
-                                            ? activeRange
-                                            : selectedRange;
-                                    const next = Math.max(5, cur - 2.5);
-                                    setSelectedRange(Math.round(next * 2) / 2);
-                                }}
-                                disabled={activeRange <= 5}
-                                title="Zoom in (5 NM)"
-                                className="p-1 text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white disabled:opacity-30"
-                            >
-                                <ZoomIn className="w-3 h-3" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const cur =
-                                        selectedRange === "AUTO"
-                                            ? activeRange
-                                            : selectedRange;
-                                    const next = Math.min(25, cur + 2.5);
-                                    setSelectedRange(Math.round(next * 2) / 2);
-                                }}
-                                disabled={activeRange >= 25}
-                                title="Zoom out (25 NM)"
-                                className="p-1 text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white disabled:opacity-30"
-                            >
-                                <ZoomOut className="w-3 h-3" />
-                            </button>
+                        <div className="absolute top-2 right-2 opacity-0 group-hover/canvas:opacity-100 transition-opacity flex items-center gap-1 bg-white/90 dark:bg-black/90 backdrop-blur-xs border border-neutral-200 dark:border-geist-hairline rounded-sm p-1 shadow-xs">
+                            <Tooltip content="Zoom in (5 NM)">
+                                <span className="inline-flex">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const cur =
+                                                selectedRange === "AUTO"
+                                                    ? activeRange
+                                                    : selectedRange;
+                                            const next = Math.max(5, cur - 2.5);
+                                            setSelectedRange(Math.round(next * 2) / 2);
+                                        }}
+                                        disabled={activeRange <= 5}
+                                        className="p-1 text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white disabled:opacity-30"
+                                        aria-label="Zoom in"
+                                    >
+                                        <ZoomIn className="w-3 h-3" />
+                                    </button>
+                                </span>
+                            </Tooltip>
+                            <Tooltip content="Zoom out (25 NM)">
+                                <span className="inline-flex">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const cur =
+                                                selectedRange === "AUTO"
+                                                    ? activeRange
+                                                    : selectedRange;
+                                            const next = Math.min(25, cur + 2.5);
+                                            setSelectedRange(Math.round(next * 2) / 2);
+                                        }}
+                                        disabled={activeRange >= 25}
+                                        className="p-1 text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white disabled:opacity-30"
+                                        aria-label="Zoom out"
+                                    >
+                                        <ZoomOut className="w-3 h-3" />
+                                    </button>
+                                </span>
+                            </Tooltip>
                         </div>
                     </div>
                 </div>
@@ -757,7 +780,7 @@ export const IfrTrainer: React.FC = () => {
                 {/* Challenge Panel & Flight Controls */}
                 <div className="space-y-4">
                     {challenge && (
-                        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
+                        <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-xs">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-medium text-neutral-500 dark:text-geist-muted uppercase tracking-wider">
                                     Active Challenge
@@ -831,7 +854,7 @@ export const IfrTrainer: React.FC = () => {
                     )}
 
                     {/* Controls */}
-                    <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-sm">
+                    <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm p-4 space-y-3 shadow-xs">
                         <div className="flex items-center justify-between pb-2 border-b border-neutral-200 dark:border-geist-hairline">
                             <div className="flex items-center gap-2">
                                 <Sliders className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />

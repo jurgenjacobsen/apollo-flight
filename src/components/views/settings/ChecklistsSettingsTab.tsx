@@ -3,6 +3,7 @@ import { useFlightStore } from "../../../store/flightStore";
 import { useVoskSpeech } from "../../../hooks/useVoskSpeech";
 import { formatKeyCodeLabel } from "../../../utils/speechUtils";
 import { Select } from "../../ui/Select";
+import { Tooltip } from "../../ui/Tooltip";
 import {
     Mic,
     MicOff,
@@ -318,7 +319,7 @@ export const ChecklistsSettingsTab: React.FC<ChecklistsSettingsTabProps> = ({
                                 {
                                     !voiceCopilotMicGranted && 
                                     <span
-                                        className="px-2 py-0.5 rounded text-[11px] font-medium border bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60"
+                                        className="px-2 py-0.5 rounded-sm text-[11px] font-medium border bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60"
                                     >
                                         Configuration Required
                                     </span>
@@ -353,7 +354,7 @@ export const ChecklistsSettingsTab: React.FC<ChecklistsSettingsTabProps> = ({
                 </div>
 
                 {testError && (
-                    <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+                    <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-sm text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 shrink-0" />
                         <span>{testError}</span>
                     </div>
@@ -536,19 +537,21 @@ export const ChecklistsSettingsTab: React.FC<ChecklistsSettingsTabProps> = ({
                                 <span>Start Voice Test</span>
                             </button>
                         )}
-                        <button
-                            type="button"
-                            onClick={handleResetTest}
-                            title="Reset Test Checklist"
-                            className="p-1.5 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 rounded border border-neutral-200 dark:border-neutral-700 cursor-pointer"
-                        >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                        </button>
+                        <Tooltip content="Reset Test Checklist">
+                            <button
+                                type="button"
+                                onClick={handleResetTest}
+                                aria-label="Reset Test Checklist"
+                                className="p-1.5 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 rounded-sm border border-neutral-200 dark:border-neutral-700 cursor-pointer"
+                            >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                        </Tooltip>
                     </div>
                 </div>
 
                 {/* Real-time Voice Volume VU Meter */}
-                <div className="p-3.5 bg-neutral-50 dark:bg-[#111111] border border-neutral-200/80 dark:border-geist-hairline rounded-sm space-y-2">
+                <div className="p-4 bg-neutral-50 dark:bg-[#111111] border border-neutral-200/80 dark:border-geist-hairline rounded-sm space-y-2">
                     <div className="flex items-center justify-between text-xs font-medium text-neutral-600 dark:text-neutral-400">
                         <span className="flex items-center gap-1.5">
                             <Mic className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -633,7 +636,7 @@ export const ChecklistsSettingsTab: React.FC<ChecklistsSettingsTabProps> = ({
                                             Expected:
                                         </span>
                                         <span
-                                            className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                            className={`px-2 py-0.5 rounded-sm text-xs font-semibold ${
                                                 item.completed
                                                     ? "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200"
                                                     : isCurrent
@@ -650,7 +653,7 @@ export const ChecklistsSettingsTab: React.FC<ChecklistsSettingsTabProps> = ({
                     </div>
 
                     {testStatusMessage && (
-                        <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded text-xs text-emerald-800 dark:text-emerald-200 flex items-center gap-2">
+                        <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-sm text-xs text-emerald-800 dark:text-emerald-200 flex items-center gap-2">
                             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                             <span>{testStatusMessage}</span>
                         </div>
@@ -684,7 +687,7 @@ export const ChecklistsSettingsTab: React.FC<ChecklistsSettingsTabProps> = ({
 
                     {/* Live Interim / In-Progress Speech Banner */}
                     {isTesting && (
-                        <div className="p-2.5 bg-neutral-50 dark:bg-[#141414] border border-neutral-200 dark:border-neutral-800 rounded text-xs flex items-center gap-2">
+                        <div className="p-2.5 bg-neutral-50 dark:bg-[#141414] border border-neutral-200 dark:border-neutral-800 rounded-sm text-xs flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
                             <span className="text-neutral-500 dark:text-neutral-400 shrink-0">Live Mic Audio:</span>
                             <span className="text-neutral-900 dark:text-white font-medium truncate">
@@ -705,7 +708,7 @@ export const ChecklistsSettingsTab: React.FC<ChecklistsSettingsTabProps> = ({
                             transcriptLog.map((entry) => (
                                 <div
                                     key={entry.id}
-                                    className={`p-2 rounded border flex items-center justify-between gap-3 text-[11px] ${
+                                    className={`p-2 rounded-sm border flex items-center justify-between gap-3 text-[11px] ${
                                         entry.matchedItem
                                             ? "bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50"
                                             : "bg-neutral-50/60 dark:bg-neutral-900/50 border-neutral-200/80 dark:border-neutral-800"
@@ -721,7 +724,7 @@ export const ChecklistsSettingsTab: React.FC<ChecklistsSettingsTabProps> = ({
                                     </div>
 
                                     {entry.matchedItem && (
-                                        <span className="shrink-0 px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                        <span className="shrink-0 px-2 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                                             <Check className="w-2.5 h-2.5 stroke-[3]" />
                                             <span>Matched: {entry.matchedItem}</span>
                                         </span>

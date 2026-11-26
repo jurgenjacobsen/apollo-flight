@@ -55,7 +55,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     </p>
 
                     {this.state.error?.message && (
-                        <div className="mb-4 max-w-lg w-full bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded p-2.5 text-left font-mono text-[11px] text-red-600 dark:text-red-400 overflow-x-auto break-all">
+                        <div className="mb-4 max-w-lg w-full bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-sm p-2.5 text-left font-mono text-[11px] text-red-600 dark:text-red-400 overflow-x-auto break-all">
                             {this.state.error.message}
                         </div>
                     )}
@@ -64,7 +64,7 @@ export class ErrorBoundary extends Component<Props, State> {
                         <button
                             type="button"
                             onClick={this.handleReset}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-neutral-900 text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-sm bg-neutral-900 text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
                         >
                             <RotateCcw className="w-3.5 h-3.5" />
                             <span>Try Again</span>
@@ -72,7 +72,7 @@ export class ErrorBoundary extends Component<Props, State> {
                         <button
                             type="button"
                             onClick={() => window.location.reload()}
-                            className="px-3 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors cursor-pointer text-neutral-700 dark:text-neutral-300"
+                            className="px-3 py-1.5 text-xs font-medium rounded-sm border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors cursor-pointer text-neutral-700 dark:text-neutral-300"
                         >
                             Reload App
                         </button>

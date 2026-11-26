@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useFlightStore } from "../../store/flightStore";
+import { Tooltip } from "../ui";
 import { useSmoothedTelemetry } from "../../hooks/useSmoothedTelemetry";
 import { formatAttitude } from "../../utils/flightFormatters";
 import {
@@ -136,26 +137,27 @@ export const TopHeader: React.FC = () => {
                 <div className="h-3 w-[1px] bg-neutral-200 dark:bg-neutral-800" />
                 {/* News & Updates Dropdown */}
                 <div className="relative">
-                    <button
-                        ref={newsButtonRef}
-                        type="button"
-                        onClick={() => setIsNewsOpen((prev) => !prev)}
-                        className={`p-1 rounded-sm text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 cursor-pointer relative ${
-                            isNewsOpen
-                                ? "bg-neutral-100 dark:bg-[#1f1f1f] text-neutral-900 dark:text-white"
-                                : ""
-                        }`}
-                        title="News & Updates"
-                        aria-label="News and updates"
-                        aria-expanded={isNewsOpen}
-                    >
-                        <Newspaper className="w-3.5 h-3.5" />
-                        {hasUnreadNews && (
-                            <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
-                                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-500" />
-                            </span>
-                        )}
-                    </button>
+                    <Tooltip content="News & Updates">
+                        <button
+                            ref={newsButtonRef}
+                            type="button"
+                            onClick={() => setIsNewsOpen((prev) => !prev)}
+                            className={`p-1 rounded-sm text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 cursor-pointer relative ${
+                                isNewsOpen
+                                    ? "bg-neutral-100 dark:bg-[#1f1f1f] text-neutral-900 dark:text-white"
+                                    : ""
+                            }`}
+                            aria-label="News and updates"
+                            aria-expanded={isNewsOpen}
+                        >
+                            <Newspaper className="w-3.5 h-3.5" />
+                            {hasUnreadNews && (
+                                <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
+                                    <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-500" />
+                                </span>
+                            )}
+                        </button>
+                    </Tooltip>
 
                     <NewsDropdown
                         isOpen={isNewsOpen}
@@ -166,17 +168,18 @@ export const TopHeader: React.FC = () => {
 
                 
                 {/* Theme Toggle Button */}
-                <button
-                    onClick={toggleTheme}
-                    title={`Switch to ${theme === "light" ? "Dark" : "Light"} Mode`}
-                    className="p-1 rounded-sm text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
-                >
-                    {theme === "light" ? (
-                        <Moon className="w-3.5 h-3.5" />
-                    ) : (
-                        <Sun className="w-3.5 h-3.5 text-amber-400" />
-                    )}
-                </button>
+                <Tooltip content={`Switch to ${theme === "light" ? "Dark" : "Light"} Mode`}>
+                    <button
+                        onClick={toggleTheme}
+                        className="p-1 rounded-sm text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
+                    >
+                        {theme === "light" ? (
+                            <Moon className="w-3.5 h-3.5" />
+                        ) : (
+                            <Sun className="w-3.5 h-3.5 text-amber-400" />
+                        )}
+                    </button>
+                </Tooltip>
             </div>
         </header>
     );

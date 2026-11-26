@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useFlightStore } from "../../store/flightStore";
+import { Tooltip } from "../ui";
 import { Airport } from "../../types/flight";
 import { SavedRoute, RouteSector, AircraftCategory } from "../../types/route";
 import {
@@ -29,6 +31,7 @@ import {
     Route as RouteIcon,
     RotateCcw,
 } from "lucide-react";
+import { Select } from "../ui/Select";
 
 interface LegState {
     id: string;
@@ -442,7 +445,7 @@ export const RouteEditModal: React.FC<RouteEditModalProps> = ({
 
     if (!isOpen) return null;
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
             <div
                 className="w-full max-w-3xl max-h-[92vh] flex flex-col bg-white dark:bg-[#121212] border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-2xl overflow-hidden text-neutral-900 dark:text-neutral-100 font-sans"
@@ -468,14 +471,15 @@ export const RouteEditModal: React.FC<RouteEditModalProps> = ({
                         </div>
                     </div>
 
-                    <button
-                        onClick={onClose}
-                        className="p-1.5 rounded-sm text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                        title="Close dialog"
-                        aria-label="Close dialog"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
+                    <Tooltip content="Close dialog">
+                        <button
+                            onClick={onClose}
+                            className="p-1.5 rounded-sm text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                            aria-label="Close dialog"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </Tooltip>
                 </div>
 
                 {/* Modal Scrollable Body */}
@@ -512,16 +516,12 @@ export const RouteEditModal: React.FC<RouteEditModalProps> = ({
                             <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
                                 Aircraft Category
                             </label>
-                            <select
+                            <Select<AircraftCategory>
                                 value={category}
-                                onChange={(e) =>
-                                    setCategory(
-                                        e.target.value as AircraftCategory,
-                                    )
-                                }
-                                className="w-full px-3 py-1.5 text-xs bg-white dark:bg-black border border-neutral-300 dark:border-geist-hairline rounded-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-neutral-400"
-                            >
-                                {(
+                                onChange={(val) => setCategory(val)}
+                                className="w-full"
+                                ariaLabel="Aircraft Category"
+                                options={(
                                     [
                                         "A",
                                         "B",
@@ -532,14 +532,12 @@ export const RouteEditModal: React.FC<RouteEditModalProps> = ({
                                     ] as AircraftCategory[]
                                 ).map((cat) => {
                                     const prof = AIRCRAFT_CATEGORIES[cat];
-                                    return (
-                                        <option key={cat} value={cat}>
-                                            Cat {cat} — {prof.name} (
-                                            {prof.speedRange})
-                                        </option>
-                                    );
+                                    return {
+                                        value: cat,
+                                        label: `Cat ${cat} — ${prof.name} (${prof.speedRange})`,
+                                    };
                                 })}
-                            </select>
+                            />
                             <p className="text-[10px] text-neutral-500 dark:text-geist-muted">
                                 TAS:{" "}
                                 {
@@ -640,11 +638,11 @@ export const RouteEditModal: React.FC<RouteEditModalProps> = ({
                                 return (
                                     <div
                                         key={leg.id}
-                                        className="p-3.5 rounded-sm bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline space-y-3 shadow-2xs"
+                                        className="p-4 rounded-sm bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline space-y-3 shadow-2xs"
                                     >
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                                                <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
                                                     Leg {index + 1}
                                                 </span>
                                                 {computedSec && (
@@ -680,17 +678,18 @@ export const RouteEditModal: React.FC<RouteEditModalProps> = ({
                                             </div>
 
                                             {legs.length > 1 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleRemoveLeg(index)
-                                                    }
-                                                    className="p-1 rounded text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                                                    title="Remove this leg"
-                                                    aria-label="Remove this leg"
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                </button>
+                                                <Tooltip content="Remove this leg">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleRemoveLeg(index)
+                                                        }
+                                                        className="p-1 rounded-xs text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                                                        aria-label="Remove this leg"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </Tooltip>
                                             )}
                                         </div>
 
@@ -841,7 +840,7 @@ export const RouteEditModal: React.FC<RouteEditModalProps> = ({
 
                                         {/* Mountainous Advisory Badge if present */}
                                         {computedSec?.isMountainous && (
-                                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-[10px] text-amber-700 dark:text-amber-400">
+                                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-[10px] text-amber-700 dark:text-amber-400">
                                                 <Mountain className="w-3.5 h-3.5 shrink-0" />
                                                 <span>
                                                     Mountainous corridor:
@@ -950,6 +949,7 @@ export const RouteEditModal: React.FC<RouteEditModalProps> = ({
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 };

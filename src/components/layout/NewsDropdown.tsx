@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useFlightStore } from "../../store/flightStore";
+import { Tooltip } from "../ui";
 import packageJson from "../../../package.json";
 import rawChangelog from "../../data/changelog.json";
 import {
@@ -252,7 +253,7 @@ export const NewsDropdown: React.FC<NewsDropdownProps> = ({
             ref={dropdownRef}
             role="dialog"
             aria-label="News and notifications"
-            className="absolute right-0 top-full mt-2 w-[370px] sm:w-[422px] max-w-[calc(100vw-1.5rem)] bg-white dark:bg-[#161616] border border-neutral-200 dark:border-geist-hairline rounded-md shadow-2xl z-50 overflow-hidden animate-dropdown-smooth"
+            className="absolute right-0 top-full mt-2 w-[370px] sm:w-[422px] max-w-[calc(100vw-1.5rem)] bg-white dark:bg-[#161616] border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-2xl z-50 overflow-hidden animate-dropdown-smooth"
         >
             {/* Header */}
             <div className="px-3.5 py-2.5 bg-neutral-50/70 dark:bg-[#1a1a1a]/70 border-b border-neutral-200 dark:border-geist-hairline flex items-center justify-between gap-2">
@@ -278,14 +279,15 @@ export const NewsDropdown: React.FC<NewsDropdownProps> = ({
                             Mark all read
                         </button>
                     )}
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="p-1 rounded-sm text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-                        title="Close"
-                    >
-                        <X className="w-3.5 h-3.5" />
-                    </button>
+                    <Tooltip content="Close">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="p-1 rounded-sm text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </Tooltip>
                 </div>
             </div>
 
@@ -293,7 +295,7 @@ export const NewsDropdown: React.FC<NewsDropdownProps> = ({
             <div className="max-h-[30rem] overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800/80">
                 {/* Available Software Update Notification Card */}
                 {availableUpdate && (
-                    <div className="p-3.5 bg-emerald-50/40 dark:bg-emerald-950/15 border-b border-emerald-200/60 dark:border-emerald-800/30">
+                    <div className="p-3 bg-emerald-50/40 dark:bg-emerald-950/15 border-b border-emerald-200/60 dark:border-emerald-800/30">
                         <div className="flex items-start justify-between gap-2.5">
                             <div className="flex items-start gap-2.5">
                                 <div className="p-1.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5">
@@ -304,7 +306,7 @@ export const NewsDropdown: React.FC<NewsDropdownProps> = ({
                                         <h4 className="text-xs font-semibold text-neutral-900 dark:text-white">
                                             Apollo Flight {availableUpdate.version}
                                         </h4>
-                                        <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60">
+                                        <span className="px-1.5 py-0.2 rounded-sm text-[10px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60">
                                             Ready to install
                                         </span>
                                     </div>
@@ -331,7 +333,7 @@ export const NewsDropdown: React.FC<NewsDropdownProps> = ({
                                     )}
                                 </button>
                                 {isUpdateExpanded && (
-                                    <div className="mt-1.5 p-2 rounded bg-white/70 dark:bg-black/40 border border-neutral-200 dark:border-geist-hairline text-[11px] text-neutral-700 dark:text-neutral-300 whitespace-pre-line font-mono max-h-36 overflow-y-auto leading-relaxed">
+                                    <div className="mt-1.5 p-2 rounded-sm bg-white/70 dark:bg-black/40 border border-neutral-200 dark:border-geist-hairline text-[11px] text-neutral-700 dark:text-neutral-300 whitespace-pre-line font-mono max-h-36 overflow-y-auto leading-relaxed">
                                         {availableUpdate.body}
                                     </div>
                                 )}
@@ -423,7 +425,7 @@ export const NewsDropdown: React.FC<NewsDropdownProps> = ({
                         return (
                             <div
                                 key={itemKey}
-                                className={`p-3.5 transition-colors text-left ${
+                                className={`p-3 transition-colors text-left ${
                                     isRead
                                         ? "opacity-65 hover:opacity-100 bg-transparent"
                                         : "bg-neutral-50/30 dark:bg-neutral-900/20"
@@ -462,31 +464,28 @@ export const NewsDropdown: React.FC<NewsDropdownProps> = ({
                                     </div>
 
                                     {/* Mark as read button */}
-                                    <button
-                                        type="button"
-                                        onClick={() => toggleMarkAsRead(itemKey)}
-                                        className={`shrink-0 p-1 rounded-sm border transition-colors cursor-pointer ${
-                                            isRead
-                                                ? "border-transparent text-emerald-600 dark:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                                                : "border-neutral-200 dark:border-geist-hairline text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                                        }`}
-                                        title={
-                                            isRead
-                                                ? "Mark as unread"
-                                                : "Mark as read"
-                                        }
-                                        aria-label={
-                                            isRead
-                                                ? "Mark as unread"
-                                                : "Mark as read"
-                                        }
-                                    >
-                                        {isRead ? (
-                                            <CheckCheck className="w-3.5 h-3.5" />
-                                        ) : (
-                                            <Check className="w-3.5 h-3.5" />
-                                        )}
-                                    </button>
+                                    <Tooltip content={isRead ? "Mark as unread" : "Mark as read"}>
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleMarkAsRead(itemKey)}
+                                            className={`shrink-0 p-1 rounded-sm border transition-colors cursor-pointer ${
+                                                isRead
+                                                    ? "border-transparent text-emerald-600 dark:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                                                    : "border-neutral-200 dark:border-geist-hairline text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                                            }`}
+                                            aria-label={
+                                                isRead
+                                                    ? "Mark as unread"
+                                                    : "Mark as read"
+                                            }
+                                        >
+                                            {isRead ? (
+                                                <CheckCheck className="w-3.5 h-3.5" />
+                                            ) : (
+                                                <Check className="w-3.5 h-3.5" />
+                                            )}
+                                        </button>
+                                    </Tooltip>
                                 </div>
 
                                 {/* Description with inline markdown */}

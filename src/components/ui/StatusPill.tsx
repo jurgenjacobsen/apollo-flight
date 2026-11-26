@@ -1,5 +1,6 @@
 import React from "react";
 import { useFlightStore } from "../../store/flightStore";
+import { Tooltip } from "./Tooltip";
 
 export type SystemOperationalStatus =
     | "disconnected"
@@ -117,20 +118,21 @@ export const StatusPill: React.FC<StatusPillProps> = ({
 
     if (compact) {
         return (
-            <div
-                className={`flex items-center justify-center p-1.5 rounded-sm border ${info.badgeClasses} ${className}`}
-                title={tooltip}
-            >
-                <span className={`w-2 h-2 rounded-full ${info.dotColor}`} />
-            </div>
+            <Tooltip content={tooltip}>
+                <div
+                    className={`flex items-center justify-center p-1.5 rounded-sm border ${info.badgeClasses} ${className}`}
+                >
+                    <span className={`w-2 h-2 rounded-full ${info.dotColor}`} />
+                </div>
+            </Tooltip>
         );
     }
 
     return (
-        <div
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-sm border text-xs font-medium whitespace-nowrap select-none transition-colors duration-150 ${info.badgeClasses} ${className}`}
-            title={tooltip}
-        >
+        <Tooltip content={tooltip}>
+            <div
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-sm border text-xs font-medium whitespace-nowrap select-none transition-colors duration-150 ${info.badgeClasses} ${className}`}
+            >
             <div className="flex items-center gap-1.5">
                 <span
                     className={`w-1.5 h-1.5 rounded-full ${info.dotColor} shrink-0`}
@@ -142,6 +144,7 @@ export const StatusPill: React.FC<StatusPillProps> = ({
                     {activeFlight.departureIcao} ➔ {activeFlight.arrivalIcao}
                 </span>
             )}
-        </div>
+            </div>
+        </Tooltip>
     );
 };
