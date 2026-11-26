@@ -165,7 +165,7 @@ export const GeneralUnitsTab: React.FC<GeneralUnitsTabProps> = ({ notifySaved })
                         </div>
                         <p className="text-xs text-neutral-500 dark:text-geist-muted leading-relaxed">
                             Select an online ATC network public JSON feed
-                            (VATSIM, IVAO, or PilotEdge) for live traffic
+                            (VATSIM or IVAO) for live traffic
                             ingestion, or disable network traffic.
                         </p>
                     </div>

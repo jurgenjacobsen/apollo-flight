@@ -1,4 +1,4 @@
-export type LiveTrafficSource = "vatsim" | "ivao" | "pilotedge";
+export type LiveTrafficSource = "vatsim" | "ivao";
 
 export type LiveTrafficNetwork = "off" | LiveTrafficSource;
 
@@ -45,5 +45,4 @@ export const LIVE_TRAFFIC_NETWORK_OPTIONS: Array<{
     { value: "off", label: "Off" },
     { value: "vatsim", label: "VATSIM" },
     { value: "ivao", label: "IVAO" },
-    { value: "pilotedge", label: "PilotEdge" },
 ];

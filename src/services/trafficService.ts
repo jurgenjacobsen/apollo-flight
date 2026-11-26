@@ -178,61 +178,9 @@ export class IvaoTrafficProvider extends BaseJsonTrafficProvider {
     }
 }
 
-export class PilotEdgeTrafficProvider extends BaseJsonTrafficProvider {
-    readonly network = "pilotedge" as const;
-    readonly displayName = "PilotEdge";
-    readonly feedUrl = "https://map.pilotedge.net/status.json";
-
-    normalize(rawPayload: unknown): LiveTrafficAircraft[] {
-        const root = rawPayload as
-            | { pilots?: unknown[]; aircraft?: unknown[] }
-            | unknown[]
-            | null;
-        const list = Array.isArray(root)
-            ? root
-            : (root?.pilots ?? root?.aircraft);
-        if (!Array.isArray(list)) return [];
-
-        const nowIso = new Date().toISOString();
-        const result: LiveTrafficAircraft[] = [];
-
-        for (const raw of list) {
-            if (!raw || typeof raw !== "object") continue;
-            const p = raw as Record<string, any>;
-            const callsign = toOptionalString(p.callsign ?? p.cs);
-            const lat = p.latitude ?? p.lat;
-            const lon = p.longitude ?? p.lon;
-            if (!callsign || !isValidLatLon(lat, lon)) continue;
-
-            result.push({
-                id: `pilotedge:${p.cid ?? p.id ?? callsign}:${callsign}`,
-                network: "pilotedge",
-                callsign,
-                aircraftType: toOptionalString(p.aircraftType ?? p.type ?? p.aircraft),
-                latitude: toFiniteNumber(lat),
-                longitude: toFiniteNumber(lon),
-                altitudeFt: Math.round(toFiniteNumber(p.altitude ?? p.alt)),
-                groundSpeedKt: Math.round(
-                    toFiniteNumber(p.groundspeed ?? p.groundSpeed ?? p.gs),
-                ),
-                headingDeg:
-                    Math.round(toFiniteNumber(p.heading ?? p.hdg)) % 360,
-                departureIcao: toOptionalString(p.departure ?? p.dep)?.toUpperCase(),
-                arrivalIcao: toOptionalString(p.arrival ?? p.arr)?.toUpperCase(),
-                squawk: toOptionalString(p.squawk ?? p.transponder),
-                pilotName: toOptionalString(p.name),
-                updatedAt: toOptionalString(p.updatedAt ?? p.last_updated) ?? nowIso,
-            });
-        }
-
-        return result;
-    }
-}
-
 const providerRegistry: Record<LiveTrafficSource, LiveTrafficProvider> = {
     vatsim: new VatsimTrafficProvider(),
     ivao: new IvaoTrafficProvider(),
-    pilotedge: new PilotEdgeTrafficProvider(),
 };
 
 export function registerTrafficProvider(provider: LiveTrafficProvider): void {

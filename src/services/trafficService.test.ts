@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
     VatsimTrafficProvider,
     IvaoTrafficProvider,
-    PilotEdgeTrafficProvider,
     fetchLiveTraffic,
     filterTrafficWithinRadius,
     getTrafficProvider,
@@ -104,41 +103,6 @@ describe("trafficService", () => {
         });
     });
 
-    it("normalizes PilotEdge JSON feed payloads", () => {
-        const provider = new PilotEdgeTrafficProvider();
-        const aircraft = provider.normalize({
-            pilots: [
-                {
-                    callsign: "N172PE",
-                    lat: 33.9425,
-                    lon: -118.4081,
-                    alt: 2500,
-                    gs: 112,
-                    hdg: 90,
-                    type: "C172",
-                    dep: "klax",
-                    arr: "ksna",
-                    squawk: "1200",
-                },
-            ],
-        });
-
-        expect(aircraft).toHaveLength(1);
-        expect(aircraft[0]).toMatchObject({
-            network: "pilotedge",
-            callsign: "N172PE",
-            aircraftType: "C172",
-            latitude: 33.9425,
-            longitude: -118.4081,
-            altitudeFt: 2500,
-            groundSpeedKt: 112,
-            headingDeg: 90,
-            departureIcao: "KLAX",
-            arrivalIcao: "KSNA",
-            squawk: "1200",
-        });
-    });
-
     it("returns empty aircraft without network calls when network is off", async () => {
         const mockFetch = vi.fn();
         const res = await fetchLiveTraffic("off", {
@@ -178,10 +142,10 @@ describe("trafficService", () => {
     });
 
     it("supports registering custom provider adapters", () => {
-        const original = getTrafficProvider("pilotedge");
-        const custom = new PilotEdgeTrafficProvider();
+        const original = getTrafficProvider("ivao");
+        const custom = new IvaoTrafficProvider();
         registerTrafficProvider(custom);
-        expect(getTrafficProvider("pilotedge")).toBe(custom);
+        expect(getTrafficProvider("ivao")).toBe(custom);
         registerTrafficProvider(original);
     });
 
