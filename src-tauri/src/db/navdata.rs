@@ -944,7 +944,7 @@ pub fn get_all_airports(conn: &Connection) -> Result<Vec<Airport>> {
            AND (all_runways_closed = 0 OR all_runways_closed IS NULL)
          GROUP BY icao
          ORDER BY CASE airport_type WHEN 'large_airport' THEN 1 WHEN 'medium_airport' THEN 2 ELSE 3 END, icao ASC
-         LIMIT 2000"
+         LIMIT 10000"
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(Airport {
