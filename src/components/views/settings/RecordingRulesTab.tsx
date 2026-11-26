@@ -1,6 +1,7 @@
-import React from "react";
-import { useFlightStore } from "../../../store/flightStore";
-import { PlaneLanding, Play } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { safeInvoke, useFlightStore } from "../../../store/flightStore";
+import { Pause, PlaneLanding, Play } from "lucide-react";
+import { Tooltip } from "../../ui";
 
 interface RecordingRulesTabProps {
     notifySaved: () => void;
@@ -19,7 +20,73 @@ export const RecordingRulesTab: React.FC<RecordingRulesTabProps> = ({ notifySave
         touchdownOverlayDuration,
         setTouchdownOverlayDuration,
         triggerTouchdownNotification,
+        showTouchdownBanner,
+        dismissTouchdownBanner,
     } = useFlightStore();
+
+    const [isTestRunning, setIsTestRunning] = useState(false);
+    const testTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const stopTestPreview = async () => {
+        if (testTimerRef.current) {
+            clearTimeout(testTimerRef.current);
+            testTimerRef.current = null;
+        }
+        setIsTestRunning(false);
+        dismissTouchdownBanner();
+        await safeInvoke("hide_touchdown_overlay");
+    };
+
+    useEffect(() => {
+        let unlisten: (() => void) | null = null;
+        let isMounted = true;
+
+        if (
+            typeof window !== "undefined" &&
+            ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
+        ) {
+            import("@tauri-apps/api/event")
+                .then(({ listen }) =>
+                    listen("touchdown-overlay-dismissed", () => {
+                        if (isMounted) {
+                            if (testTimerRef.current) {
+                                clearTimeout(testTimerRef.current);
+                                testTimerRef.current = null;
+                            }
+                            setIsTestRunning(false);
+                        }
+                    }),
+                )
+                .then((stop) => {
+                    if (isMounted) {
+                        unlisten = stop;
+                    } else {
+                        stop();
+                    }
+                })
+                .catch(() => {});
+        }
+
+        return () => {
+            isMounted = false;
+            if (unlisten) unlisten();
+            if (testTimerRef.current) clearTimeout(testTimerRef.current);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (
+            isTestRunning &&
+            touchdownNotificationMode === "in-app" &&
+            !showTouchdownBanner
+        ) {
+            if (testTimerRef.current) {
+                clearTimeout(testTimerRef.current);
+                testTimerRef.current = null;
+            }
+            setIsTestRunning(false);
+        }
+    }, [isTestRunning, touchdownNotificationMode, showTouchdownBanner]);
 
     const handleToggleDetailedTelemetry = () => {
         setRecordDetailedTelemetry(!recordDetailedTelemetry);
@@ -32,6 +99,11 @@ export const RecordingRulesTab: React.FC<RecordingRulesTabProps> = ({ notifySave
     };
 
     const handleTestLandingPopup = async () => {
+        if (isTestRunning) {
+            await stopTestPreview();
+            return;
+        }
+
         const sampleTouchdown = {
             timestamp: new Date().toISOString(),
             verticalSpeedFpm: -112,
@@ -51,8 +123,52 @@ export const RecordingRulesTab: React.FC<RecordingRulesTabProps> = ({ notifySave
             airportName: "Frankfurt am Main Airport",
             runwayIdent: "25C",
         };
+        setIsTestRunning(true);
         await triggerTouchdownNotification(sampleTouchdown, true);
+
+        const durationMs =
+            touchdownNotificationMode === "in-app"
+                ? 12000
+                : (touchdownOverlayDuration || 10) * 1000;
+        if (testTimerRef.current) {
+            clearTimeout(testTimerRef.current);
+        }
+        testTimerRef.current = setTimeout(() => {
+            testTimerRef.current = null;
+            setIsTestRunning(false);
+        }, durationMs);
     };
+
+    const overlayPositionRows: Array<
+        Array<{
+            id:
+                | "top-left"
+                | "top-center"
+                | "top-right"
+                | "middle-left"
+                | "middle-right"
+                | "bottom-left"
+                | "bottom-center"
+                | "bottom-right";
+            label: string;
+        } | null>
+    > = [
+        [
+            { id: "top-left", label: "Top Left" },
+            { id: "top-center", label: "Top Center" },
+            { id: "top-right", label: "Top Right" },
+        ],
+        [
+            { id: "middle-left", label: "Middle Left" },
+            null,
+            { id: "middle-right", label: "Middle Right" },
+        ],
+        [
+            { id: "bottom-left", label: "Bottom Left" },
+            { id: "bottom-center", label: "Bottom Center" },
+            { id: "bottom-right", label: "Bottom Right" },
+        ],
+    ];
 
     return (
         <div className="space-y-4">
@@ -202,15 +318,20 @@ export const RecordingRulesTab: React.FC<RecordingRulesTabProps> = ({ notifySave
                         </div>
 
                         <div className="shrink-0 flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={handleTestLandingPopup}
-                                className="px-3.5 py-1.5 text-xs rounded-xs bg-neutral-900 text-white dark:bg-white dark:text-black hover:opacity-90 transition-all flex items-center gap-1.5 shadow-xs"
-                                title="Trigger preview touchdown report"
-                            >
-                                <Play className="w-3.5 h-3.5 fill-current" />
-                                <span>Test Landing Popup</span>
-                            </button>
+                            <Tooltip content="Trigger preview touchdown report">
+                                <button
+                                    type="button"
+                                    onClick={handleTestLandingPopup}
+                                    className="px-3.5 py-1.5 text-xs rounded-xs bg-neutral-900 text-white dark:bg-white dark:text-black hover:opacity-90 transition-all flex items-center gap-1.5 shadow-xs"
+                                >
+                                    {isTestRunning ? (
+                                        <Pause className="w-3.5 h-3.5 fill-current" />
+                                    ) : (
+                                        <Play className="w-3.5 h-3.5 fill-current" />
+                                    )}
+                                    <span>Test Landing Popup</span>
+                                </button>
+                            </Tooltip>
                         </div>
                     </div>
 
@@ -251,28 +372,53 @@ export const RecordingRulesTab: React.FC<RecordingRulesTabProps> = ({ notifySave
                             <label className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">
                                 Overlay Position
                             </label>
-                            <div className="grid grid-cols-3 gap-1 bg-neutral-100 dark:bg-[#181818] p-1 rounded-sm border border-neutral-200 dark:border-geist-hairline">
-                                {[
-                                    { id: "top-right", label: "Top Right" },
-                                    { id: "top-center", label: "Top Center" },
-                                    { id: "bottom-right", label: "Bottom Right" },
-                                ].map((p) => (
-                                    <button
-                                        key={p.id}
-                                        type="button"
-                                        onClick={async () => {
-                                            await setTouchdownOverlayPosition(p.id as any);
-                                            notifySaved();
-                                        }}
-                                        className={`py-1 text-[11px] font-medium rounded-xs transition-colors ${
-                                            touchdownOverlayPosition === p.id
-                                                ? "bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs font-semibold"
-                                                : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
-                                        }`}
+                            <div className="relative grid grid-cols-1 gap-4 bg-neutral-100 dark:bg-[#181818] p-1 rounded-sm border border-neutral-200 dark:border-geist-hairline">
+                                {overlayPositionRows.map((row, rowIdx) => (
+                                    <div
+                                        key={`overlay-pos-row-${rowIdx}`}
+                                        className="flex justify-between items-center"
                                     >
-                                        {p.label}
-                                    </button>
+                                        {row.map((pos, colIdx) => {
+                                            if (!pos) {
+                                                return (
+                                                    <div
+                                                        key={`overlay-pos-empty-${rowIdx}-${colIdx}`}
+                                                        className="w-12 h-6"
+                                                        aria-hidden="true"
+                                                    />
+                                                );
+                                            }
+                                            const isActive =
+                                                touchdownOverlayPosition === pos.id;
+                                            return (
+                                                <Tooltip
+                                                    key={pos.id}
+                                                    content={pos.label}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        aria-label={pos.label}
+                                                        aria-pressed={isActive}
+                                                        onClick={async () => {
+                                                            await setTouchdownOverlayPosition(
+                                                                pos.id,
+                                                            );
+                                                            notifySaved();
+                                                        }}
+                                                        className={`w-12 h-6 rounded-xs transition-colors ${
+                                                            isActive
+                                                                ? "bg-neutral-900 dark:bg-white shadow-xs"
+                                                                : "bg-neutral-900/25 hover:bg-neutral-900/50 dark:bg-white/25 dark:hover:bg-white/50"
+                                                        }`}
+                                                    />
+                                                </Tooltip>
+                                            );
+                                        })}
+                                    </div>
                                 ))}
+                                <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">
+                                    Monitor
+                                </span>
                             </div>
                         </div>
 

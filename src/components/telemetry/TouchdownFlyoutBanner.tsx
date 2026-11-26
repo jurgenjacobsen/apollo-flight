@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { useFlightStore } from "../../store/flightStore";
+import { Tooltip } from "../ui";
 import { formatWindSpeed } from "../../utils/weatherUnits";
 import {
     PlaneLanding,
@@ -8,7 +9,6 @@ import {
     Compass,
     X,
     AlertTriangle,
-    Award,
     CheckCircle2,
 } from "lucide-react";
 
@@ -62,24 +62,19 @@ export const TouchdownFlyoutBanner: React.FC = () => {
     const bounces = latestTouchdown.bouncesCount || 0;
 
     return (
-        <div className="fixed top-14 right-4 z-50 w-80 sm:w-96 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-md border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-2xl p-4 animate-in fade-in slide-in-from-top-4 duration-200 text-neutral-900 dark:text-white select-none">
+        <div className="fixed top-14 right-4 z-50 w-80 sm:w-96 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-xs border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-2xl p-4 animate-in fade-in slide-in-from-top-4 duration-200 text-neutral-900 dark:text-white select-none">
             {/* Header */}
             <div className="flex items-center justify-between pb-2.5 border-b border-neutral-100 dark:border-geist-hairline">
                 <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline text-neutral-700 dark:text-neutral-300">
+                    <div className="p-2 rounded-sm bg-neutral-100 dark:bg-geist-card border border-neutral-200 dark:border-geist-hairline text-neutral-700 dark:text-neutral-300">
                         <PlaneLanding className="w-4 h-4" />
                     </div>
                     <div>
                         <div className="text-xs font-semibold tracking-tight flex items-center gap-1.5">
                             <span>Touchdown Report</span>
-                            {latestTouchdown.airportIcao && (
-                                <span className="font-mono text-[10px] px-1 py-0.2 rounded bg-neutral-100 dark:bg-[#1a1a1a] text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-geist-hairline">
-                                    {latestTouchdown.airportIcao}
-                                </span>
-                            )}
                         </div>
                         <div className="text-[10px] text-neutral-500 dark:text-geist-muted">
-                            MSFS Landing Dynamics
+                            Apollo Flight
                         </div>
                     </div>
                 </div>
@@ -90,15 +85,16 @@ export const TouchdownFlyoutBanner: React.FC = () => {
                     >
                         {gradeText}
                     </span>
-                    <button
-                        type="button"
-                        onClick={dismissTouchdownBanner}
-                        className="text-neutral-400 hover:text-neutral-700 dark:hover:text-white transition-colors p-1"
-                        title="Dismiss"
-                        aria-label="Dismiss banner"
-                    >
-                        <X className="w-3.5 h-3.5" />
-                    </button>
+                    <Tooltip content="Dismiss">
+                        <button
+                            type="button"
+                            onClick={dismissTouchdownBanner}
+                            className="text-neutral-400 hover:text-neutral-700 dark:hover:text-white transition-colors p-1"
+                            aria-label="Dismiss banner"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </Tooltip>
                 </div>
             </div>
 
@@ -121,9 +117,6 @@ export const TouchdownFlyoutBanner: React.FC = () => {
                 <div className="p-2.5 rounded-sm bg-neutral-50 dark:bg-geist-surface border border-neutral-100 dark:border-geist-hairline">
                     <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium flex items-center justify-between">
                         <span>Peak Load</span>
-                        <span className="text-[9px] text-neutral-400">
-                            {latestTouchdown.gForceSim ? "SIM" : "STRUT"}
-                        </span>
                     </div>
                     <div className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white mt-0.5 tabular-nums">
                         {gLoad.toFixed(2)}{" "}
@@ -205,7 +198,7 @@ export const TouchdownFlyoutBanner: React.FC = () => {
                         <span>Bounces</span>
                     </span>
                     <span
-                        className={`text-[10px] font-semibold px-1.5 py-0.2 rounded tabular-nums ${
+                        className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-sm tabular-nums ${
                             bounces > 0
                                 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
                                 : "text-neutral-600 dark:text-neutral-400"

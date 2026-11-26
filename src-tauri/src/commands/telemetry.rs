@@ -53,6 +53,7 @@ use crate::{db, fsuipc, get_worker_state, DbState};
         pub grade: String,
         pub duration_seconds: Option<u64>,
         pub position: Option<String>,
+        pub theme: Option<String>,
     }
 
     #[tauri::command]
@@ -72,20 +73,23 @@ use crate::{db, fsuipc, get_worker_state, DbState};
                 let win_width = (380.0 * scale) as i32;
                 let win_height = (250.0 * scale) as i32;
 
+                let left_x = mon_pos.x + (28.0 * scale) as i32;
+                let center_x = mon_pos.x + (mon_size.width as i32 - win_width) / 2;
+                let right_x = mon_pos.x + mon_size.width as i32 - win_width - (28.0 * scale) as i32;
+                let top_y = mon_pos.y + (32.0 * scale) as i32;
+                let middle_y = mon_pos.y + (mon_size.height as i32 - win_height) / 2;
+                let bottom_y = mon_pos.y + mon_size.height as i32 - win_height - (48.0 * scale) as i32;
+
                 let (x, y) = match pos_str {
-                    "top-center" => {
-                        let center_x = mon_pos.x + (mon_size.width as i32 - win_width) / 2;
-                        (center_x, mon_pos.y + (32.0 * scale) as i32)
-                    }
-                    "bottom-right" => {
-                        let right_x = mon_pos.x + mon_size.width as i32 - win_width - (28.0 * scale) as i32;
-                        let bottom_y = mon_pos.y + mon_size.height as i32 - win_height - (48.0 * scale) as i32;
-                        (right_x, bottom_y)
-                    }
-                    _ => {
-                        let right_x = mon_pos.x + mon_size.width as i32 - win_width - (28.0 * scale) as i32;
-                        (right_x, mon_pos.y + (32.0 * scale) as i32)
-                    }
+                    "top-left" => (left_x, top_y),
+                    "top-center" => (center_x, top_y),
+                    "top-right" => (right_x, top_y),
+                    "middle-left" => (left_x, middle_y),
+                    "middle-right" => (right_x, middle_y),
+                    "bottom-left" => (left_x, bottom_y),
+                    "bottom-center" => (center_x, bottom_y),
+                    "bottom-right" => (right_x, bottom_y),
+                    _ => (right_x, top_y),
                 };
                 let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
             }
