@@ -134,7 +134,7 @@ export const EfbHeader: React.FC<EfbHeaderProps> = ({ previewMode = false }) => 
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border border-transparent ${getActiveTabStyle(
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium whitespace-nowrap transition-all border border-transparent ${getActiveTabStyle(
                                 tab.id,
                             )}`}
                         >
@@ -161,7 +161,7 @@ export const EfbHeader: React.FC<EfbHeaderProps> = ({ previewMode = false }) => 
                             ? "Screen Wake Lock Active (Screen will not sleep)"
                             : "Enable Screen Wake Lock"
                     }
-                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-mono border transition-all ${
+                    className={`flex items-center gap-1 px-2 py-1 rounded-xs text-xs font-mono border transition-all ${
                         isWakeLockActive
                             ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
                             : "bg-neutral-800/50 text-neutral-400 border-neutral-700 hover:text-white"
@@ -184,7 +184,7 @@ export const EfbHeader: React.FC<EfbHeaderProps> = ({ previewMode = false }) => 
                 <button
                     onClick={toggleTheme}
                     title={`Theme: ${theme.toUpperCase()} (Tap to toggle Night Red/Amber)`}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-mono border bg-neutral-800/50 text-neutral-300 border-neutral-700 hover:text-white transition-all"
+                    className="flex items-center gap-1 px-2 py-1 rounded-xs text-xs font-mono border bg-neutral-800/50 text-neutral-300 border-neutral-700 hover:text-white transition-all"
                 >
                     <SunMoon className="w-3.5 h-3.5" />
                     <span className="text-[10px] uppercase font-bold">
