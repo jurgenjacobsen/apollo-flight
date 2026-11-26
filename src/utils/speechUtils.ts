@@ -81,6 +81,74 @@ function numberToSpokenWords(n: number): string {
         .join(" ");
 }
 
+function numberToDigitWords(rawDigits: string): string {
+    return rawDigits
+        .split("")
+        .map((d) => ONES[Number(d)] ?? d)
+        .join(" ");
+}
+
+/**
+ * Generates ICAO Doc 9432 & natural English spoken variants for an integer
+ * (e.g. 2500 -> "two five zero zero", "two thousand five hundred", "twenty five hundred";
+ *       25   -> "twenty five", "two five").
+ */
+function integerToIcaoVariants(rawDigits: string): string[] {
+    const n = Number(rawDigits);
+    if (!Number.isInteger(n) || n < 0) return [rawDigits];
+
+    const variants = new Set<string>();
+    variants.add(numberToSpokenWords(n));
+    if (rawDigits.length >= 2) {
+        variants.add(numberToDigitWords(rawDigits));
+    }
+
+    if (n >= 100 && n < 1000) {
+        const hundreds = Math.floor(n / 100);
+        const rem = n % 100;
+        if (rem === 0) {
+            variants.add(`${ONES[hundreds]} hundred`);
+        } else {
+            variants.add(`${ONES[hundreds]} hundred ${numberToSpokenWords(rem)}`);
+        }
+    } else if (n >= 1000 && n < 100000) {
+        const thousands = Math.floor(n / 1000);
+        const rem = n % 1000;
+        const thousandsLead =
+            thousands < 10
+                ? ONES[thousands]
+                : `${numberToDigitWords(String(thousands))}`;
+        const thousandsNatural = numberToSpokenWords(thousands);
+
+        if (rem === 0) {
+            variants.add(`${thousandsLead} thousand`);
+            if (thousandsNatural !== thousandsLead) {
+                variants.add(`${thousandsNatural} thousand`);
+            }
+        } else if (rem % 100 === 0) {
+            const h = rem / 100;
+            variants.add(`${thousandsLead} thousand ${ONES[h]} hundred`);
+            if (thousandsNatural !== thousandsLead) {
+                variants.add(`${thousandsNatural} thousand ${ONES[h]} hundred`);
+            }
+            if (n < 10000) {
+                variants.add(`${numberToSpokenWords(Math.floor(n / 100))} hundred`);
+            }
+        } else {
+            const remWords =
+                rem < 100
+                    ? numberToSpokenWords(rem)
+                    : `${ONES[Math.floor(rem / 100)]} hundred ${rem % 100 === 0 ? "" : numberToSpokenWords(rem % 100)}`.trim();
+            variants.add(`${thousandsLead} thousand ${remWords}`);
+            if (thousandsNatural !== thousandsLead) {
+                variants.add(`${thousandsNatural} thousand ${remWords}`);
+            }
+        }
+    }
+
+    return Array.from(variants);
+}
+
 const COMPOUND_WORD_ALIASES: Array<[RegExp, string]> = [
     [/\btake[\s-]+off\b/g, "takeoff"],
     [/\bcross[\s-]+check(ed)?\b/g, "crosscheck$1"],
@@ -108,6 +176,73 @@ const COMPOUND_SPLIT_FORMS: Record<string, string> = {
     antiice: "anti ice",
 };
 
+const UNIT_NORMALIZATIONS: Array<[RegExp, string]> = [
+    // Temperature & percent
+    [/°\s*c\b/gi, " degrees celsius "],
+    [/°\s*f\b/gi, " degrees fahrenheit "],
+    [/°/g, " degrees "],
+    [/%/g, " percent "],
+    // Compound speed/pressure/rate units (before "/" is stripped)
+    [/\bkm\/h\b/gi, " kilometers per hour "],
+    [/\bft\/min\b/gi, " feet per minute "],
+    [/\bm\/s\b/gi, " meters per second "],
+    // Single-letter units only when immediately attached to or following a digit
+    [/(\d)\s*(mm|millimeter|millimeters)\b/gi, "$1 millimeters "],
+    [/(\d)\s*(cm|centimeter|centimeters)\b/gi, "$1 centimeters "],
+    [/(\d)\s*(km|kilometer|kilometers)\b/gi, "$1 kilometers "],
+    [/(\d)\s*(nm|nmi)\b/gi, "$1 nautical miles "],
+    [/(\d)\s*(ft|foot|feet)\b/gi, "$1 feet "],
+    [/(\d)\s*(yd|yard|yards)\b/gi, "$1 yards "],
+    [/(\d)\s*(mi|mile|miles)\b/gi, "$1 miles "],
+    [/(\d)\s*(m|meter|meters)\b/gi, "$1 meters "],
+    [/(\d)\s*(kg|kgs|kilogram|kilograms|kilo|kilos)\b/gi, "$1 kilograms "],
+    [/(\d)\s*(g|gram|grams)\b/gi, "$1 grams "],
+    [/(\d)\s*(lb|lbs|pound|pounds)\b/gi, "$1 pounds "],
+    [/(\d)\s*(oz|ounce|ounces)\b/gi, "$1 ounces "],
+    [/(\d)\s*(ml|milliliter|milliliters)\b/gi, "$1 milliliters "],
+    [/(\d)\s*(l|ltr|liter|liters)\b/gi, "$1 liters "],
+    [/(\d)\s*(gal|gals|gallon|gallons)\b/gi, "$1 gallons "],
+    [/(\d)\s*(qt|qts|quart|quarts)\b/gi, "$1 quarts "],
+    [/(\d)\s*(v|volt|volts)\b/gi, "$1 volts "],
+    [/(\d)\s*(a|amp|amps|ampere|amperes)\b/gi, "$1 amps "],
+    [/(\d)\s*(hr|hrs|hour|hours)\b/gi, "$1 hours "],
+    [/(\d)\s*(min|mins|minute|minutes)\b/gi, "$1 minutes "],
+    [/(\d)\s*(sec|secs|second|seconds)\b/gi, "$1 seconds "],
+    // Unambiguous multi-letter units (also when spoken without adjacent digits)
+    [/\b(mm|millimeter)\b/gi, "millimeters"],
+    [/\b(cm|centimeter)\b/gi, "centimeters"],
+    [/\b(km|kilometer)\b/gi, "kilometers"],
+    [/\b(meter)\b/gi, "meters"],
+    [/\b(nmi|nautical mile)\b/gi, "nautical miles"],
+    [/\b(kt|kts|knot)\b/gi, "knots"],
+    [/\b(kph|kmh)\b/gi, "kilometers per hour"],
+    [/\bmph\b/gi, "miles per hour"],
+    [/\bfpm\b/gi, "feet per minute"],
+    [/\bmps\b/gi, "meters per second"],
+    [/\b(hpa|hectopascal)\b/gi, "hectopascals"],
+    [/\b(mbar|mb|millibar)\b/gi, "millibars"],
+    [/\binhg\b/gi, "inches of mercury"],
+    [/\bkpa\b/gi, "kilopascals"],
+    [/\b(kg|kgs|kilogram|kilo|kilos)\b/gi, "kilograms"],
+    [/\b(lb|lbs|pound)\b/gi, "pounds"],
+    [/\b(oz|ounce)\b/gi, "ounces"],
+    [/\b(ml|milliliter)\b/gi, "milliliters"],
+    [/\b(ltr|liter)\b/gi, "liters"],
+    [/\b(gal|gals|gallon)\b/gi, "gallons"],
+    [/\bmhz\b/gi, "megahertz"],
+    [/\bkhz\b/gi, "kilohertz"],
+    [/\bhz\b/gi, "hertz"],
+];
+
+const ICAO_SPOKEN_ALIASES: Array<[RegExp, string]> = [
+    [/\btree\b/g, "three"],
+    [/\bfower\b/g, "four"],
+    [/\bfife\b/g, "five"],
+    [/\bniner\b/g, "nine"],
+    [/\b(decimal|comma)\b/g, "point"],
+    [/\bnegative\b/g, "minus"],
+];
+
 /**
  * Normalizes checklist phrases and spoken transcripts into clean lowercase
  * alphabetic tokens compatible with Vosk's English lexicon.
@@ -115,13 +250,27 @@ const COMPOUND_SPLIT_FORMS: Record<string, string> = {
 export function normalizeVoiceText(text: string): string {
     let cleaned = text
         .toLowerCase()
-        .replace(/&/g, " and ")
-        .replace(/°/g, " degrees ")
+        .replace(/&/g, " and ");
+
+    for (const [pattern, replacement] of UNIT_NORMALIZATIONS) {
+        cleaned = cleaned.replace(pattern, replacement);
+    }
+
+    cleaned = cleaned
         .replace(/\//g, " ")
+        .replace(/(^|\s)-(\d)/g, "$1minus $2")
+        .replace(/(\d+)[,.](\d+)/g, (_, whole: string, frac: string) => {
+            const fracWords = numberToDigitWords(frac);
+            return `${numberToSpokenWords(Number(whole))} point ${fracWords}`;
+        })
         .replace(/[^a-z0-9\s]/g, " ")
         .replace(/\b\d+\b/g, (match) => numberToSpokenWords(Number(match)))
         .replace(/\s+/g, " ")
         .trim();
+
+    for (const [pattern, replacement] of ICAO_SPOKEN_ALIASES) {
+        cleaned = cleaned.replace(pattern, replacement);
+    }
 
     for (const [pattern, replacement] of COMPOUND_WORD_ALIASES) {
         cleaned = cleaned.replace(pattern, replacement);
@@ -145,6 +294,31 @@ export function formatKeyCodeLabel(code: string): string {
     if (code === "AltLeft") return "Left Alt";
     if (code === "AltRight") return "Right Alt";
     return code;
+}
+
+export function expandHyphenatedVariants(raw: string): string[] {
+    const baseForms = new Set<string>([raw]);
+    const joinedRaw = raw.replace(/([a-z0-9])-([a-z0-9])/gi, "$1$2");
+    if (joinedRaw !== raw) {
+        baseForms.add(joinedRaw);
+    }
+
+    // Expand ICAO Doc 9432 numeric variants (e.g. 2500 -> "two five zero zero",
+    // "two thousand five hundred", "twenty five hundred"; 25 -> "twenty five", "two five")
+    const numMatch = raw.match(/\b(\d+)\b/);
+    if (numMatch && !/\d[,.]\d/.test(raw)) {
+        const digits = numMatch[1];
+        for (const numVariant of integerToIcaoVariants(digits)) {
+            baseForms.add(raw.replace(digits, numVariant));
+        }
+    }
+
+    const normalized = new Set<string>();
+    for (const form of baseForms) {
+        const norm = normalizeVoiceText(form);
+        if (norm) normalized.add(norm);
+    }
+    return Array.from(normalized);
 }
 
 /**
@@ -178,24 +352,34 @@ export function buildChecklistGrammar(checklist: Checklist | null): string[] {
     ]);
 
     const addPhraseAndTokens = (raw: string) => {
-        const norm = normalizeVoiceText(raw);
-        if (!norm) return;
-        grammarSet.add(norm);
+        const variants = expandHyphenatedVariants(raw);
+        for (const norm of variants) {
+            grammarSet.add(norm);
 
-        // Also add split-word variants (e.g. "takeoff" -> "take off") for Vosk lexicon coverage
-        const splitVariant = norm
-            .split(" ")
-            .map((w) => COMPOUND_SPLIT_FORMS[w] ?? w)
-            .join(" ");
-        if (splitVariant !== norm) {
-            grammarSet.add(splitVariant);
-        }
+            if (norm.startsWith("zero point ")) {
+                grammarSet.add(norm.replace(/^zero /, ""));
+            }
+            if (norm === "zero point five centimeters") {
+                grammarSet.add("centimeter");
+                grammarSet.add("half a centimeter");
+                grammarSet.add("half centimeter");
+            }
 
-        const words = splitVariant.split(" ");
-        if (words.length > 1) {
-            for (const w of words) {
-                if (w.length >= 2) {
-                    grammarSet.add(w);
+            // Also add split-word variants (e.g. "takeoff" -> "take off") for Vosk lexicon coverage
+            const splitVariant = norm
+                .split(" ")
+                .map((w) => COMPOUND_SPLIT_FORMS[w] ?? w)
+                .join(" ");
+            if (splitVariant !== norm) {
+                grammarSet.add(splitVariant);
+            }
+
+            const words = splitVariant.split(" ");
+            if (words.length > 1) {
+                for (const w of words) {
+                    if (w.length >= 2) {
+                        grammarSet.add(w);
+                    }
                 }
             }
         }
@@ -297,14 +481,14 @@ export function matchSectionActivation(
     );
 
     for (const section of sorted) {
-        const normTitle = normalizeVoiceText(section.title);
-        if (!normTitle) continue;
-        const sopPhrase = normTitle.endsWith("checklist")
-            ? normTitle
-            : `${normTitle} checklist`;
+        for (const normTitle of expandHyphenatedVariants(section.title)) {
+            const sopPhrase = normTitle.endsWith("checklist")
+                ? normTitle
+                : `${normTitle} checklist`;
 
-        if (clean === sopPhrase || clean.includes(sopPhrase)) {
-            return section;
+            if (clean === sopPhrase || clean.includes(sopPhrase)) {
+                return section;
+            }
         }
     }
 
@@ -322,20 +506,40 @@ export function verifyChecklistResponse(
     const cleanSpoken = normalizeVoiceText(spoken);
     if (!cleanSpoken) return false;
 
-    const candidates = [item.response, ...(item.acceptedResponses ?? [])]
-        .map(normalizeVoiceText)
+    const baseCandidates = [item.response, ...(item.acceptedResponses ?? [])]
+        .flatMap(expandHyphenatedVariants)
         .filter(Boolean);
+
+    const candidates = new Set<string>(baseCandidates);
+    for (const c of baseCandidates) {
+        if (c.startsWith("zero point ")) {
+            candidates.add(c.replace(/^zero /, ""));
+        }
+        if (c === "zero point five centimeters") {
+            candidates.add("half a centimeter");
+            candidates.add("half centimeter");
+        }
+    }
+
+    const spokenWords = cleanSpoken.split(" ");
+    const spokenJoinedPairs = new Set<string>(spokenWords);
+    for (let i = 0; i < spokenWords.length - 1; i++) {
+        spokenJoinedPairs.add(`${spokenWords[i]}${spokenWords[i + 1]}`);
+    }
 
     // 1. Require the full expected phrase or accepted alias to be spoken
     //    (never match a truncated prefix like "reviewed as" against "reviewed as req")
     for (const expected of candidates) {
-        if (cleanSpoken.includes(expected)) {
+        if (
+            cleanSpoken.includes(expected) ||
+            (!expected.includes(" ") && spokenJoinedPairs.has(expected))
+        ) {
             return true;
         }
     }
 
-    const spokenTokens = new Set(cleanSpoken.split(" "));
-    const primaryExpected = candidates[0] ?? "";
+    const spokenTokens = new Set(spokenWords);
+    const primaryExpected = baseCandidates[0] ?? "";
     const primaryWords = primaryExpected.split(" ").filter(Boolean);
 
     // 2. Allow single-word aviation affirmatives only when the primary expected
@@ -371,6 +575,20 @@ export function verifyChecklistResponse(
 
 const AVIATION_SPEECH_EXPANSIONS: Array<[RegExp, string]> = [
     [/\bREQD?\b/gi, "required"],
+    [/\bSTBY\b/gi, "standby"],
+    [/\bPWR\b/gi, "power"],
+    [/\bBATT?\b/gi, "battery"],
+    [/\bATIS\b/gi, "Atis"],
+    [/\bEMER\b/gi, "emergency"],
+    [/\bNAV\b/gi, "navigation"],
+    [/\bFLT\b/gi, "flight"],
+    [/\bAPPR\b/gi, "approach"],
+    [/\bLDG\b/gi, "landing"],
+    [/\bALTM\b/gi, "altimeter"],
+    [/\bCAB\b/gi, "cabin"],
+    [/\bXFEED\b/gi, "crossfeed"],
+    [/\bINST\b/gi, "instrument"],
+    [/\bPOS\b/gi, "position"],
     [/\bENG\b/gi, "engine"],
     [/\bALT\b/gi, "altitude"],
     [/\bTEMP\b/gi, "temperature"],
@@ -384,7 +602,6 @@ const AVIATION_SPEECH_EXPANSIONS: Array<[RegExp, string]> = [
     [/\bELEC\b/gi, "electrical"],
     [/\bPNEU\b/gi, "pneumatic"],
     [/\bGEN\b/gi, "generator"],
-    [/\bBATT?\b/gi, "battery"],
     [/\bIGN\b/gi, "ignition"],
     [/\bMIN\b/gi, "minimum"],
     [/\bMAX\b/gi, "maximum"],
@@ -412,6 +629,7 @@ const PRESERVED_ACRONYMS = new Set([
     "VNAV",
     "LNAV",
     "ATC",
+    "ELT",
 ]);
 
 /**
@@ -421,9 +639,34 @@ const PRESERVED_ACRONYMS = new Set([
 export function formatChallengeForSpeech(text: string): string {
     let spoken = text
         .trim()
+        .replace(/(\d+),(\d+)/g, "$1.$2")
+        .replace(/°\s*c\b/gi, " degrees Celsius")
+        .replace(/°\s*f\b/gi, " degrees Fahrenheit")
+        .replace(/°/g, " degrees")
+        .replace(/%/g, " percent")
+        .replace(/(\d+(?:\.\d+)?)\s*mm\b/gi, "$1 millimeters")
+        .replace(/(\d+(?:\.\d+)?)\s*cm\b/gi, "$1 centimeters")
+        .replace(/(\d+(?:\.\d+)?)\s*km\/h\b/gi, "$1 kilometers per hour")
+        .replace(/(\d+(?:\.\d+)?)\s*km\b/gi, "$1 kilometers")
+        .replace(/(\d+(?:\.\d+)?)\s*m\b/gi, "$1 meters")
+        .replace(/(\d+(?:\.\d+)?)\s*(?:nm|nmi)\b/gi, "$1 nautical miles")
+        .replace(/(\d+(?:\.\d+)?)\s*ft\/min\b/gi, "$1 feet per minute")
+        .replace(/(\d+(?:\.\d+)?)\s*ft\b/gi, "$1 feet")
+        .replace(/(\d+(?:\.\d+)?)\s*kts?\b/gi, "$1 knots")
+        .replace(/(\d+(?:\.\d+)?)\s*fpm\b/gi, "$1 feet per minute")
+        .replace(/(\d+(?:\.\d+)?)\s*hpa\b/gi, "$1 hectopascals")
+        .replace(/(\d+(?:\.\d+)?)\s*mbar\b/gi, "$1 millibars")
+        .replace(/(\d+(?:\.\d+)?)\s*inhg\b/gi, "$1 inches of mercury")
+        .replace(/(\d+(?:\.\d+)?)\s*kgs?\b/gi, "$1 kilograms")
+        .replace(/(\d+(?:\.\d+)?)\s*lbs?\b/gi, "$1 pounds")
+        .replace(/(\d+(?:\.\d+)?)\s*gals?\b/gi, "$1 gallons")
+        .replace(/(\d+(?:\.\d+)?)\s*ml\b/gi, "$1 milliliters")
+        .replace(/(\d+(?:\.\d+)?)\s*l\b/gi, "$1 liters")
+        .replace(/(\d+(?:\.\d+)?)\s*mhz\b/gi, "$1 megahertz")
+        .replace(/(\d+(?:\.\d+)?)\s*khz\b/gi, "$1 kilohertz")
+        .replace(/(\d+(?:\.\d+)?)\s*hz\b/gi, "$1 hertz")
         .replace(/&/g, " and ")
-        .replace(/\//g, ", ")
-        .replace(/°/g, " degrees");
+        .replace(/\//g, ", ");
 
     for (const [pattern, replacement] of AVIATION_SPEECH_EXPANSIONS) {
         spoken = spoken.replace(pattern, replacement);

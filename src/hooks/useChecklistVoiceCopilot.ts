@@ -23,17 +23,23 @@ interface UseChecklistVoiceCopilotProps {
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+async function createOutputAudioContext(): Promise<AudioContext | null> {
+    const AudioContextClass =
+        window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return null;
+    const ctx = new AudioContextClass();
+    const outputDeviceId = useFlightStore.getState().voiceCopilotOutputDeviceId;
+    if (outputDeviceId && typeof (ctx as any).setSinkId === "function") {
+        await (ctx as any).setSinkId(outputDeviceId);
+    }
+    return ctx;
+}
+
 // Synthesize pleasant cockpit audio chime using Web Audio API (zero audio file dependencies)
 async function playCockpitChime() {
     try {
-        const AudioContextClass =
-            window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContextClass) return;
-        const ctx = new AudioContextClass();
-        const outputDeviceId = useFlightStore.getState().voiceCopilotOutputDeviceId;
-        if (outputDeviceId && typeof (ctx as any).setSinkId === "function") {
-            await (ctx as any).setSinkId(outputDeviceId);
-        }
+        const ctx = await createOutputAudioContext();
+        if (!ctx) return;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
@@ -47,6 +53,37 @@ async function playCockpitChime() {
         gain.connect(ctx.destination);
         osc.start();
         osc.stop(ctx.currentTime + 0.2);
+    } catch {
+        // Fallback or audio not allowed without user gesture
+    }
+}
+
+// Distinct ascending (on) / descending (off) two-tone chime for Voice Co-Pilot state changes
+async function playCopilotToggleChime(mode: "on" | "off") {
+    try {
+        const ctx = await createOutputAudioContext();
+        if (!ctx) return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const now = ctx.currentTime;
+
+        osc.type = "sine";
+        if (mode === "on") {
+            osc.frequency.setValueAtTime(587.33, now); // D5
+            osc.frequency.setValueAtTime(880, now + 0.09); // A5
+        } else {
+            osc.frequency.setValueAtTime(783.99, now); // G5
+            osc.frequency.setValueAtTime(523.25, now + 0.09); // C5
+        }
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.14, now + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
     } catch {
         // Fallback or audio not allowed without user gesture
     }
@@ -194,7 +231,18 @@ export function useChecklistVoiceCopilot({
                 activeSectionIdRef.current = null;
                 setIsPaused(false);
                 isPausedRef.current = false;
-                await speak(`${formatSectionSopName(section.title)} completed.`);
+                const skippedItems = section.items.filter((i) => !i.checked);
+                const sopName = formatSectionSopName(section.title);
+                if (skippedItems.length > 0) {
+                    const challenges = skippedItems.map((i) => i.challenge);
+                    const skippedList =
+                        challenges.length === 1
+                            ? challenges[0]
+                            : `${challenges.slice(0, -1).join(", ")} and ${challenges[challenges.length - 1]}`;
+                    await speak(`${sopName} completed, except for ${skippedList}.`);
+                } else {
+                    await speak(`${sopName} completed.`);
+                }
                 onSectionCompletedRef.current?.(section.id);
                 return;
             }
@@ -589,12 +637,17 @@ export function useChecklistVoiceCopilot({
 
     // Stop audio stream & Vosk session
     const stopListening = useCallback(async () => {
+        const wasListening = isListeningRef.current;
         setIsListening(false);
         isListeningRef.current = false;
         setAudioLevel(0);
         setIsPttActive(false);
         isPttPressedRef.current = false;
         pendingQueueRef.current = [];
+
+        if (wasListening) {
+            void playCopilotToggleChime("off");
+        }
 
         if (processorRef.current) {
             try {
@@ -629,6 +682,7 @@ export function useChecklistVoiceCopilot({
             await safeInvoke("start_speech_session", { grammar });
         } catch (err) {
             console.warn("[useChecklistVoiceCopilot] Vosk start error:", err);
+            void playCopilotToggleChime("off");
             return;
         }
 
@@ -637,6 +691,13 @@ export function useChecklistVoiceCopilot({
                 buildMicConstraints(inputDeviceId),
             );
             mediaStreamRef.current = stream;
+            stream.getAudioTracks().forEach((track) => {
+                track.onended = () => {
+                    if (isListeningRef.current) {
+                        void stopListening();
+                    }
+                };
+            });
 
             const audioCtx = createSpeechAudioContext();
             audioContextRef.current = audioCtx;
@@ -698,8 +759,12 @@ export function useChecklistVoiceCopilot({
 
             setIsListening(true);
             isListeningRef.current = true;
+            void playCopilotToggleChime("on");
         } catch (err) {
             console.error("[useChecklistVoiceCopilot] Mic stream error:", err);
+            if (!isListeningRef.current) {
+                void playCopilotToggleChime("off");
+            }
             await stopListening();
         }
     }, [handleSpokenText, stopListening]);

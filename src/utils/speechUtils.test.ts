@@ -144,6 +144,110 @@ describe("speechUtils", () => {
         expect(verifyChecklistResponse("parking brake is set", singleWordItem)).toBe(true);
     });
 
+    it("speaks abbreviations as words and pronounces ATIS as a word", () => {
+        expect(formatChallengeForSpeech("STBY PWR")).toBe("standby power.");
+        expect(formatChallengeForSpeech("BAT MASTER")).toBe("battery master.");
+        expect(formatChallengeForSpeech("ATIS")).toBe("Atis.");
+        expect(formatChallengeForSpeech("ELT")).toBe("ELT.");
+        expect(formatChallengeForSpeech("0,5 cm")).toBe("0.5 centimeters.");
+    });
+
+    it("supports decimal centimeter responses such as 0,5 cm", () => {
+        const item = {
+            id: "item-cm",
+            challenge: "Test Gap",
+            response: "0,5 cm",
+            checked: false,
+        };
+
+        expect(normalizeVoiceText("0,5 cm")).toBe("zero point five centimeters");
+        expect(verifyChecklistResponse("zero point five centimeters", item)).toBe(true);
+        expect(verifyChecklistResponse("point five centimeters", item)).toBe(true);
+        expect(verifyChecklistResponse("zero comma five centimeter", item)).toBe(true);
+        expect(verifyChecklistResponse("half a centimeter", item)).toBe(true);
+        expect(verifyChecklistResponse("one centimeter", item)).toBe(false);
+    });
+
+    it("dynamically supports any hyphenated word in both split and joined forms", () => {
+        const item = {
+            id: "item-cutoff",
+            challenge: "Fuel Control",
+            response: "Cut-off",
+            checked: false,
+        };
+
+        expect(verifyChecklistResponse("cutoff", item)).toBe(true);
+        expect(verifyChecklistResponse("cut off", item)).toBe(true);
+        expect(verifyChecklistResponse("cut-off", item)).toBe(true);
+
+        const joinedItem = {
+            id: "item-cutoff-joined",
+            challenge: "Fuel Control",
+            response: "Cutoff",
+            checked: false,
+        };
+        expect(verifyChecklistResponse("cut off", joinedItem)).toBe(true);
+
+        const grammar = buildChecklistGrammar({
+            id: "chk-hyphen",
+            title: "Test",
+            createdAt: "2026-11-25T00:00:00Z",
+            updatedAt: "2026-11-25T00:00:00Z",
+            sections: [
+                {
+                    id: "sec-1",
+                    title: "Anti-Skid",
+                    items: [item],
+                },
+            ],
+        });
+        expect(grammar).toContain("cut off");
+        expect(grammar).toContain("cutoff");
+        expect(grammar).toContain("anti skid checklist");
+        expect(grammar).toContain("antiskid checklist");
+    });
+
+    it("supports worldwide units of measurement and ICAO Doc 9432 spoken numbers", () => {
+        const altItem = {
+            id: "item-alt",
+            challenge: "Altitude",
+            response: "2500 ft",
+            checked: false,
+        };
+        expect(verifyChecklistResponse("two five zero zero feet", altItem)).toBe(true);
+        expect(verifyChecklistResponse("two thousand five hundred feet", altItem)).toBe(true);
+        expect(verifyChecklistResponse("twenty five hundred feet", altItem)).toBe(true);
+        expect(verifyChecklistResponse("two fife zero zero feet", altItem)).toBe(true);
+
+        const qnhItem = {
+            id: "item-qnh",
+            challenge: "Altimeter",
+            response: "1013 hPa",
+            checked: false,
+        };
+        expect(verifyChecklistResponse("one zero one tree hectopascals", qnhItem)).toBe(true);
+
+        const freqItem = {
+            id: "item-freq",
+            challenge: "Comm 1",
+            response: "121.5 MHz",
+            checked: false,
+        };
+        expect(verifyChecklistResponse("one two one decimal five megahertz", freqItem)).toBe(true);
+
+        const speedItem = {
+            id: "item-spd",
+            challenge: "Target Speed",
+            response: "145 kt",
+            checked: false,
+        };
+        expect(verifyChecklistResponse("one fower fife knots", speedItem)).toBe(true);
+
+        expect(formatChallengeForSpeech("2500 ft")).toBe("2500 feet.");
+        expect(formatChallengeForSpeech("1013 hPa")).toBe("1013 hectopascals.");
+        expect(formatChallengeForSpeech("180 kg")).toBe("180 kilograms.");
+    });
+
     it("formats KeyboardEvent.code labels cleanly for PTT settings", () => {
         expect(formatKeyCodeLabel("Space")).toBe("Space");
         expect(formatKeyCodeLabel("KeyV")).toBe("V");
