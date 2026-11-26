@@ -1027,6 +1027,7 @@ export interface FlightState {
     windSpeedUnit: WindSpeedUnit;
     temperatureUnit: TemperatureUnit;
     liveTrafficNetwork: LiveTrafficNetwork;
+    devShowTestAircraftOnMap: boolean;
     dbInitialized: boolean;
     airportsCount: number;
     isSyncingAirports: boolean;
@@ -1061,10 +1062,28 @@ export interface FlightState {
     showTouchdownBanner: boolean;
     dismissTouchdownBanner: () => void;
     touchdownNotificationMode: "in-app" | "overlay" | "both";
-    touchdownOverlayPosition: "top-right" | "top-center" | "bottom-right";
+    touchdownOverlayPosition:
+        | "top-left"
+        | "top-center"
+        | "top-right"
+        | "middle-left"
+        | "middle-right"
+        | "bottom-left"
+        | "bottom-center"
+        | "bottom-right";
     touchdownOverlayDuration: number;
     setTouchdownNotificationMode: (mode: "in-app" | "overlay" | "both") => Promise<void>;
-    setTouchdownOverlayPosition: (pos: "top-right" | "top-center" | "bottom-right") => Promise<void>;
+    setTouchdownOverlayPosition: (
+        pos:
+            | "top-left"
+            | "top-center"
+            | "top-right"
+            | "middle-left"
+            | "middle-right"
+            | "bottom-left"
+            | "bottom-center"
+            | "bottom-right",
+    ) => Promise<void>;
     setTouchdownOverlayDuration: (duration: number) => Promise<void>;
     triggerTouchdownNotification: (touchdown: TouchdownEvent, preview?: boolean) => Promise<void>;
     detectedMultiSectorRoute: {
@@ -1112,6 +1131,7 @@ export interface FlightState {
     setWindSpeedUnit: (unit: WindSpeedUnit) => Promise<void>;
     setTemperatureUnit: (unit: TemperatureUnit) => Promise<void>;
     setLiveTrafficNetwork: (network: LiveTrafficNetwork) => Promise<void>;
+    setDevShowTestAircraftOnMap: (show: boolean) => void;
     setActiveView: (view: FlightState["activeView"]) => void;
     setSettingsActiveTab: (tab: string) => void;
     setSelectedFlightId: (id: string | null) => void;
@@ -1523,6 +1543,10 @@ export const useFlightStore = create<FlightState>()(
             simbriefUsername: "",
             latestOfp: null,
             liveTrafficNetwork: "off",
+            devShowTestAircraftOnMap: false,
+
+            setDevShowTestAircraftOnMap: (show: boolean) =>
+                set({ devShowTestAircraftOnMap: show }),
 
             setLiveTrafficNetwork: async (network: LiveTrafficNetwork) => {
                 set({ liveTrafficNetwork: network });
@@ -1948,8 +1972,7 @@ export const useFlightStore = create<FlightState>()(
                         if (
                             dbSettings.liveTrafficNetwork === "off" ||
                             dbSettings.liveTrafficNetwork === "vatsim" ||
-                            dbSettings.liveTrafficNetwork === "ivao" ||
-                            dbSettings.liveTrafficNetwork === "pilotedge"
+                            dbSettings.liveTrafficNetwork === "ivao"
                         ) {
                             set({ liveTrafficNetwork: dbSettings.liveTrafficNetwork });
                         }
@@ -1997,8 +2020,13 @@ export const useFlightStore = create<FlightState>()(
                             set({ touchdownNotificationMode: dbSettings.touchdownNotificationMode });
                         }
                         if (
-                            dbSettings.touchdownOverlayPosition === "top-right" ||
+                            dbSettings.touchdownOverlayPosition === "top-left" ||
                             dbSettings.touchdownOverlayPosition === "top-center" ||
+                            dbSettings.touchdownOverlayPosition === "top-right" ||
+                            dbSettings.touchdownOverlayPosition === "middle-left" ||
+                            dbSettings.touchdownOverlayPosition === "middle-right" ||
+                            dbSettings.touchdownOverlayPosition === "bottom-left" ||
+                            dbSettings.touchdownOverlayPosition === "bottom-center" ||
                             dbSettings.touchdownOverlayPosition === "bottom-right"
                         ) {
                             set({ touchdownOverlayPosition: dbSettings.touchdownOverlayPosition });
@@ -2654,6 +2682,14 @@ export const useFlightStore = create<FlightState>()(
                 }
                 set({ theme });
                 safeInvoke("set_user_setting", { key: "theme", value: theme });
+                if (
+                    typeof window !== "undefined" &&
+                    ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
+                ) {
+                    import("@tauri-apps/api/event")
+                        .then(({ emit }) => emit("theme-changed", theme))
+                        .catch(() => {});
+                }
             },
 
             toggleTheme: () => {
@@ -2725,7 +2761,7 @@ export const useFlightStore = create<FlightState>()(
                 });
             },
 
-            triggerTouchdownNotification: async (td, preview = false) => {
+            triggerTouchdownNotification: async (td, _preview = false) => {
                 const mode = get().touchdownNotificationMode || "in-app";
                 const position = get().touchdownOverlayPosition || "top-right";
                 const duration = get().touchdownOverlayDuration || 10;
@@ -2747,7 +2783,7 @@ export const useFlightStore = create<FlightState>()(
                     });
                 }
 
-                if (mode === "overlay" || mode === "both" || preview) {
+                if (mode === "overlay" || mode === "both") {
                     await safeInvoke("show_touchdown_overlay", {
                         payload: {
                             verticalSpeedFpm: td.verticalSpeedFpm,
@@ -2763,6 +2799,7 @@ export const useFlightStore = create<FlightState>()(
                             grade,
                             durationSeconds: duration,
                             position,
+                            theme: get().theme,
                         },
                     });
                 }

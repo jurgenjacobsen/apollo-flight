@@ -12,6 +12,7 @@ import {
     BookOpen,
     Mic,
     Ruler,
+    Wrench,
 } from "lucide-react";
 
 import packageJson from "../../../package.json";
@@ -26,6 +27,12 @@ import { DocumentationTab } from "./settings/DocumentationTab";
 import { ChecklistsSettingsTab } from "./settings/ChecklistsSettingsTab";
 import { BackupExportTab } from "./settings/BackupExportTab";
 import { AboutTab } from "./settings/AboutTab";
+import { DevTab } from "./settings/DevTab";
+
+const isTauriDev =
+    Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV) &&
+    typeof window !== "undefined" &&
+    ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
 
 const SETTINGS_SECTIONS = [
     {
@@ -91,6 +98,18 @@ const SETTINGS_SECTIONS = [
         description: "Version details, runtime environment, updates, and credits",
         icon: Info,
     },
+    ...(isTauriDev
+        ? [
+              {
+                  id: "settings-dev",
+                  label: "Developer Tools",
+                  shortLabel: "Dev",
+                  description:
+                      "Test infrequent modals, onboarding, and touchdown overlays (tauri dev only)",
+                  icon: Wrench,
+              },
+          ]
+        : []),
 ];
 
 export const SettingsView: React.FC = () => {
@@ -242,6 +261,14 @@ export const SettingsView: React.FC = () => {
 
                         {activeSection === "settings-about" && (
                             <AboutTab notifySaved={notifySaved} />
+                        )}
+
+                        {isTauriDev && activeSection === "settings-dev" && (
+                            <DevTab
+                                onOpenImportModal={() =>
+                                    setIsImportModalOpen(true)
+                                }
+                            />
                         )}
                     </div>
                 </div>
