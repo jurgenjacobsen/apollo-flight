@@ -1,4 +1,5 @@
 import React, { useRef, useCallback } from "react";
+import { Tooltip } from "./Tooltip";
 
 export interface ResizableHeaderCellProps {
     columnId: string;
@@ -85,33 +86,35 @@ export const ResizableHeaderCell: React.FC<ResizableHeaderCellProps> = ({
         <th
             ref={thRef}
             style={cellStyle}
-            title={title}
             onClick={onClick}
             className={`relative group/th select-none ${className}`}
         >
-            <div
-                className={`w-full h-full flex items-center ${
-                    align === "center"
-                        ? "justify-center"
-                        : align === "right"
-                          ? "justify-end"
-                          : "justify-start"
-                }`}
-            >
-                {children}
-            </div>
+            <Tooltip content={title} disabled={!title}>
+                <div
+                    className={`w-full h-full flex items-center ${
+                        align === "center"
+                            ? "justify-center"
+                            : align === "right"
+                              ? "justify-end"
+                              : "justify-start"
+                    }`}
+                >
+                    {children}
+                </div>
+            </Tooltip>
 
             {/* Interactive Column Resize Handle */}
             {isResizable && (
-                <div
-                    onMouseDown={handleMouseDown}
-                    onDoubleClick={handleDoubleClick}
-                    onClick={(e) => e.stopPropagation()}
-                    title="Drag to resize column · Double-click to reset width"
-                    className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-20 group/handle flex items-center justify-center hover:bg-neutral-400/40 dark:hover:bg-neutral-600/40 active:bg-neutral-500 transition-colors"
-                >
-                    <div className="w-px h-3.5 bg-neutral-300 dark:bg-neutral-700 group-hover/handle:bg-neutral-500 dark:group-hover/handle:bg-neutral-400" />
-                </div>
+                <Tooltip content="Drag to resize column · Double-click to reset width">
+                    <div
+                        onMouseDown={handleMouseDown}
+                        onDoubleClick={handleDoubleClick}
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-20 group/handle flex items-center justify-center hover:bg-neutral-400/40 dark:hover:bg-neutral-600/40 active:bg-neutral-500 transition-colors"
+                    >
+                        <div className="w-px h-3.5 bg-neutral-300 dark:bg-neutral-700 group-hover/handle:bg-neutral-500 dark:group-hover/handle:bg-neutral-400" />
+                    </div>
+                </Tooltip>
             )}
         </th>
     );

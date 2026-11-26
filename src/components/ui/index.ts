@@ -4,6 +4,7 @@ export * from "./ConfirmDeleteButton";
 export * from "./StatusPill";
 export * from "./Tooltip";
 export * from "./TableColumnCustomizer";
+export * from "./TableCompactToggle";
 export * from "./ResizableHeaderCell";
 export * from "./ErrorBoundary";
 export * from "./Checkbox";

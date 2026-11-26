@@ -1,22 +1,41 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useFlightStore } from "../../store/flightStore";
-import { DeletedFlightRecord } from "../../types/flight";
-import { PaginationBar, ConfirmDeleteButton } from "../ui";
+import { formatLogbookDuration } from "../../utils/flightFormatters";
+import {
+    PaginationBar,
+    ConfirmDeleteButton,
+    Tooltip,
+    TableCompactToggle,
+} from "../ui";
 import {
     Trash2,
     RotateCcw,
-    AlertTriangle,
     Clock,
     Plane,
     ArrowRight,
     ArrowLeft,
+    ArrowUp,
+    ArrowDown,
+    ArrowUpDown,
     TrendingDown,
     Layers,
     Search,
-    CheckCircle2,
     Calendar,
+    Compass,
+    Sliders,
+    Info,
     AlertCircle,
 } from "lucide-react";
+
+type RecycleSortField =
+    | "route"
+    | "aircraft"
+    | "duration"
+    | "distance"
+    | "touchdown"
+    | "deletedAt"
+    | "retention";
+type SortDirection = "asc" | "desc";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
@@ -35,6 +54,59 @@ export const RecycleBinView: React.FC = () => {
 
     const [searchTerm, setSearchTerm] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
+    const [sortField, setSortField] = useState<RecycleSortField>("deletedAt");
+    const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+    const [isCompact, setIsCompact] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem("apollo_recycle_bin_compact") === "true";
+        } catch {
+            return false;
+        }
+    });
+
+    const toggleCompact = () => {
+        setIsCompact((prev) => {
+            const next = !prev;
+            try {
+                localStorage.setItem("apollo_recycle_bin_compact", String(next));
+            } catch {}
+            return next;
+        });
+    };
+
+    const cellPadY = `${isCompact ? "py-1.5" : "py-3"} transition-[padding] duration-200 ease-out`;
+    const subLineClass = `grid transition-[grid-template-rows,opacity] duration-200 ease-out ${
+        isCompact
+            ? "grid-rows-[0fr] opacity-0"
+            : "grid-rows-[1fr] opacity-100"
+    }`;
+
+    const handleSort = (field: RecycleSortField) => {
+        if (sortField === field) {
+            if (sortDirection === "desc") {
+                setSortDirection("asc");
+            } else {
+                setSortField("deletedAt");
+                setSortDirection("desc");
+            }
+        } else {
+            setSortField(field);
+            setSortDirection(field === "route" || field === "aircraft" ? "asc" : "desc");
+        }
+    };
+
+    const renderSortIcon = (field: RecycleSortField) => {
+        if (sortField === field) {
+            return sortDirection === "asc" ? (
+                <ArrowUp className="w-3 h-3 text-neutral-900 dark:text-white shrink-0" />
+            ) : (
+                <ArrowDown className="w-3 h-3 text-neutral-900 dark:text-white shrink-0" />
+            );
+        }
+        return (
+            <ArrowUpDown className="w-3 h-3 text-neutral-400 opacity-0 group-hover/sort:opacity-100 transition-opacity shrink-0" />
+        );
+    };
 
     // Purge expired items on mount and on unmount
     useEffect(() => {
@@ -49,8 +121,8 @@ export const RecycleBinView: React.FC = () => {
     }, [searchTerm]);
 
     const filteredItems = useMemo(() => {
-        return recycleBin.filter((f) => {
-            const q = searchTerm.toLowerCase().trim();
+        const q = searchTerm.toLowerCase().trim();
+        const filtered = recycleBin.filter((f) => {
             if (!q) return true;
             return (
                 f.departureIcao.toLowerCase().includes(q) ||
@@ -58,7 +130,40 @@ export const RecycleBinView: React.FC = () => {
                 f.aircraftType.toLowerCase().includes(q)
             );
         });
-    }, [recycleBin, searchTerm]);
+
+        return [...filtered].sort((a, b) => {
+            let cmp = 0;
+            switch (sortField) {
+                case "route":
+                    cmp = `${a.departureIcao}-${a.arrivalIcao}`.localeCompare(
+                        `${b.departureIcao}-${b.arrivalIcao}`,
+                    );
+                    break;
+                case "aircraft":
+                    cmp = (a.aircraftType || "").localeCompare(b.aircraftType || "");
+                    break;
+                case "duration":
+                    cmp = a.flightTimeSeconds - b.flightTimeSeconds;
+                    break;
+                case "distance":
+                    cmp = (a.distanceFlownNm ?? 0) - (b.distanceFlownNm ?? 0);
+                    break;
+                case "touchdown":
+                    cmp =
+                        Math.abs(a.landingRateFpm ?? 0) -
+                        Math.abs(b.landingRateFpm ?? 0);
+                    break;
+                case "retention":
+                case "deletedAt":
+                default:
+                    cmp =
+                        new Date(a.deletedAt).getTime() -
+                        new Date(b.deletedAt).getTime();
+                    break;
+            }
+            return sortDirection === "asc" ? cmp : -cmp;
+        });
+    }, [recycleBin, searchTerm, sortField, sortDirection]);
 
     const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
 
@@ -217,172 +322,284 @@ export const RecycleBinView: React.FC = () => {
                     No deleted flights match "{searchTerm}"
                 </div>
             ) : (
-                <div className="space-y-3">
-                    <div className="border border-neutral-200 dark:border-geist-hairline rounded-sm overflow-hidden bg-white dark:bg-geist-surface shadow-xs">
-                        <div className="overflow-x-auto min-w-full">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-neutral-200 dark:border-geist-hairline bg-neutral-50/70 dark:bg-[#141414] text-[11px] text-neutral-500 dark:text-geist-muted uppercase tracking-wider">
-                                        <th className="py-2.5 px-3 font-medium">
-                                            Route
-                                        </th>
-                                        <th className="py-2.5 px-3 font-medium">
-                                            Aircraft
-                                        </th>
-                                        <th className="py-2.5 px-3 font-medium">
-                                            Flight Time
-                                        </th>
-                                        <th className="py-2.5 px-3 font-medium">
-                                            Distance
-                                        </th>
-                                        <th className="py-2.5 px-3 font-medium">
-                                            Landing Rate
-                                        </th>
-                                        <th className="py-2.5 px-3 font-medium">
-                                            Deleted Date
-                                        </th>
-                                        <th className="py-2.5 px-3 font-medium">
-                                            Retention Status
-                                        </th>
-                                        <th className="py-2.5 px-3 font-medium text-right pr-4">
-                                            Actions
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-neutral-200 dark:divide-geist-hairline text-xs">
-                                    {paginatedItems.map((flight) => {
-                                        const retention = getRetentionInfo(
-                                            flight.deletedAt,
-                                        );
-                                        const durationMins = Math.round(
-                                            flight.flightTimeSeconds / 60,
-                                        );
-
-                                        return (
-                                            <tr
-                                                key={flight.id}
-                                                className="hover:bg-neutral-50 dark:hover:bg-[#121212] transition-colors"
+                <div className="overflow-hidden bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-xs relative">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-neutral-100/70 dark:bg-[#0e0e0e] border-b border-neutral-200 dark:border-geist-hairline text-xs text-neutral-600 dark:text-neutral-400 select-none">
+                                    <th className="py-2.5 px-4 font-medium">
+                                        <Tooltip content="Sort by route">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSort("route")}
+                                                className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
                                             >
-                                                {/* Route */}
-                                                <td className="py-3 px-3 align-middle">
-                                                    <div className="font-mono font-bold text-neutral-900 dark:text-white flex items-center gap-1.5">
-                                                        <span>
-                                                            {flight.departureIcao ||
-                                                                "????"}
-                                                        </span>
-                                                        <ArrowRight className="w-3 h-3 text-neutral-400" />
-                                                        <span>
-                                                            {flight.arrivalIcao ||
-                                                                "????"}
-                                                        </span>
-                                                    </div>
-                                                    <div className="text-[10px] text-neutral-400">
-                                                        {new Date(
-                                                            flight.startTime,
-                                                        ).toLocaleDateString()}
-                                                    </div>
-                                                </td>
+                                                <Plane className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                <span>Route</span>
+                                                {renderSortIcon("route")}
+                                            </button>
+                                        </Tooltip>
+                                    </th>
+                                    <th className="py-2.5 px-4 font-medium">
+                                        <Tooltip content="Sort by aircraft">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSort("aircraft")}
+                                                className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                            >
+                                                <Layers className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                <span>Aircraft</span>
+                                                {renderSortIcon("aircraft")}
+                                            </button>
+                                        </Tooltip>
+                                    </th>
+                                    <th className="py-2.5 px-4 font-medium">
+                                        <Tooltip content="Sort by duration">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSort("duration")}
+                                                className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                            >
+                                                <Clock className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                <span>Duration</span>
+                                                {renderSortIcon("duration")}
+                                            </button>
+                                        </Tooltip>
+                                    </th>
+                                    <th className="py-2.5 px-4 font-medium">
+                                        <Tooltip content="Sort by distance">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSort("distance")}
+                                                className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                            >
+                                                <Compass className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                <span>Distance</span>
+                                                {renderSortIcon("distance")}
+                                            </button>
+                                        </Tooltip>
+                                    </th>
+                                    <th className="py-2.5 px-4 font-medium">
+                                        <Tooltip content="Sort by touchdown rate">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSort("touchdown")}
+                                                className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                            >
+                                                <TrendingDown className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                <span>Touchdown</span>
+                                                {renderSortIcon("touchdown")}
+                                            </button>
+                                        </Tooltip>
+                                    </th>
+                                    <th className="py-2.5 px-4 font-medium">
+                                        <Tooltip content="Sort by deleted date">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSort("deletedAt")}
+                                                className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                            >
+                                                <Calendar className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                <span>Deleted</span>
+                                                {renderSortIcon("deletedAt")}
+                                            </button>
+                                        </Tooltip>
+                                    </th>
+                                    <th className="py-2.5 px-4 font-medium">
+                                        <Tooltip content="Sort by retention status">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSort("retention")}
+                                                className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                            >
+                                                <Info className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                <span>Retention</span>
+                                                {renderSortIcon("retention")}
+                                            </button>
+                                        </Tooltip>
+                                    </th>
+                                    <th className="py-2.5 px-4 font-medium text-right">
+                                        <div className="flex items-center justify-end gap-1.5">
+                                            <Sliders className="w-3.5 h-3.5 text-neutral-400" />
+                                            <span>Actions</span>
+                                        </div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-neutral-200/70 dark:divide-geist-hairline text-xs">
+                                {paginatedItems.map((flight) => {
+                                    const retention = getRetentionInfo(
+                                        flight.deletedAt,
+                                    );
+                                    const deletedDate = new Date(
+                                        flight.deletedAt,
+                                    ).toLocaleDateString(undefined, {
+                                        month: "short",
+                                        day: "numeric",
+                                        year: "numeric",
+                                    });
+                                    const deletedTime = new Date(
+                                        flight.deletedAt,
+                                    ).toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                    });
 
-                                                {/* Aircraft */}
-                                                <td className="py-3 px-3 align-middle text-neutral-700 dark:text-neutral-300 truncate max-w-[140px]">
+                                    return (
+                                        <tr
+                                            key={flight.id}
+                                            className="hover:bg-neutral-50/80 dark:hover:bg-[#121212] transition-colors duration-150 group"
+                                        >
+                                            {/* Route */}
+                                            <td className={`${cellPadY} px-4`}>
+                                                <div className="flex items-center gap-1.5 font-semibold text-neutral-900 dark:text-white truncate">
+                                                    <span>
+                                                        {flight.departureIcao ||
+                                                            "????"}
+                                                    </span>
+                                                    <ArrowRight className="w-3 h-3 text-neutral-400 shrink-0" />
+                                                    <span>
+                                                        {flight.arrivalIcao ||
+                                                            "????"}
+                                                    </span>
+                                                </div>
+                                                <div
+                                                    className={subLineClass}
+                                                    aria-hidden={isCompact}
+                                                >
+                                                    <div className="overflow-hidden">
+                                                        <div className="text-[10px] text-neutral-400 dark:text-neutral-500 tracking-tight truncate tabular-nums">
+                                                            Flown{" "}
+                                                            {new Date(
+                                                                flight.startTime,
+                                                            ).toLocaleDateString(
+                                                                undefined,
+                                                                {
+                                                                    month: "short",
+                                                                    day: "numeric",
+                                                                    year: "numeric",
+                                                                },
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            {/* Aircraft */}
+                                            <td
+                                                className={`${cellPadY} px-4 text-neutral-700 dark:text-neutral-300 truncate max-w-[180px]`}
+                                                title={
+                                                    flight.aircraftType ||
+                                                    "Aircraft"
+                                                }
+                                            >
+                                                <div className="font-medium text-neutral-900 dark:text-white truncate">
                                                     {flight.aircraftType ||
                                                         "Aircraft"}
-                                                </td>
+                                                </div>
+                                            </td>
 
-                                                {/* Flight Time */}
-                                                <td className="py-3 px-3 align-middle tabular-nums text-neutral-900 dark:text-white">
-                                                    {Math.floor(
-                                                        durationMins / 60,
-                                                    )}
-                                                    h{" "}
-                                                    {String(
-                                                        durationMins % 60,
-                                                    ).padStart(2, "0")}
-                                                    m
-                                                </td>
+                                            {/* Duration */}
+                                            <td
+                                                className={`${cellPadY} px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap`}
+                                            >
+                                                {formatLogbookDuration(
+                                                    flight.flightTimeSeconds,
+                                                )}
+                                            </td>
 
-                                                {/* Distance */}
-                                                <td className="py-3 px-3 align-middle tabular-nums text-neutral-900 dark:text-white">
-                                                    {Math.round(
-                                                        flight.distanceFlownNm ||
-                                                            0,
-                                                    )}{" "}
-                                                    NM
-                                                </td>
+                                            {/* Distance */}
+                                            <td
+                                                className={`${cellPadY} px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap`}
+                                            >
+                                                {(
+                                                    flight.distanceFlownNm ?? 0
+                                                ).toFixed(1)}{" "}
+                                                NM
+                                            </td>
 
-                                                {/* Landing Rate */}
-                                                <td className="py-3 px-3 align-middle tabular-nums">
-                                                    {flight.landingRateFpm !==
-                                                        undefined &&
-                                                    flight.landingRateFpm !==
-                                                        null ? (
-                                                        <span
-                                                            className={`font-semibold ${
-                                                                Math.abs(
-                                                                    flight.landingRateFpm,
-                                                                ) <= 150
-                                                                    ? "text-emerald-600 dark:text-emerald-400"
-                                                                    : Math.abs(
-                                                                            flight.landingRateFpm,
-                                                                        ) <= 300
-                                                                      ? "text-amber-600 dark:text-amber-400"
-                                                                      : "text-rose-600 dark:text-rose-400"
-                                                            }`}
-                                                        >
-                                                            {Math.round(
+                                            {/* Touchdown */}
+                                            <td
+                                                className={`${cellPadY} px-4 tabular-nums whitespace-nowrap`}
+                                            >
+                                                {flight.landingRateFpm !==
+                                                    undefined &&
+                                                flight.landingRateFpm !==
+                                                    null ? (
+                                                    <span
+                                                        className={`inline-flex items-center gap-1 ${
+                                                            Math.abs(
                                                                 flight.landingRateFpm,
-                                                            )}{" "}
-                                                            fpm
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-neutral-400">
-                                                            —
-                                                        </span>
-                                                    )}
-                                                </td>
+                                                            ) < 180
+                                                                ? "text-emerald-600 dark:text-emerald-400"
+                                                                : Math.abs(
+                                                                        flight.landingRateFpm,
+                                                                    ) < 300
+                                                                  ? "text-amber-600 dark:text-amber-400"
+                                                                  : "text-red-600 dark:text-red-400"
+                                                        }`}
+                                                    >
+                                                        {Math.round(
+                                                            flight.landingRateFpm,
+                                                        )}{" "}
+                                                        fpm
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-neutral-400 dark:text-neutral-600">
+                                                        —
+                                                    </span>
+                                                )}
+                                            </td>
 
-                                                {/* Deleted Date */}
-                                                <td className="py-3 px-3 align-middle text-[11px] text-neutral-500 tabular-nums">
-                                                    {new Date(
-                                                        flight.deletedAt,
-                                                    ).toLocaleString([], {
-                                                        month: "short",
-                                                        day: "numeric",
-                                                        hour: "2-digit",
-                                                        minute: "2-digit",
-                                                    })}
-                                                </td>
+                                            {/* Deleted */}
+                                            <td
+                                                className={`${cellPadY} px-4 text-neutral-500 dark:text-neutral-400 whitespace-nowrap`}
+                                            >
+                                                <span>{deletedDate}</span>
+                                                <span
+                                                    aria-hidden={isCompact}
+                                                    className={`inline-block overflow-hidden align-bottom text-[11px] text-neutral-400 dark:text-neutral-500 transition-all duration-200 ease-out ${
+                                                        isCompact
+                                                            ? "max-w-0 opacity-0 ml-0"
+                                                            : "max-w-[120px] opacity-100 ml-1.5"
+                                                    }`}
+                                                >
+                                                    ({deletedTime})
+                                                </span>
+                                            </td>
 
-                                                {/* Retention Status Badge */}
-                                                <td className="py-3 px-3 align-middle">
-                                                    {retention.isExpiringSoon ? (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 animate-pulse">
-                                                            <AlertCircle className="w-3 h-3 text-rose-500" />
-                                                            <span>
-                                                                Purging soon (
-                                                                {
-                                                                    retention.remainingHours
-                                                                }
-                                                                h)
-                                                            </span>
+                                            {/* Retention */}
+                                            <td
+                                                className={`${cellPadY} px-4 whitespace-nowrap`}
+                                            >
+                                                {retention.isExpiringSoon ? (
+                                                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-sm bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 animate-pulse">
+                                                        <AlertCircle className="w-3 h-3 text-rose-500 shrink-0" />
+                                                        <span>
+                                                            Purging (
+                                                            {
+                                                                retention.remainingHours
+                                                            }
+                                                            h)
                                                         </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700">
-                                                            <Clock className="w-3 h-3 text-neutral-400" />
-                                                            <span>
-                                                                {
-                                                                    retention.remainingDays
-                                                                }{" "}
-                                                                days left
-                                                            </span>
-                                                        </span>
-                                                    )}
-                                                </td>
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-block text-[11px] px-2 py-0.5 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-geist-hairline tabular-nums">
+                                                        {
+                                                            retention.remainingDays
+                                                        }{" "}
+                                                        days left
+                                                    </span>
+                                                )}
+                                            </td>
 
-                                                {/* Actions */}
-                                                <td className="py-3 px-3 pr-4 align-middle text-right">
-                                                    <div className="flex items-center justify-end gap-1.5">
-                                                        {/* Restore Button */}
+                                            {/* Actions */}
+                                            <td
+                                                className={`${cellPadY} px-4 text-right whitespace-nowrap relative`}
+                                            >
+                                                <div className="flex items-center justify-end gap-1.5">
+                                                    {/* Restore Button */}
+                                                    <Tooltip content="Restore flight to logbook">
                                                         <button
                                                             type="button"
                                                             onClick={() =>
@@ -390,34 +607,33 @@ export const RecycleBinView: React.FC = () => {
                                                                     flight.id,
                                                                 )
                                                             }
-                                                            className="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-sm bg-neutral-900 hover:bg-black dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-black transition-colors shadow-2xs"
-                                                            title="Restore flight to logbook"
+                                                            className="p-1.5 rounded-sm border border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
+                                                            aria-label="Restore flight to logbook"
                                                         >
-                                                            <RotateCcw className="w-3 h-3" />
-                                                            <span>Restore</span>
+                                                            <RotateCcw className="w-3.5 h-3.5" />
                                                         </button>
+                                                    </Tooltip>
 
-                                                        {/* Permanently Delete Button */}
-                                                        <ConfirmDeleteButton
-                                                            onConfirm={() =>
-                                                                permanentlyDeleteFromRecycleBin(
-                                                                    flight.id,
-                                                                )
-                                                            }
-                                                            title="Delete permanently"
-                                                            confirmTitle="Click to confirm permanent deletion"
-                                                        />
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                                                    {/* Permanently Delete Button */}
+                                                    <ConfirmDeleteButton
+                                                        onConfirm={() =>
+                                                            permanentlyDeleteFromRecycleBin(
+                                                                flight.id,
+                                                            )
+                                                        }
+                                                        title="Delete permanently"
+                                                        confirmTitle="Click to confirm permanent deletion"
+                                                    />
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
 
-                    {/* Pagination */}
+                    {/* Pagination Controls */}
                     <PaginationBar
                         currentPage={currentPage}
                         totalPages={totalPages}
@@ -429,7 +645,13 @@ export const RecycleBinView: React.FC = () => {
                             setCurrentPage(1);
                         }}
                         itemName="deleted flights"
-                    />
+                    >
+                        <TableCompactToggle
+                            isCompact={isCompact}
+                            onToggle={toggleCompact}
+                            size="sm"
+                        />
+                    </PaginationBar>
                 </div>
             )}
         </div>

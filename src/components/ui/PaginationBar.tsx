@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Tooltip } from "./Tooltip";
 import {
     ChevronsLeft,
     ChevronLeft,
@@ -105,7 +106,7 @@ export const PaginationBar: React.FC<PaginationBarProps> = ({
                                 key={opt}
                                 type="button"
                                 onClick={() => onPageSizeChange(opt)}
-                                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                                className={`px-2 py-0.5 rounded-sm text-[11px] font-medium transition-colors ${
                                     pageSize === opt
                                         ? "bg-neutral-900 dark:bg-white text-white dark:text-black font-semibold"
                                         : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
@@ -128,28 +129,30 @@ export const PaginationBar: React.FC<PaginationBarProps> = ({
             {/* Pagination Controls */}
             <div className="flex items-center gap-1 w-full sm:w-auto justify-center sm:justify-end">
                 {/* First Page */}
-                <button
-                    type="button"
-                    onClick={() => onPageChange(1)}
-                    disabled={!canGoPrev}
-                    className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-700 dark:text-neutral-300 transition-colors"
-                    title="First page"
-                    aria-label="First page"
-                >
-                    <ChevronsLeft className="w-3.5 h-3.5" />
-                </button>
+                <Tooltip content="First page">
+                    <button
+                        type="button"
+                        onClick={() => onPageChange(1)}
+                        disabled={!canGoPrev}
+                        className="p-1.5 rounded-sm hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-default text-neutral-700 dark:text-neutral-300 transition-colors"
+                        aria-label="First page"
+                    >
+                        <ChevronsLeft className="w-3.5 h-3.5" />
+                    </button>
+                </Tooltip>
 
                 {/* Previous Page */}
-                <button
-                    type="button"
-                    onClick={() => onPageChange(currentPage - 1)}
-                    disabled={!canGoPrev}
-                    className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-700 dark:text-neutral-300 transition-colors"
-                    title="Previous page"
-                    aria-label="Previous page"
-                >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
+                <Tooltip content="Previous page">
+                    <button
+                        type="button"
+                        onClick={() => onPageChange(currentPage - 1)}
+                        disabled={!canGoPrev}
+                        className="p-1.5 rounded-sm hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-default text-neutral-700 dark:text-neutral-300 transition-colors"
+                        aria-label="Previous page"
+                    >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                </Tooltip>
 
                 {/* Direct Page Input */}
                 <div className="flex items-center gap-1 px-1 text-xs">
@@ -165,7 +168,7 @@ export const PaginationBar: React.FC<PaginationBarProps> = ({
                         onBlur={commitPageInput}
                         onKeyDown={handleKeyDown}
                         aria-label="Current page number"
-                        className="w-12 px-1.5 py-0.5 text-center text-xs font-semibold tabular-nums border border-neutral-300 dark:border-geist-hairline rounded bg-neutral-50 dark:bg-black text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-neutral-400 dark:focus:ring-neutral-500"
+                        className="mx-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none w-12 px-1.5 py-0.5 text-center text-xs font-semibold tabular-nums border border-neutral-300 dark:border-geist-hairline rounded-sm bg-neutral-50 dark:bg-black text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-neutral-400 dark:focus:ring-neutral-500"
                     />
                     <span className="text-[11px] text-neutral-400 dark:text-geist-muted">
                         of{" "}
@@ -176,28 +179,30 @@ export const PaginationBar: React.FC<PaginationBarProps> = ({
                 </div>
 
                 {/* Next Page */}
-                <button
-                    type="button"
-                    onClick={() => onPageChange(currentPage + 1)}
-                    disabled={!canGoNext}
-                    className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-700 dark:text-neutral-300 transition-colors"
-                    title="Next page"
-                    aria-label="Next page"
-                >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+                <Tooltip content="Next page">
+                    <button
+                        type="button"
+                        onClick={() => onPageChange(currentPage + 1)}
+                        disabled={!canGoNext}
+                        className="p-1.5 rounded-sm hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-default text-neutral-700 dark:text-neutral-300 transition-colors"
+                        aria-label="Next page"
+                    >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                </Tooltip>
 
                 {/* Last Page */}
-                <button
-                    type="button"
-                    onClick={() => onPageChange(safeTotalPages)}
-                    disabled={!canGoNext}
-                    className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-700 dark:text-neutral-300 transition-colors"
-                    title="Last page"
-                    aria-label="Last page"
-                >
-                    <ChevronsRight className="w-3.5 h-3.5" />
-                </button>
+                <Tooltip content="Last page">
+                    <button
+                        type="button"
+                        onClick={() => onPageChange(safeTotalPages)}
+                        disabled={!canGoNext}
+                        className="p-1.5 rounded-sm hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-default text-neutral-700 dark:text-neutral-300 transition-colors"
+                        aria-label="Last page"
+                    >
+                        <ChevronsRight className="w-3.5 h-3.5" />
+                    </button>
+                </Tooltip>
             </div>
         </div>
     );

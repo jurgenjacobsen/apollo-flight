@@ -10,7 +10,9 @@ import {
     PaginationBar,
     ConfirmDeleteButton,
     TableColumnCustomizer,
+    TableCompactToggle,
     ResizableHeaderCell,
+    Tooltip,
 } from "../ui";
 import {
     useTableColumnOrder,
@@ -44,6 +46,10 @@ import {
     ArrowUpDown,
     ArrowUp,
     ArrowDown,
+    ArrowRight,
+    ClipboardPen,
+    Info,
+    Sliders,
 } from "lucide-react";
 
 export type RouteSortField =
@@ -96,6 +102,28 @@ export const SavedRoutesView: React.FC = () => {
     const [sortField, setSortField] = useState<RouteSortField>("saved");
     const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
     const [currentPage, setCurrentPage] = useState<number>(1);
+    const [isCompact, setIsCompact] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem("apollo_saved_routes_compact") === "true";
+        } catch {
+            return false;
+        }
+    });
+    const toggleCompact = () => {
+        setIsCompact((prev) => {
+            const next = !prev;
+            try {
+                localStorage.setItem("apollo_saved_routes_compact", String(next));
+            } catch {}
+            return next;
+        });
+    };
+    const cellPadY = `${isCompact ? "py-1.5" : "py-3"} transition-[padding] duration-200 ease-out`;
+    const subLineClass = `grid transition-[grid-template-rows,opacity] duration-200 ease-out ${
+        isCompact
+            ? "grid-rows-[0fr] opacity-0"
+            : "grid-rows-[1fr] opacity-100"
+    }`;
     const [expandedRouteIds, setExpandedRouteIds] = useState<Set<string>>(
         new Set(),
     );
@@ -398,8 +426,8 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                 </div>
 
                 <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs flex items-center gap-3">
-                    <div className="p-2 rounded-sm bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400">
-                        <Heart className="w-4 h-4 fill-rose-500/20" />
+                    <div className="p-2 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-600 dark:text-neutral-300">
+                        <Heart className="w-4 h-4" />
                     </div>
                     <div>
                         <div className="text-[11px] text-neutral-500 dark:text-geist-muted font-medium">
@@ -412,7 +440,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                 </div>
 
                 <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs flex items-center gap-3">
-                    <div className="p-2 rounded-sm bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400">
+                    <div className="p-2 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-600 dark:text-neutral-300">
                         <Clock className="w-4 h-4" />
                     </div>
                     <div>
@@ -426,7 +454,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                 </div>
 
                 <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs flex items-center gap-3">
-                    <div className="p-2 rounded-sm bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400">
+                    <div className="p-2 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-600 dark:text-neutral-300">
                         <CheckCircle2 className="w-4 h-4" />
                     </div>
                     <div>
@@ -466,7 +494,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                 : "text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
                         }`}
                     >
-                        <Heart className="w-3 h-3 text-rose-500 fill-rose-500" />
+                        <Heart className="w-3 h-3 text-rose-600 fill-rose-500/25" />
                         <span>Favorites</span>
                         <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-neutral-100 dark:bg-black/60 text-neutral-600 dark:text-neutral-400 tabular-nums">
                             {counts.favorites}
@@ -481,6 +509,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                 : "text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
                         }`}
                     >
+                        <ClipboardPen className="w-3 h-3" />
                         <span>Drafts</span>
                         <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-neutral-100 dark:bg-black/60 text-neutral-600 dark:text-neutral-400 tabular-nums">
                             {counts.draft}
@@ -519,7 +548,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
             </div>
 
             {/* Routes Table Container */}
-            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-xs relative">
+            <div className="overflow-hidden bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-xs relative">
                 {filteredRoutes.length === 0 ? (
                     <div className="p-12 text-center space-y-3">
                         <div className="w-12 h-12 rounded-full bg-neutral-100 dark:bg-[#1a1a1a] flex items-center justify-center mx-auto text-neutral-400">
@@ -713,6 +742,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                         className="py-2.5 px-3 font-medium cursor-pointer hover:bg-neutral-200/50 dark:hover:bg-[#181818] transition-colors group/sort"
                                                     >
                                                         <div className="flex items-center gap-1.5">
+                                                            <Info className="w-3.5 h-3.5 text-neutral-400" />
                                                             <span>Status</span>
                                                             {renderSortIcon("status")}
                                                         </div>
@@ -743,10 +773,13 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                         }
                                     })}
                                     <th
-                                        className="py-2.5 px-3 font-medium text-right pr-4"
+                                        className="py-2.5 px-4 font-medium text-right"
                                         style={hasCustomWidths ? { width: "160px" } : undefined}
                                     >
-                                        <span>Actions</span>
+                                        <div className="flex items-center justify-end gap-1.5">
+                                            <Sliders className="w-3.5 h-3.5 text-neutral-400" />
+                                            <span>Actions</span>
+                                        </div>
                                     </th>
                                 </tr>
                             </thead>
@@ -802,12 +835,18 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                         }
                                     }
 
-                                    const waypointsStr = [
-                                        route.departureIcao,
-                                        ...sectors.map((s) => s.arrival.icao),
-                                    ]
-                                        .filter(Boolean)
-                                        .join(" ➔ ");
+                                    const waypoints =
+                                        sectors.length > 0
+                                            ? [
+                                                  route.departureIcao,
+                                                  ...sectors.map(
+                                                      (s) => s.arrival.icao,
+                                                  ),
+                                              ].filter(Boolean)
+                                            : [
+                                                  route.departureIcao,
+                                                  route.arrivalIcao,
+                                              ].filter(Boolean);
 
                                     return (
                                         <React.Fragment key={route.id}>
@@ -837,62 +876,78 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                             return (
                                                                 <td
                                                                     key="favorite"
-                                                                    className="py-3 px-3 text-center align-middle"
+                                                                    className={`${cellPadY} px-3 align-middle`}
                                                                     style={cellStyle}
                                                                     onClick={(e) =>
                                                                         e.stopPropagation()
                                                                     }
                                                                 >
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() =>
-                                                                            toggleRouteFavorite(
-                                                                                route.id,
-                                                                            )
-                                                                        }
-                                                                        title={
+                                                                    <Tooltip
+                                                                        content={
                                                                             route.isFavorite
                                                                                 ? "Unfavorite"
                                                                                 : "Add to Favorites"
                                                                         }
-                                                                        className={`p-1 rounded transition-colors ${
-                                                                            route.isFavorite
-                                                                                ? "text-rose-600 hover:text-rose-700"
-                                                                                : "text-neutral-300 dark:text-neutral-700 hover:text-rose-500"
-                                                                        }`}
                                                                     >
-                                                                        <Heart
-                                                                            className={`w-3.5 h-3.5 ${route.isFavorite ? "fill-rose-500" : ""}`}
-                                                                        />
-                                                                    </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                toggleRouteFavorite(
+                                                                                    route.id,
+                                                                                )
+                                                                            }
+                                                                            aria-label={
+                                                                                route.isFavorite
+                                                                                    ? "Unfavorite"
+                                                                                    : "Add to Favorites"
+                                                                            }
+                                                                            className={`p-1 rounded-sm transition-colors ${
+                                                                                route.isFavorite
+                                                                                    ? "text-rose-600 hover:text-rose-700"
+                                                                                    : "text-neutral-300 dark:text-neutral-700 hover:text-rose-500"
+                                                                            }`}
+                                                                        >
+                                                                            <Heart
+                                                                                className={`w-3.5 h-3.5 ${route.isFavorite ? "text-rose-600 fill-rose-500/25" : ""}`}
+                                                                            />
+                                                                        </button>
+                                                                    </Tooltip>
                                                                 </td>
                                                             );
                                                         case "route":
                                                             return (
-                                                                <td key="route" className="py-3 px-3 align-middle" style={cellStyle}>
+                                                                <td key="route" className={`${cellPadY} px-2 align-middle`} style={cellStyle}>
                                                                     <div className="flex items-center gap-2">
                                                                         {isMultiSector ? (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(e) =>
-                                                                                    toggleExpanded(
-                                                                                        route.id,
-                                                                                        e,
-                                                                                    )
-                                                                                }
-                                                                                className="w-5 h-5 flex items-center justify-center text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors shrink-0 rounded-xs"
-                                                                                title={
+                                                                            <Tooltip
+                                                                                content={
                                                                                     isExpanded
                                                                                         ? "Collapse legs"
                                                                                         : "Expand legs"
                                                                                 }
                                                                             >
-                                                                                {isExpanded ? (
-                                                                                    <ChevronDown className="w-3.5 h-3.5" />
-                                                                                ) : (
-                                                                                    <ChevronRight className="w-3.5 h-3.5" />
-                                                                                )}
-                                                                            </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={(e) =>
+                                                                                        toggleExpanded(
+                                                                                            route.id,
+                                                                                            e,
+                                                                                        )
+                                                                                    }
+                                                                                    className="w-5 h-5 flex items-center justify-center text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors shrink-0 rounded-xs"
+                                                                                    aria-label={
+                                                                                        isExpanded
+                                                                                            ? "Collapse legs"
+                                                                                            : "Expand legs"
+                                                                                    }
+                                                                                >
+                                                                                    {isExpanded ? (
+                                                                                        <ChevronDown className="w-3.5 h-3.5" />
+                                                                                    ) : (
+                                                                                        <ChevronRight className="w-3.5 h-3.5" />
+                                                                                    )}
+                                                                                </button>
+                                                                            </Tooltip>
                                                                         ) : (
                                                                             <span
                                                                                 className="w-5 h-5 shrink-0"
@@ -901,24 +956,36 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                                         )}
 
                                                                         <div className="truncate">
-                                                                            <div className="flex items-center gap-1.5 flex-wrap truncate">
-                                                                                <span className="font-bold font-mono text-neutral-900 dark:text-white tracking-tight truncate">
-                                                                                    {waypointsStr ||
-                                                                                        `${route.departureIcao} ➔ ${route.arrivalIcao}`}
-                                                                                </span>
-                                                                                {isMultiSector && (
-                                                                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-neutral-100 dark:bg-[#202020] text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-800 shrink-0 tabular-nums">
-                                                                                        {
-                                                                                            sectors.length
-                                                                                        }{" "}
-                                                                                        legs
-                                                                                    </span>
+                                                                            <div className="flex items-center gap-1.5 font-semibold text-neutral-900 dark:text-white truncate">
+                                                                                {waypoints.map(
+                                                                                    (
+                                                                                        icao,
+                                                                                        wpIdx,
+                                                                                    ) => (
+                                                                                        <React.Fragment
+                                                                                            key={`${route.id}-wp-${wpIdx}`}
+                                                                                        >
+                                                                                            {wpIdx >
+                                                                                                0 && (
+                                                                                                <ArrowRight className="w-3 h-3 text-neutral-400 shrink-0" />
+                                                                                            )}
+                                                                                            <span>
+                                                                                                {
+                                                                                                    icao
+                                                                                                }
+                                                                                            </span>
+                                                                                        </React.Fragment>
+                                                                                    ),
                                                                                 )}
                                                                             </div>
-                                                                            <div className="text-[11px] text-neutral-400 dark:text-geist-muted truncate max-w-[260px]">
-                                                                                {firstSector
-                                                                                    ? `${firstSector.departure.name} to ${finalSector?.arrival?.name || route.arrivalIcao}`
-                                                                                    : route.name}
+                                                                            <div className={subLineClass} aria-hidden={isCompact}>
+                                                                                <div className="overflow-hidden">
+                                                                                    <div className="text-[11px] text-neutral-400 dark:text-geist-muted truncate max-w-[260px]">
+                                                                                        {firstSector
+                                                                                            ? `${firstSector.departure.name} to ${finalSector?.arrival?.name || route.arrivalIcao}`
+                                                                                            : route.name}
+                                                                                    </div>
+                                                                                </div>
                                                                             </div>
                                                                         </div>
                                                                     </div>
@@ -926,8 +993,8 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                             );
                                                         case "category":
                                                             return (
-                                                                <td key="category" className="py-3 px-3 align-middle" style={cellStyle}>
-                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-medium border border-blue-200/50 dark:border-blue-900/50">
+                                                                <td key="category" className={`${cellPadY} px-3 align-middle`} style={cellStyle}>
+                                                                    <span className="text-[11px] px-1.5 py-0.5 rounded-sm bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-medium border border-blue-200/50 dark:border-blue-900/50">
                                                                         Cat{" "}
                                                                         {route.aircraftCategory}
                                                                     </span>
@@ -935,25 +1002,27 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                             );
                                                         case "distance":
                                                             return (
-                                                                <td key="distance" className="py-3 px-3 align-middle tabular-nums" style={cellStyle}>
-                                                                    <div className="font-medium text-neutral-900 dark:text-white">
+                                                                <td key="distance" className={`${cellPadY} px-3 align-middle tabular-nums`} style={cellStyle}>
+                                                                    <div className="text-neutral-900 dark:text-white">
                                                                         {route.totalDistanceNm}{" "}
-                                                                        <span className="text-[10px] text-neutral-400 font-normal">
-                                                                            NM
-                                                                        </span>
+                                                                        NM
                                                                     </div>
-                                                                    <div className="text-[10px] text-neutral-400">
-                                                                        {Math.round(
-                                                                            route.totalDistanceNm *
-                                                                                1.852,
-                                                                        )}{" "}
-                                                                        km
+                                                                    <div className={subLineClass} aria-hidden={isCompact}>
+                                                                        <div className="overflow-hidden">
+                                                                            <div className="text-[10px] text-neutral-400">
+                                                                                {Math.round(
+                                                                                    route.totalDistanceNm *
+                                                                                        1.852,
+                                                                                )}{" "}
+                                                                                km
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
                                                                 </td>
                                                             );
                                                         case "airborne":
                                                             return (
-                                                                <td key="airborne" className="py-3 px-3 align-middle tabular-nums text-neutral-900 dark:text-white" style={cellStyle}>
+                                                                <td key="airborne" className={`${cellPadY} px-3 align-middle tabular-nums text-neutral-900 dark:text-white`} style={cellStyle}>
                                                                     {formatDurationHoursMinutes(
                                                                         route.totalAirborneMinutes,
                                                                     )}
@@ -961,7 +1030,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                             );
                                                         case "blockTime":
                                                             return (
-                                                                <td key="blockTime" className="py-3 px-3 align-middle tabular-nums" style={cellStyle}>
+                                                                <td key="blockTime" className={`${cellPadY} px-3 align-middle tabular-nums`} style={cellStyle}>
                                                                     <div className="text-neutral-900 dark:text-white">
                                                                         {formatDurationHoursMinutes(
                                                                             route.totalDurationMinutes,
@@ -969,19 +1038,23 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                                     </div>
                                                                     {route.totalGroundMinutes >
                                                                         0 && (
-                                                                        <div className="text-[10px] text-neutral-400">
-                                                                            incl.{" "}
-                                                                            {
-                                                                                route.totalGroundMinutes
-                                                                            }
-                                                                            m taxi
+                                                                        <div className={subLineClass} aria-hidden={isCompact}>
+                                                                            <div className="overflow-hidden">
+                                                                                <div className="text-[10px] text-neutral-400">
+                                                                                    incl.{" "}
+                                                                                    {
+                                                                                        route.totalGroundMinutes
+                                                                                    }
+                                                                                    m taxi
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
                                                                     )}
                                                                 </td>
                                                             );
                                                         case "altitude":
                                                             return (
-                                                                <td key="altitude" className="py-3 px-3 align-middle tabular-nums text-neutral-700 dark:text-neutral-300" style={cellStyle}>
+                                                                <td key="altitude" className={`${cellPadY} px-3 align-middle tabular-nums text-neutral-700 dark:text-neutral-300`} style={cellStyle}>
                                                                     {route.recommendedAltitudeFt
                                                                         ? formatFlightLevelOrAltitude(
                                                                               route.recommendedAltitudeFt,
@@ -995,7 +1068,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                             );
                                                         case "status":
                                                             return (
-                                                                <td key="status" className="py-3 px-3 align-middle" style={cellStyle}>
+                                                                <td key="status" className={`${cellPadY} px-3 align-middle`} style={cellStyle}>
                                                                     {route.status ===
                                                                     "flown" ? (
                                                                         <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
@@ -1010,14 +1083,33 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                                     )}
                                                                 </td>
                                                             );
-                                                        case "saved":
+                                                        case "saved": {
+                                                            const savedDateObj = new Date(route.createdAt);
+                                                            const savedDate = savedDateObj.toLocaleDateString(undefined, {
+                                                                month: "short",
+                                                                day: "numeric",
+                                                                year: "numeric",
+                                                            });
+                                                            const savedTime = savedDateObj.toLocaleTimeString([], {
+                                                                hour: "2-digit",
+                                                                minute: "2-digit",
+                                                            });
                                                             return (
-                                                                <td key="saved" className="py-3 px-3 align-middle text-[11px] text-neutral-500 dark:text-neutral-400 tabular-nums whitespace-nowrap truncate" style={cellStyle}>
-                                                                    {new Date(
-                                                                        route.createdAt,
-                                                                    ).toLocaleDateString()}
+                                                                <td key="saved" className={`${cellPadY} px-3 align-middle text-neutral-500 dark:text-neutral-400 tabular-nums whitespace-nowrap truncate`} style={cellStyle}>
+                                                                    <span>{savedDate}</span>
+                                                                    <span
+                                                                        aria-hidden={isCompact}
+                                                                        className={`inline-block overflow-hidden align-bottom text-[11px] text-neutral-400 dark:text-neutral-500 transition-all duration-200 ease-out ${
+                                                                            isCompact
+                                                                                ? "max-w-0 opacity-0 ml-0"
+                                                                                : "max-w-[120px] opacity-100 ml-1.5"
+                                                                        }`}
+                                                                    >
+                                                                        ({savedTime})
+                                                                    </span>
                                                                 </td>
                                                             );
+                                                        }
                                                         default:
                                                             return null;
                                                     }
@@ -1025,164 +1117,178 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
 
                                                 {/* Actions Cell */}
                                                 <td
-                                                    className="py-3 px-3 pr-4 align-middle text-right"
+                                                    className={`${cellPadY} px-3 pr-4 align-middle text-right`}
                                                     onClick={(e) =>
                                                         e.stopPropagation()
                                                     }
                                                 >
                                                     <div className="flex items-center justify-end gap-1.5">
                                                         {/* Fly Button with Tooltip */}
-                                                        <div className="relative group/fly inline-flex">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if (!canFly)
-                                                                        return;
-                                                                    startManualFlight(
-                                                                        route.departureIcao,
-                                                                        finalSector
-                                                                            ?.arrival
-                                                                            ?.icao ||
-                                                                            route.arrivalIcao,
-                                                                        route.aircraftName ||
-                                                                            `Category ${route.aircraftCategory}`,
-                                                                    );
-                                                                    setActiveView(
-                                                                        "dashboard",
-                                                                    );
-                                                                }}
-                                                                disabled={
-                                                                    !canFly
-                                                                }
-                                                                className={`flex items-center gap-1 px-2.5 py-1 rounded-sm text-xs font-semibold shadow-2xs transition-colors ${
-                                                                    canFly
-                                                                        ? "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
-                                                                        : "bg-neutral-100 dark:bg-[#1a1a1a] text-neutral-400 dark:text-neutral-600 border border-neutral-200 dark:border-neutral-800 cursor-not-allowed opacity-60"
-                                                                }`}
-                                                            >
-                                                                <Play className="w-3 h-3 fill-current" />
-                                                                <span>Fly</span>
-                                                            </button>
-
-                                                            {!canFly && (
-                                                                <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover/fly:flex items-center gap-1.5 bg-neutral-900 text-white text-[11px] py-1 px-2.5 rounded-sm shadow-lg whitespace-nowrap z-30 pointer-events-none">
-                                                                    <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
-                                                                    <span>
-                                                                        {
-                                                                            flyDisabledReason
-                                                                        }
+                                                        <Tooltip
+                                                            content={
+                                                                canFly ? (
+                                                                    "Start flight on this route"
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1.5">
+                                                                        <span>
+                                                                            {
+                                                                                flyDisabledReason
+                                                                            }
+                                                                        </span>
                                                                     </span>
-                                                                </div>
-                                                            )}
-                                                        </div>
-
-                                                        {/* Status Toggle Button */}
-                                                        {route.status ===
-                                                        "draft" ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    updateRouteStatus(
-                                                                        route.id,
-                                                                        "flown",
-                                                                    )
-                                                                }
-                                                                className="p-1.5 rounded-sm border border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020] transition-colors"
-                                                                title="Mark as Flown"
-                                                            >
-                                                                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                                            </button>
-                                                        ) : (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    updateRouteStatus(
-                                                                        route.id,
-                                                                        "draft",
-                                                                    )
-                                                                }
-                                                                className="p-1.5 rounded-sm border border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020] transition-colors"
-                                                                title="Mark as Draft"
-                                                            >
-                                                                <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
-                                                            </button>
-                                                        )}
-
-                                                        {/* Edit Button (Draft only) */}
-                                                        <div className="relative group/edit inline-flex">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if (
-                                                                        route.status ===
-                                                                        "draft"
-                                                                    ) {
-                                                                        setRouteToEdit(
-                                                                            route,
-                                                                        );
-                                                                        setIsEditModalOpen(
-                                                                            true,
-                                                                        );
-                                                                    }
-                                                                }}
-                                                                disabled={
-                                                                    route.status !==
-                                                                    "draft"
-                                                                }
-                                                                className={`p-1.5 rounded-sm border transition-colors ${
-                                                                    route.status ===
-                                                                    "draft"
-                                                                        ? "border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020] cursor-pointer"
-                                                                        : "border-neutral-200/50 dark:border-neutral-800/40 text-neutral-300 dark:text-neutral-700 cursor-not-allowed opacity-40"
-                                                                }`}
-                                                                title={
-                                                                    route.status ===
-                                                                    "draft"
-                                                                        ? "Edit Draft Flight Plan"
-                                                                        : "Flown routes cannot be edited"
-                                                                }
-                                                                aria-label="Edit route"
-                                                            >
-                                                                <Pencil className="w-3.5 h-3.5" />
-                                                            </button>
-                                                            {route.status !==
-                                                                "draft" && (
-                                                                <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover/edit:flex items-center gap-1.5 bg-neutral-900 text-white text-[11px] py-1 px-2.5 rounded-sm shadow-lg whitespace-nowrap z-30 pointer-events-none">
-                                                                    <span>
-                                                                        Only
-                                                                        drafted
-                                                                        flights
-                                                                        can be
-                                                                        edited
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                        </div>
-
-                                                        {/* Copy Briefing Button */}
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) =>
-                                                                handleCopy(
-                                                                    route,
-                                                                    e,
                                                                 )
                                                             }
-                                                            className={`p-1.5 rounded-sm border transition-colors ${
+                                                        >
+                                                            <span className="inline-flex">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if (!canFly)
+                                                                            return;
+                                                                        startManualFlight(
+                                                                            route.departureIcao,
+                                                                            finalSector
+                                                                                ?.arrival
+                                                                                ?.icao ||
+                                                                                route.arrivalIcao,
+                                                                            route.aircraftName ||
+                                                                                `Category ${route.aircraftCategory}`,
+                                                                        );
+                                                                        setActiveView(
+                                                                            "dashboard",
+                                                                        );
+                                                                    }}
+                                                                    disabled={
+                                                                        !canFly
+                                                                    }
+                                                                    className={`flex items-center gap-1 px-2.5 py-1 rounded-sm text-xs font-semibold shadow-2xs transition-colors ${
+                                                                        canFly
+                                                                            ? "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+                                                                            : "bg-neutral-100 dark:bg-[#1a1a1a] text-neutral-400 dark:text-neutral-600 border border-neutral-200 dark:border-neutral-800 cursor-not-allowed opacity-60"
+                                                                    }`}
+                                                                >
+                                                                    <Play className="w-3 h-3 fill-current" />
+                                                                    <span>Fly</span>
+                                                                </button>
+                                                            </span>
+                                                        </Tooltip>
+
+                                                        {/* Status Toggle Button */}
+                                                        <Tooltip
+                                                            content={
+                                                                route.status ===
+                                                                "draft"
+                                                                    ? "Mark as Flown"
+                                                                    : "Mark as Draft"
+                                                            }
+                                                        >
+                                                            {route.status ===
+                                                            "draft" ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        updateRouteStatus(
+                                                                            route.id,
+                                                                            "flown",
+                                                                        )
+                                                                    }
+                                                                    className="p-1.5 rounded-sm border border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020] transition-colors"
+                                                                    aria-label="Mark as Flown"
+                                                                >
+                                                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        updateRouteStatus(
+                                                                            route.id,
+                                                                            "draft",
+                                                                        )
+                                                                    }
+                                                                    className="p-1.5 rounded-sm border border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020] transition-colors"
+                                                                    aria-label="Mark as Draft"
+                                                                >
+                                                                    <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
+                                                                </button>
+                                                            )}
+                                                        </Tooltip>
+
+                                                        {/* Edit Button (Draft only) */}
+                                                        <Tooltip
+                                                            content={
+                                                                route.status ===
+                                                                "draft"
+                                                                    ? "Edit Draft Flight Plan"
+                                                                    : "Only drafted flights can be edited"
+                                                            }
+                                                        >
+                                                            <span className="inline-flex">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if (
+                                                                            route.status ===
+                                                                            "draft"
+                                                                        ) {
+                                                                            setRouteToEdit(
+                                                                                route,
+                                                                            );
+                                                                            setIsEditModalOpen(
+                                                                                true,
+                                                                            );
+                                                                        }
+                                                                    }}
+                                                                    disabled={
+                                                                        route.status !==
+                                                                        "draft"
+                                                                    }
+                                                                    className={`p-1.5 rounded-sm border transition-colors ${
+                                                                        route.status ===
+                                                                        "draft"
+                                                                            ? "border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020] cursor-pointer"
+                                                                            : "border-neutral-200/50 dark:border-neutral-800/40 text-neutral-300 dark:text-neutral-700 cursor-not-allowed opacity-40"
+                                                                    }`}
+                                                                    aria-label="Edit route"
+                                                                >
+                                                                    <Pencil className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </span>
+                                                        </Tooltip>
+
+                                                        {/* Copy Briefing Button */}
+                                                        <Tooltip
+                                                            content={
                                                                 copiedRouteId ===
                                                                 route.id
-                                                                    ? "border-emerald-600 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/25 text-emerald-700 dark:text-emerald-400"
-                                                                    : "border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020]"
-                                                            }`}
-                                                            title="Copy route briefing"
+                                                                    ? "Copied briefing"
+                                                                    : "Copy route briefing"
+                                                            }
                                                         >
-                                                            {copiedRouteId ===
-                                                            route.id ? (
-                                                                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                                                            ) : (
-                                                                <Copy className="w-3.5 h-3.5" />
-                                                            )}
-                                                        </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) =>
+                                                                    handleCopy(
+                                                                        route,
+                                                                        e,
+                                                                    )
+                                                                }
+                                                                className={`p-1.5 rounded-sm border transition-colors ${
+                                                                    copiedRouteId ===
+                                                                    route.id
+                                                                        ? "border-emerald-600 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/25 text-emerald-700 dark:text-emerald-400"
+                                                                        : "border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020]"
+                                                                }`}
+                                                                aria-label="Copy route briefing"
+                                                            >
+                                                                {copiedRouteId ===
+                                                                route.id ? (
+                                                                    <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                                                ) : (
+                                                                    <Copy className="w-3.5 h-3.5" />
+                                                                )}
+                                                            </button>
+                                                        </Tooltip>
 
                                                         {/* Expanding Delete Confirmation Button */}
                                                         <ConfirmDeleteButton
@@ -1205,21 +1311,6 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                         className="p-3 pl-12 pr-4"
                                                     >
                                                         <div className="bg-white dark:bg-[#141414] border border-neutral-200 dark:border-geist-hairline rounded-sm p-3 space-y-2 shadow-2xs">
-                                                            <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-                                                                <span>
-                                                                    Multi-Sector
-                                                                    Flight Plan
-                                                                    (
-                                                                    {
-                                                                        sectors.length
-                                                                    }{" "}
-                                                                    legs)
-                                                                </span>
-                                                                <span>
-                                                                    {route.name}
-                                                                </span>
-                                                            </div>
-
                                                             <div className="grid grid-cols-1 divide-y divide-neutral-100 dark:divide-[#222]">
                                                                 {sectors.map(
                                                                     (
@@ -1232,7 +1323,7 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                                             className="py-2 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
                                                                         >
                                                                             <div className="flex items-center gap-2">
-                                                                                <span className="w-4 h-4 rounded-full bg-neutral-900 text-white dark:bg-white dark:text-black flex items-center justify-center text-[9px] font-bold tabular-nums">
+                                                                                <span className="w-4 h-4 rounded-full bg-neutral-900 text-white dark:bg-white dark:text-black flex items-center justify-center text-[10px] font-bold tabular-nums">
                                                                                     {
                                                                                         sector.sectorIndex
                                                                                     }
@@ -1268,19 +1359,6 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                                                                             </div>
 
                                                                             <div className="flex items-center gap-3 tabular-nums text-[11px] text-neutral-600 dark:text-neutral-300">
-                                                                                <span>
-                                                                                    TRK{" "}
-                                                                                    {String(
-                                                                                        sector.initialBearingDeg,
-                                                                                    ).padStart(
-                                                                                        3,
-                                                                                        "0",
-                                                                                    )}
-                                                                                    °
-                                                                                </span>
-                                                                                <span>
-                                                                                    ·
-                                                                                </span>
                                                                                 <span>
                                                                                     {
                                                                                         sector.distanceNm
@@ -1349,19 +1427,27 @@ Recommended Altitudes: ${sectors.map((s, i) => `Leg ${i + 1}: ${formatFlightLeve
                         }}
                         itemName="saved routes"
                     >
-                        <TableColumnCustomizer
-                            columns={columns}
-                            onToggleVisibility={toggleColumnVisibility}
-                            onMoveUp={moveColumnUp}
-                            onMoveDown={moveColumnDown}
-                            onReset={resetToDefaults}
-                            onResetWidths={resetColumnWidths}
-                            onResetColumnWidth={resetColumnWidth}
-                            hasCustomWidths={hasCustomWidths}
-                            placement="auto"
-                            alignPopover="left"
-                            size="sm"
-                        />
+                        <div className="flex items-center gap-2">
+                            <TableColumnCustomizer
+                                columns={columns}
+                                onToggleVisibility={toggleColumnVisibility}
+                                onMoveUp={moveColumnUp}
+                                onMoveDown={moveColumnDown}
+                                onReset={resetToDefaults}
+                                onResetWidths={resetColumnWidths}
+                                onResetColumnWidth={resetColumnWidth}
+                                hasCustomWidths={hasCustomWidths}
+                                placement="auto"
+                                alignPopover="left"
+                                size="sm"
+                            />
+
+                            <TableCompactToggle
+                                isCompact={isCompact}
+                                onToggle={toggleCompact}
+                                size="sm"
+                            />
+                        </div>
                     </PaginationBar>
                 )}
             </div>

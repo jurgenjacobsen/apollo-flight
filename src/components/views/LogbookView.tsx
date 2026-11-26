@@ -13,7 +13,9 @@ import {
     PaginationBar,
     ConfirmDeleteButton,
     TableColumnCustomizer,
+    TableCompactToggle,
     ResizableHeaderCell,
+    Tooltip,
 } from "../ui";
 import {
     useTableColumnOrder,
@@ -38,6 +40,7 @@ import {
     ArrowRight,
     Download,
     Check,
+    Eye,
     Globe,
     Navigation,
     FileSpreadsheet,
@@ -45,6 +48,7 @@ import {
     ArrowUpDown,
     ArrowUp,
     ArrowDown,
+    Info,
 } from "lucide-react";
 
 export type LogbookSortField =
@@ -98,6 +102,28 @@ export const LogbookView: React.FC = () => {
     } = useFlightStore();
     const [searchTerm, setSearchTerm] = useState("");
     const [sortField, setSortField] = useState<LogbookSortField>("date");
+    const [isCompact, setIsCompact] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem("apollo_logbook_compact") === "true";
+        } catch {
+            return false;
+        }
+    });
+    const toggleCompact = () => {
+        setIsCompact((prev) => {
+            const next = !prev;
+            try {
+                localStorage.setItem("apollo_logbook_compact", String(next));
+            } catch {}
+            return next;
+        });
+    };
+    const cellPadY = `${isCompact ? "py-1.5" : "py-3"} transition-[padding] duration-200 ease-out`;
+    const subLineClass = `grid transition-[grid-template-rows,opacity] duration-200 ease-out ${
+        isCompact
+            ? "grid-rows-[0fr] opacity-0"
+            : "grid-rows-[1fr] opacity-100"
+    }`;
     const [sortDirection, setSortDirection] =
         useState<LogbookSortDirection>("desc");
     const [currentPage, setCurrentPage] = useState<number>(1);
@@ -500,17 +526,21 @@ export const LogbookView: React.FC = () => {
 
                     {/* Export Logbook Dropdown */}
                     <div className="relative shrink-0" ref={logbookMenuRef}>
-                        <button
-                            onClick={() =>
-                                setIsLogbookExportOpen(!isLogbookExportOpen)
-                            }
-                            disabled={flights.length === 0}
-                            title={
+                        <Tooltip
+                            content={
                                 flights.length === 0
                                     ? "No flights to export"
                                     : "Export logbook flight records (CSV / JSON)"
                             }
-                            className={`h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border transition-colors duration-150 select-none ${
+                            disabled={isLogbookExportOpen}
+                        >
+                            <span className="inline-flex">
+                                <button
+                                    onClick={() =>
+                                        setIsLogbookExportOpen(!isLogbookExportOpen)
+                                    }
+                                    disabled={flights.length === 0}
+                                    className={`h-8 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-sm border transition-colors duration-150 select-none ${
                                 flights.length === 0
                                     ? "opacity-50 cursor-not-allowed bg-neutral-100 dark:bg-[#181818] border-neutral-200 dark:border-geist-hairline text-neutral-400"
                                     : isLogbookExportOpen
@@ -534,6 +564,8 @@ export const LogbookView: React.FC = () => {
                                 }`}
                             />
                         </button>
+                            </span>
+                        </Tooltip>
 
                         {isLogbookExportOpen && (
                             <div className="absolute right-0 mt-1 z-50 w-72 bg-white dark:bg-[#161616] border border-neutral-200 dark:border-[#2a2a2a] rounded-sm shadow-xl py-1 text-left text-neutral-900 dark:text-neutral-100 animate-in fade-in zoom-in-95 duration-100 select-none">
@@ -543,7 +575,7 @@ export const LogbookView: React.FC = () => {
                                         <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
                                             Export Logbook
                                         </span>
-                                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-[#202020] px-1.5 py-0.5 rounded tabular-nums">
+                                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-[#202020] px-1.5 py-0.5 rounded-sm tabular-nums">
                                             {isFiltered &&
                                             exportScope === "filtered"
                                                 ? `${filteredFlights.length} of ${flights.length}`
@@ -557,12 +589,12 @@ export const LogbookView: React.FC = () => {
 
                                     {/* Scope filter switch if search is active */}
                                     {isFiltered && (
-                                        <div className="mt-2 flex items-center p-0.5 bg-neutral-100 dark:bg-[#202020] rounded text-[11px]">
+                                        <div className="mt-2 flex items-center p-0.5 bg-neutral-100 dark:bg-[#202020] rounded-sm text-[11px]">
                                             <button
                                                 onClick={() =>
                                                     setExportScope("filtered")
                                                 }
-                                                className={`flex-1 py-1 rounded text-center font-medium transition-colors ${
+                                                className={`flex-1 py-1 rounded-sm text-center font-medium transition-colors ${
                                                     exportScope === "filtered"
                                                         ? "bg-white dark:bg-[#2e2e2e] text-neutral-900 dark:text-white shadow-xs"
                                                         : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
@@ -575,7 +607,7 @@ export const LogbookView: React.FC = () => {
                                                 onClick={() =>
                                                     setExportScope("all")
                                                 }
-                                                className={`flex-1 py-1 rounded text-center font-medium transition-colors ${
+                                                className={`flex-1 py-1 rounded-sm text-center font-medium transition-colors ${
                                                     exportScope === "all"
                                                         ? "bg-white dark:bg-[#2e2e2e] text-neutral-900 dark:text-white shadow-xs"
                                                         : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
@@ -604,7 +636,7 @@ export const LogbookView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                                                     CSV Spreadsheet
                                                 </span>
-                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded-sm">
                                                     .CSV
                                                 </span>
                                             </div>
@@ -630,7 +662,7 @@ export const LogbookView: React.FC = () => {
                                                 <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                                                     JSON Document
                                                 </span>
-                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded-sm">
                                                     .JSON
                                                 </span>
                                             </div>
@@ -646,26 +678,27 @@ export const LogbookView: React.FC = () => {
                     </div>
 
                     {/* Recycle Bin Button */}
-                    <button
-                        type="button"
-                        onClick={() => setActiveView("recycle-bin")}
-                        title="Open Recycle Bin (deleted flights retained for 30 days)"
-                        className="h-8 inline-flex items-center gap-1.5 px-2.5 text-xs font-medium rounded-sm border border-neutral-200 dark:border-geist-hairline bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-700 dark:text-neutral-300 transition-colors shadow-xs shrink-0 select-none"
-                    >
-                        <Trash2 className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
-                        <span>Recycle Bin</span>
-                        {recycleBin.length > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 tabular-nums">
-                                {recycleBin.length}
-                            </span>
-                        )}
-                    </button>
+                    <Tooltip content="Open Recycle Bin (deleted flights retained for 30 days)">
+                        <button
+                            type="button"
+                            onClick={() => setActiveView("recycle-bin")}
+                            className="h-8 inline-flex items-center gap-1.5 px-2.5 text-xs font-medium rounded-sm border border-neutral-200 dark:border-geist-hairline bg-white dark:bg-geist-surface hover:bg-neutral-100 dark:hover:bg-[#1f1f1f] text-neutral-700 dark:text-neutral-300 transition-colors shadow-xs shrink-0 select-none"
+                        >
+                            <Trash2 className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
+                            <span>Recycle Bin</span>
+                            {recycleBin.length > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 tabular-nums">
+                                    {recycleBin.length}
+                                </span>
+                            )}
+                        </button>
+                    </Tooltip>
                 </div>
             </div>
 
             {/* Summary Stat Badges */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm flex items-center gap-3">
+                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs flex items-center gap-3">
                     <div className="p-2 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-600 dark:text-neutral-300">
                         <BookOpen className="w-4 h-4" />
                     </div>
@@ -679,7 +712,7 @@ export const LogbookView: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm flex items-center gap-3">
+                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs flex items-center gap-3">
                     <div className="p-2 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-600 dark:text-neutral-300">
                         <Clock className="w-4 h-4" />
                     </div>
@@ -696,7 +729,7 @@ export const LogbookView: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm flex items-center gap-3">
+                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs flex items-center gap-3">
                     <div className="p-2 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-600 dark:text-neutral-300">
                         <Compass className="w-4 h-4" />
                     </div>
@@ -713,7 +746,7 @@ export const LogbookView: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-sm flex items-center gap-3">
+                <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline p-3 rounded-sm shadow-xs flex items-center gap-3">
                     <div className="p-2 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-600 dark:text-neutral-300">
                         <TrendingDown className="w-4 h-4" />
                     </div>
@@ -752,7 +785,7 @@ export const LogbookView: React.FC = () => {
             </div>
 
             {/* Flight Logbook Table Container */}
-            <div className="bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-sm relative">
+            <div className="overflow-hidden bg-white dark:bg-geist-surface border border-neutral-200 dark:border-geist-hairline rounded-sm shadow-xs relative">
                 <div className="overflow-x-auto">
                     <table
                         className="w-full text-left border-collapse"
@@ -770,6 +803,7 @@ export const LogbookView: React.FC = () => {
                                                     width={getColumnWidth("route")}
                                                     onResize={setColumnWidth}
                                                     onResetWidth={resetColumnWidth}
+                                                    title="Sort by route"
                                                     className="py-2.5 px-4 font-medium"
                                                 >
                                                     <button
@@ -791,6 +825,7 @@ export const LogbookView: React.FC = () => {
                                                     width={getColumnWidth("aircraft")}
                                                     onResize={setColumnWidth}
                                                     onResetWidth={resetColumnWidth}
+                                                    title="Sort by aircraft"
                                                     className="py-2.5 px-4 font-medium"
                                                 >
                                                     <button
@@ -812,6 +847,7 @@ export const LogbookView: React.FC = () => {
                                                     width={getColumnWidth("date")}
                                                     onResize={setColumnWidth}
                                                     onResetWidth={resetColumnWidth}
+                                                    title="Sort by date & time"
                                                     className="py-2.5 px-4 font-medium"
                                                 >
                                                     <button
@@ -833,6 +869,7 @@ export const LogbookView: React.FC = () => {
                                                     width={getColumnWidth("duration")}
                                                     onResize={setColumnWidth}
                                                     onResetWidth={resetColumnWidth}
+                                                    title="Sort by duration"
                                                     className="py-2.5 px-4 font-medium"
                                                 >
                                                     <button
@@ -854,6 +891,7 @@ export const LogbookView: React.FC = () => {
                                                     width={getColumnWidth("distance")}
                                                     onResize={setColumnWidth}
                                                     onResetWidth={resetColumnWidth}
+                                                    title="Sort by distance"
                                                     className="py-2.5 px-4 font-medium"
                                                 >
                                                     <button
@@ -875,6 +913,7 @@ export const LogbookView: React.FC = () => {
                                                     width={getColumnWidth("maxAlt")}
                                                     onResize={setColumnWidth}
                                                     onResetWidth={resetColumnWidth}
+                                                    title="Sort by max altitude"
                                                     className="py-2.5 px-4 font-medium"
                                                 >
                                                     <button
@@ -896,6 +935,7 @@ export const LogbookView: React.FC = () => {
                                                     width={getColumnWidth("peakGs")}
                                                     onResize={setColumnWidth}
                                                     onResetWidth={resetColumnWidth}
+                                                    title="Sort by peak ground speed"
                                                     className="py-2.5 px-4 font-medium"
                                                 >
                                                     <button
@@ -917,6 +957,7 @@ export const LogbookView: React.FC = () => {
                                                     width={getColumnWidth("touchdown")}
                                                     onResize={setColumnWidth}
                                                     onResetWidth={resetColumnWidth}
+                                                    title="Sort by touchdown rate"
                                                     className="py-2.5 px-4 font-medium"
                                                 >
                                                     <button
@@ -938,6 +979,7 @@ export const LogbookView: React.FC = () => {
                                                     width={getColumnWidth("status")}
                                                     onResize={setColumnWidth}
                                                     onResetWidth={resetColumnWidth}
+                                                    title="Sort by status"
                                                     className="py-2.5 px-4 font-medium"
                                                 >
                                                     <button
@@ -945,7 +987,7 @@ export const LogbookView: React.FC = () => {
                                                         onClick={() => handleSort("status")}
                                                         className="group/sort inline-flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors"
                                                     >
-                                                        <Activity className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
+                                                        <Info className="w-3.5 h-3.5 text-neutral-400 group-hover/sort:text-neutral-600 dark:group-hover/sort:text-neutral-300" />
                                                         <span>Status</span>
                                                         {renderSortIcon("status")}
                                                     </button>
@@ -1006,7 +1048,7 @@ export const LogbookView: React.FC = () => {
                                             switch (colId) {
                                                 case "route":
                                                     return (
-                                                        <td key="route" className="py-3 px-4" style={cellStyle}>
+                                                        <td key="route" className={`${cellPadY} px-4`} style={cellStyle}>
                                                             <div className="flex items-center gap-1.5 font-semibold text-neutral-900 dark:text-white truncate">
                                                                 <span>{flight.departureIcao}</span>
                                                                 <ArrowRight className="w-3 h-3 text-neutral-400 shrink-0" />
@@ -1018,7 +1060,7 @@ export const LogbookView: React.FC = () => {
                                                     return (
                                                         <td
                                                             key="aircraft"
-                                                            className="py-3 px-4 text-neutral-700 dark:text-neutral-300 truncate"
+                                                            className={`${cellPadY} px-4 text-neutral-700 dark:text-neutral-300 truncate`}
                                                             style={cellStyle}
                                                             title={`${flight.aircraftType}${flight.totalWeight || flight.grossWeight ? ` · Gross Weight: ${formatWeight(flight.totalWeight || flight.grossWeight, weightUnit)}` : ""}`}
                                                         >
@@ -1026,51 +1068,62 @@ export const LogbookView: React.FC = () => {
                                                                 {flight.aircraftType}
                                                             </div>
                                                             {flight.totalWeight || flight.grossWeight ? (
-                                                                <div className="text-[10px] text-neutral-400 dark:text-neutral-500 tracking-tight truncate tabular-nums">
-                                                                    {formatWeight(
-                                                                        flight.totalWeight || flight.grossWeight,
-                                                                        weightUnit,
-                                                                    )}
+                                                                <div className={subLineClass} aria-hidden={isCompact}>
+                                                                    <div className="overflow-hidden">
+                                                                        <div className="text-[10px] text-neutral-400 dark:text-neutral-500 tracking-tight truncate tabular-nums">
+                                                                            {formatWeight(
+                                                                                flight.totalWeight || flight.grossWeight,
+                                                                                weightUnit,
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             ) : null}
                                                         </td>
                                                     );
                                                 case "date":
                                                     return (
-                                                        <td key="date" className="py-3 px-4 text-neutral-500 dark:text-neutral-400 whitespace-nowrap truncate" style={cellStyle}>
+                                                        <td key="date" className={`${cellPadY} px-4 text-neutral-500 dark:text-neutral-400 whitespace-nowrap truncate`} style={cellStyle}>
                                                             <span>{flightDate}</span>
-                                                            <span className="text-[11px] text-neutral-400 dark:text-neutral-500 ml-1.5">
+                                                            <span
+                                                                aria-hidden={isCompact}
+                                                                className={`inline-block overflow-hidden align-bottom text-[11px] text-neutral-400 dark:text-neutral-500 transition-all duration-200 ease-out ${
+                                                                    isCompact
+                                                                        ? "max-w-0 opacity-0 ml-0"
+                                                                        : "max-w-[120px] opacity-100 ml-1.5"
+                                                                }`}
+                                                            >
                                                                 ({flightTime})
                                                             </span>
                                                         </td>
                                                     );
                                                 case "duration":
                                                     return (
-                                                        <td key="duration" className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate" style={cellStyle}>
+                                                        <td key="duration" className={`${cellPadY} px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate`} style={cellStyle}>
                                                             {formatLogbookDuration(flight.flightTimeSeconds)}
                                                         </td>
                                                     );
                                                 case "distance":
                                                     return (
-                                                        <td key="distance" className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate" style={cellStyle}>
+                                                        <td key="distance" className={`${cellPadY} px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate`} style={cellStyle}>
                                                             {(flight.distanceFlownNm ?? 0).toFixed(1)} NM
                                                         </td>
                                                     );
                                                 case "maxAlt":
                                                     return (
-                                                        <td key="maxAlt" className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate" style={cellStyle}>
+                                                        <td key="maxAlt" className={`${cellPadY} px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate`} style={cellStyle}>
                                                             {flight.maxAltitude.toLocaleString()} ft
                                                         </td>
                                                     );
                                                 case "peakGs":
                                                     return (
-                                                        <td key="peakGs" className="py-3 px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate" style={cellStyle}>
+                                                        <td key="peakGs" className={`${cellPadY} px-4 tabular-nums text-neutral-800 dark:text-neutral-200 whitespace-nowrap truncate`} style={cellStyle}>
                                                             {flight.maxGroundSpeed} kt
                                                         </td>
                                                     );
                                                 case "touchdown":
                                                     return (
-                                                        <td key="touchdown" className="py-3 px-4 tabular-nums whitespace-nowrap truncate" style={cellStyle}>
+                                                        <td key="touchdown" className={`${cellPadY} px-4 tabular-nums whitespace-nowrap truncate`} style={cellStyle}>
                                                             {flight.landingRateFpm ? (
                                                                 <span
                                                                     className={`inline-flex items-center gap-1 ${
@@ -1092,7 +1145,7 @@ export const LogbookView: React.FC = () => {
                                                     );
                                                 case "status":
                                                     return (
-                                                        <td key="status" className="py-3 px-4 whitespace-nowrap truncate" style={cellStyle}>
+                                                        <td key="status" className={`${cellPadY} px-4 whitespace-nowrap truncate`} style={cellStyle}>
                                                             <span className="inline-block text-[11px] px-2 py-0.5 rounded-sm bg-neutral-100 dark:bg-[#181818] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-geist-hairline">
                                                                 {flight.status}
                                                             </span>
@@ -1104,58 +1157,61 @@ export const LogbookView: React.FC = () => {
                                         })}
 
                                         {/* Actions */}
-                                        <td className="py-3 px-4 text-right whitespace-nowrap relative">
+                                        <td className={`${cellPadY} px-4 text-right whitespace-nowrap relative`}>
                                             <div className="flex items-center justify-end gap-1.5">
+                                                {/* See Flight Detail Button */}
+                                                <Tooltip content="View telemetry & flight debrief">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedFlightId(
+                                                                flight.id,
+                                                            );
+                                                            setActiveView(
+                                                                "flight-detail",
+                                                            );
+                                                        }}
+                                                        className="p-1.5 rounded-sm border border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
+                                                        aria-label="View telemetry and flight debrief"
+                                                    >
+                                                        <Eye className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </Tooltip>
+
                                                 {/* Custom Export Dropdown Trigger */}
-                                                <button
-                                                    onClick={(e) =>
-                                                        handleOpenExportMenu(
-                                                            e,
-                                                            flight,
-                                                        )
-                                                    }
-                                                    title="Export flight (GPX, KML, GeoJSON, CSV)"
-                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-sm border transition-colors duration-150 ${
+                                                <Tooltip
+                                                    content="Export flight (GPX, KML, GeoJSON, CSV)"
+                                                    disabled={
                                                         exportMenu?.flightId ===
                                                         flight.id
-                                                            ? "bg-neutral-200 dark:bg-[#282828] text-neutral-900 dark:text-white border-neutral-300 dark:border-neutral-600"
-                                                            : "bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1a1a] dark:hover:bg-[#262626] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-geist-hairline"
-                                                    }`}
+                                                    }
                                                 >
-                                                    {copiedId === flight.id ? (
-                                                        <Check className="w-3 h-3 text-emerald-500" />
-                                                    ) : (
-                                                        <Download className="w-3 h-3 text-neutral-400" />
-                                                    )}
-                                                    <span>
-                                                        {copiedId === flight.id
-                                                            ? "Exported"
-                                                            : "Export"}
-                                                    </span>
-                                                    <ChevronDown
-                                                        className={`w-3 h-3 text-neutral-400 transition-transform duration-150 ${
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) =>
+                                                            handleOpenExportMenu(
+                                                                e,
+                                                                flight,
+                                                            )
+                                                        }
+                                                        className={`p-1.5 rounded-sm border transition-colors ${
                                                             exportMenu?.flightId ===
                                                             flight.id
-                                                                ? "rotate-180 text-neutral-700 dark:text-neutral-200"
-                                                                : ""
+                                                                ? "border-neutral-300 dark:border-neutral-600 bg-neutral-200 dark:bg-[#282828] text-neutral-900 dark:text-white"
+                                                                : copiedId ===
+                                                                    flight.id
+                                                                  ? "border-emerald-600 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/25 text-emerald-700 dark:text-emerald-400"
+                                                                  : "border-neutral-200 dark:border-geist-hairline text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#202020]"
                                                         }`}
-                                                    />
-                                                </button>
-
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedFlightId(
-                                                            flight.id,
-                                                        );
-                                                        setActiveView(
-                                                            "flight-detail",
-                                                        );
-                                                    }}
-                                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-sm bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1a1a] dark:hover:bg-[#262626] text-neutral-800 dark:text-white border border-neutral-200 dark:border-geist-hairline transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400"
-                                                >
-                                                    <span>Analyze</span>
-                                                    <ChevronRight className="w-3 h-3 text-neutral-400" />
-                                                </button>
+                                                        aria-label="Export flight"
+                                                    >
+                                                        {copiedId === flight.id ? (
+                                                            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                                        ) : (
+                                                            <Download className="w-3.5 h-3.5" />
+                                                        )}
+                                                    </button>
+                                                </Tooltip>
 
                                                 {/* Expanding Delete Confirmation Button */}
                                                 <ConfirmDeleteButton
@@ -1187,19 +1243,27 @@ export const LogbookView: React.FC = () => {
                         }}
                         itemName="flights"
                     >
-                        <TableColumnCustomizer
-                            columns={columns}
-                            onToggleVisibility={toggleColumnVisibility}
-                            onMoveUp={moveColumnUp}
-                            onMoveDown={moveColumnDown}
-                            onReset={resetToDefaults}
-                            onResetWidths={resetColumnWidths}
-                            onResetColumnWidth={resetColumnWidth}
-                            hasCustomWidths={hasCustomWidths}
-                            placement="auto"
-                            alignPopover="left"
-                            size="sm"
-                        />
+                        <div className="flex items-center gap-2">
+                            <TableColumnCustomizer
+                                columns={columns}
+                                onToggleVisibility={toggleColumnVisibility}
+                                onMoveUp={moveColumnUp}
+                                onMoveDown={moveColumnDown}
+                                onReset={resetToDefaults}
+                                onResetWidths={resetColumnWidths}
+                                onResetColumnWidth={resetColumnWidth}
+                                hasCustomWidths={hasCustomWidths}
+                                placement="auto"
+                                alignPopover="left"
+                                size="sm"
+                            />
+
+                            <TableCompactToggle
+                                isCompact={isCompact}
+                                onToggle={toggleCompact}
+                                size="sm"
+                            />
+                        </div>
                     </PaginationBar>
                 )}
 
@@ -1268,7 +1332,7 @@ export const LogbookView: React.FC = () => {
                                     <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
                                         GPS Track
                                     </span>
-                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded-sm">
                                         .GPX
                                     </span>
                                 </div>
@@ -1292,7 +1356,7 @@ export const LogbookView: React.FC = () => {
                                     <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                                         Google Earth
                                     </span>
-                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded-sm">
                                         .KML
                                     </span>
                                 </div>
@@ -1316,7 +1380,7 @@ export const LogbookView: React.FC = () => {
                                     <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                                         GeoJSON Feature
                                     </span>
-                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded-sm">
                                         .GeoJSON
                                     </span>
                                 </div>
@@ -1340,7 +1404,7 @@ export const LogbookView: React.FC = () => {
                                     <span className="font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                                         CSV Spreadsheet
                                     </span>
-                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded">
+                                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-[#202020] px-1 py-0.5 rounded-sm">
                                         .CSV
                                     </span>
                                 </div>
