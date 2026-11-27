@@ -209,7 +209,9 @@ use crate::{db, get_log_dir, DbState, LogFileInfo, CLOSE_TO_TRAY};
     pub fn open_directory_dialog() -> Result<Option<String>, String> {
         #[cfg(target_os = "windows")]
         {
+            use std::os::windows::process::CommandExt;
             let output = std::process::Command::new("powershell")
+                .creation_flags(0x08000000)
                 .args([
                     "-NoProfile",
                     "-Command",

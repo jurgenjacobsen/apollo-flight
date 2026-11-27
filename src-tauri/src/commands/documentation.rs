@@ -1,3 +1,4 @@
+use base64::Engine as _;
 use tauri::{AppHandle, Manager};
 use crate::{db, get_app_data_dir, DbState};
 
@@ -23,29 +24,6 @@ use crate::{db, get_app_data_dir, DbState};
         pub extension: String,
         pub text_content: Option<String>,
         pub base64_content: Option<String>,
-    }
-
-    fn to_base64(bytes: &[u8]) -> String {
-        const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
-        for chunk in bytes.chunks(3) {
-            let b0 = chunk[0] as usize;
-            let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
-            let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
-            out.push(CHARSET[(b0 >> 2) & 0x3F] as char);
-            out.push(CHARSET[((b0 << 4) | (b1 >> 4)) & 0x3F] as char);
-            if chunk.len() > 1 {
-                out.push(CHARSET[((b1 << 2) | (b2 >> 6)) & 0x3F] as char);
-            } else {
-                out.push('=');
-            }
-            if chunk.len() > 2 {
-                out.push(CHARSET[b2 & 0x3F] as char);
-            } else {
-                out.push('=');
-            }
-        }
-        out
     }
 
     fn scan_dir_for_docs(
@@ -190,7 +168,7 @@ use crate::{db, get_app_data_dir, DbState};
             })
         } else if ext == "pdf" {
             let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-            let b64 = to_base64(&bytes);
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
             Ok(DocFileContent {
                 path: file_path,
                 extension: "pdf".to_string(),
