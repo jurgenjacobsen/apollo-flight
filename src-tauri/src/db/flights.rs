@@ -54,10 +54,6 @@ pub fn get_flights(conn: &Connection) -> Result<Vec<FlightRecord>> {
             ) {
                 if dist > 0.0 {
                     flight.distance_flown_nm = dist;
-                    let _ = conn.execute(
-                        "UPDATE flights SET distance_flown_nm = ?1 WHERE id = ?2",
-                        params![dist, flight.id],
-                    );
                 }
             }
         }
@@ -117,10 +113,6 @@ pub fn get_flight_details(conn: &Connection, id: &str) -> Result<Option<FlightDe
         ) {
             if dist > 0.0 {
                 flight.distance_flown_nm = dist;
-                let _ = conn.execute(
-                    "UPDATE flights SET distance_flown_nm = ?1 WHERE id = ?2",
-                    params![dist, flight.id],
-                );
             }
         }
     }
@@ -248,6 +240,7 @@ pub fn save_flight(conn: &Connection, flight: &FlightRecord) -> Result<()> {
 }
 
 pub fn delete_flight(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM flight_telemetry WHERE flight_id = ?1", params![id])?;
     conn.execute("DELETE FROM flights WHERE id = ?1", params![id])?;
     Ok(())
 }

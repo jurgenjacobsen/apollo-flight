@@ -22,6 +22,7 @@ pub fn init_databases(
         r#"
         PRAGMA journal_mode = WAL;
         PRAGMA synchronous = NORMAL;
+        PRAGMA foreign_keys = ON;
 
         CREATE TABLE IF NOT EXISTS airports (
             icao TEXT PRIMARY KEY,
@@ -77,6 +78,7 @@ pub fn init_databases(
         r#"
         PRAGMA journal_mode = WAL;
         PRAGMA synchronous = NORMAL;
+        PRAGMA foreign_keys = ON;
 
         CREATE TABLE IF NOT EXISTS flights (
             id TEXT PRIMARY KEY,
@@ -269,6 +271,7 @@ pub fn init_database_with_resources(db_path: &Path, resource_dirs: &[std::path::
         r#"
         PRAGMA journal_mode = WAL;
         PRAGMA synchronous = NORMAL;
+        PRAGMA foreign_keys = ON;
 
         CREATE TABLE IF NOT EXISTS flights (
             id TEXT PRIMARY KEY,

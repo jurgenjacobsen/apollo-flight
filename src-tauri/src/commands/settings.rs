@@ -94,7 +94,10 @@ use crate::{db, get_log_dir, DbState, LogFileInfo, CLOSE_TO_TRAY};
             .map_err(|e| format!("Failed to read log file: {}", e))?;
         const MAX_BYTES: usize = 256 * 1024;
         if content.len() > MAX_BYTES {
-            let start = content.len() - MAX_BYTES;
+            let mut start = content.len() - MAX_BYTES;
+            while !content.is_char_boundary(start) {
+                start += 1;
+            }
             Ok(format!("... [truncated first {} bytes]\n{}", start, &content[start..]))
         } else {
             Ok(content)

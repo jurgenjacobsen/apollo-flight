@@ -3,7 +3,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
-    http::{header, Method, StatusCode},
+    http::{header, Method},
     response::{Html, IntoResponse, Response},
     routing::get,
     Json, Router,
@@ -204,13 +204,13 @@ pub async fn start_server(app: AppHandle, requested_port: Option<u16>) -> Result
 
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::Any)
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods([Method::GET, Method::OPTIONS])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
     let mut router = Router::new()
         .route("/api/status", get(api_status))
         .route("/api/telemetry", get(api_telemetry))
-        .route("/api/route", get(api_get_route).post(api_set_route))
+        .route("/api/route", get(api_get_route))
         .route("/ws", get(ws_handler))
         .layer(cors)
         .with_state(state);
@@ -320,16 +320,6 @@ async fn api_get_route(State(state): State<EfbServerState>) -> Json<serde_json::
         .and_then(|r| r.clone())
         .unwrap_or(serde_json::Value::Null);
     Json(route)
-}
-
-async fn api_set_route(
-    State(state): State<EfbServerState>,
-    Json(payload): Json<serde_json::Value>,
-) -> StatusCode {
-    if let Ok(mut lock) = state.active_route.write() {
-        *lock = Some(payload);
-    }
-    StatusCode::OK
 }
 
 async fn ws_handler(

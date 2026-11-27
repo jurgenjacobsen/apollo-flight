@@ -3653,7 +3653,7 @@ export const useFlightStore = create<FlightState>()(
                                 telemetryPoints: allPoints,
                             };
 
-                            flushTelemetryBuffer();
+                            await flushTelemetryBuffer();
                             const {
                                 telemetryPoints: _pts,
                                 touchdowns: _tds,
@@ -3662,32 +3662,6 @@ export const useFlightStore = create<FlightState>()(
                             await safeInvoke("save_flight", {
                                 flight: dbRecord,
                             });
-
-                            if (allPoints.length > 0) {
-                                const rawPoints = allPoints.map((tp) => ({
-                                    flight_id: completedFlight.id,
-                                    timestamp: tp.timestamp,
-                                    latitude: tp.latitude,
-                                    longitude: tp.longitude,
-                                    altitude_msl: tp.altitudeMsl,
-                                    altitude_agl: tp.altitudeAgl,
-                                    indicated_airspeed: tp.indicatedAirspeed,
-                                    ground_speed: tp.groundSpeed,
-                                    heading: tp.heading,
-                                    pitch: tp.pitch,
-                                    bank: tp.bank,
-                                    vertical_speed: tp.verticalSpeed,
-                                    is_on_ground: tp.isOnGround ? 1 : 0,
-                                    wind_speed: tp.windSpeed,
-                                    wind_direction: tp.windDirection,
-                                    oat: tp.oat,
-                                    tat: tp.tat,
-                                    visibility: tp.visibility,
-                                }));
-                                safeInvoke("save_telemetry_batch", {
-                                    points: rawPoints,
-                                }).catch(() => {});
-                            }
 
                             // Record unique airports visited on this flight
                             const uniqueAirportIcaos = new Set<string>();
@@ -3948,7 +3922,7 @@ export const useFlightStore = create<FlightState>()(
                     avgCruiseWindDirection,
                 };
 
-                flushTelemetryBuffer();
+                await flushTelemetryBuffer();
                 const {
                     telemetryPoints: _pts,
                     touchdowns: _tds,
