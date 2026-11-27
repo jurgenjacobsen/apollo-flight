@@ -262,6 +262,7 @@ export const CorridorMapPreview: React.FC<CorridorMapPreviewProps> = ({
                 <MapContainer
                     center={circleCenter}
                     zoom={6}
+                    preferCanvas={true}
                     style={{
                         height: "100%",
                         width: "100%",

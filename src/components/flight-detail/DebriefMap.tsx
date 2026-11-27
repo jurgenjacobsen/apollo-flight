@@ -238,6 +238,7 @@ export const DebriefMap: React.FC<DebriefMapProps> = ({
                         key={flight.id}
                         center={coordinates[0]}
                         zoom={8}
+                        preferCanvas={true}
                         style={{ height: "100%", width: "100%" }}
                         className={theme === "dark" ? "dark-tiles" : ""}
                     >

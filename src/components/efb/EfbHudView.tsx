@@ -243,6 +243,7 @@ export const EfbHudView: React.FC = () => {
                     center={centerCoords}
                     zoom={12}
                     zoomControl={false}
+                    preferCanvas={true}
                     className="h-full w-full z-0"
                 >
                     <TileLayer

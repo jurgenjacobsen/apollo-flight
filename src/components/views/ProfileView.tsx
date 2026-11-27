@@ -1446,6 +1446,7 @@ export const ProfileView: React.FC = () => {
                                     zoom={2}
                                     minZoom={2}
                                     maxZoom={9}
+                                    preferCanvas={true}
                                     style={{ height: "100%", width: "100%" }}
                                     className={`z-0 ${theme === "dark" ? "dark-tiles" : ""}`}
                                 >

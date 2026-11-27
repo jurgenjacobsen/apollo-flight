@@ -2610,6 +2610,7 @@ Recommended Altitudes: ${route.sectors.map((s, i) => `Leg ${i + 1}: ${formatFlig
                                     <MapContainer
                                         center={circleCenter}
                                         zoom={6}
+                                        preferCanvas={true}
                                         style={{
                                             height: "100%",
                                             width: "100%",
