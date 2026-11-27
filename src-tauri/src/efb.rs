@@ -202,18 +202,7 @@ pub async fn start_server(app: AppHandle, requested_port: Option<u16>) -> Result
     let dist_dir = resolve_dist_dir(&app);
     let index_file = dist_dir.join("index.html");
 
-    let cors = CorsLayer::new()
-        .allow_origin(tower_http::cors::Any)
-        .allow_methods([Method::GET, Method::OPTIONS])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
-
-    let mut router = Router::new()
-        .route("/api/status", get(api_status))
-        .route("/api/telemetry", get(api_telemetry))
-        .route("/api/route", get(api_get_route))
-        .route("/ws", get(ws_handler))
-        .layer(cors)
-        .with_state(state);
+    let mut router = build_api_router(state);
 
     // If static dist exists, serve it; otherwise serve embedded fallback HTML
     if index_file.exists() {
@@ -287,6 +276,21 @@ pub fn get_status() -> EfbStatus {
         active_clients,
         sim_connected,
     }
+}
+
+fn build_api_router(state: EfbServerState) -> Router {
+    let cors = CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods([Method::GET, Method::OPTIONS])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
+
+    Router::new()
+        .route("/api/status", get(api_status))
+        .route("/api/telemetry", get(api_telemetry))
+        .route("/api/route", get(api_get_route))
+        .route("/ws", get(ws_handler))
+        .layer(cors)
+        .with_state(state)
 }
 
 // REST Handlers
@@ -399,4 +403,54 @@ async fn fallback_html() -> Response {
 </body>
 </html>"#;
     Html(html).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_efb_api_routes_are_read_only_and_return_expected_json() {
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+        let state = EfbServerState {
+            latest_telemetry: Arc::new(RwLock::new(TelemetryPacket::default())),
+            broadcast_tx: tx,
+            active_route: Arc::new(RwLock::new(Some(serde_json::json!({ "icao": "LOWI" })))),
+            active_clients: Arc::new(AtomicUsize::new(0)),
+            port: 0,
+        };
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
+        let addr = listener.local_addr().unwrap();
+        let router = build_api_router(state);
+
+        let server_handle = tokio::spawn(async move {
+            let _ = axum::serve(listener, router).await;
+        });
+
+        let client = reqwest::Client::new();
+        let base = format!("http://{}", addr);
+
+        let status_resp = client.get(format!("{}/api/status", base)).send().await.unwrap();
+        assert_eq!(status_resp.status(), reqwest::StatusCode::OK);
+        let status_json: serde_json::Value = status_resp.json().await.unwrap();
+        assert_eq!(status_json["status"], "online");
+
+        let route_get = client.get(format!("{}/api/route", base)).send().await.unwrap();
+        assert_eq!(route_get.status(), reqwest::StatusCode::OK);
+        let route_json: serde_json::Value = route_get.json().await.unwrap();
+        assert_eq!(route_json["icao"], "LOWI");
+
+        let route_post = client
+            .post(format!("{}/api/route", base))
+            .json(&serde_json::json!({ "icao": "KJFK" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(route_post.status(), reqwest::StatusCode::METHOD_NOT_ALLOWED);
+
+        server_handle.abort();
+    }
 }

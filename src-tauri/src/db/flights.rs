@@ -42,22 +42,6 @@ pub fn get_flights(conn: &Connection) -> Result<Vec<FlightRecord>> {
     for r in rows {
         result.push(r?);
     }
-    drop(stmt);
-
-    for flight in &mut result {
-        if flight.distance_flown_nm <= 0.0 {
-            if let Ok(dist) = calculate_flight_distance(
-                conn,
-                &flight.id,
-                flight.departure_icao.as_deref(),
-                flight.arrival_icao.as_deref(),
-            ) {
-                if dist > 0.0 {
-                    flight.distance_flown_nm = dist;
-                }
-            }
-        }
-    }
 
     Ok(result)
 }

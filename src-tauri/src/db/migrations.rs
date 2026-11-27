@@ -214,8 +214,35 @@ pub fn init_databases(
     let _ = logbook_conn.execute("CREATE TEMP VIEW IF NOT EXISTS runways AS SELECT * FROM navdata.runways", []);
 
     apply_telemetry_migrations(&logbook_conn);
+    backfill_zero_flight_distances(&logbook_conn);
 
     Ok((logbook_conn, navdata_conn))
+}
+
+fn backfill_zero_flight_distances(conn: &Connection) {
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT id, departure_icao, arrival_icao FROM flights WHERE distance_flown_nm <= 0.0",
+    ) else {
+        return;
+    };
+    let rows: Vec<(String, Option<String>, Option<String>)> = match stmt.query_map([], |row| {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    }) {
+        Ok(mapped) => mapped.filter_map(|r| r.ok()).collect(),
+        Err(_) => return,
+    };
+    drop(stmt);
+
+    for (id, dep, arr) in rows {
+        if let Ok(dist) = calculate_flight_distance(conn, &id, dep.as_deref(), arr.as_deref()) {
+            if dist > 0.0 {
+                let _ = conn.execute(
+                    "UPDATE flights SET distance_flown_nm = ?1 WHERE id = ?2",
+                    params![dist, id],
+                );
+            }
+        }
+    }
 }
 
 fn migrate_from_legacy_aerotrack(legacy_db: &Path, logbook_path: &Path, navdata_path: &Path) -> Result<()> {
