@@ -40,6 +40,12 @@ import {
     deleteFlightTelemetry,
     clearAllCachedTelemetry,
 } from "../utils/telemetryStorage";
+import {
+    pushTelemetryPoint,
+    flushTelemetryBuffer,
+} from "./slices/telemetryBuffer";
+import { createChecklistSlice } from "./slices/checklistSlice";
+import { createRouteSlice, hydrateSavedRoute } from "./slices/routeSlice";
 import type { Update } from "@tauri-apps/plugin-updater";
 import packageJson from "../../package.json";
 
@@ -56,67 +62,11 @@ const sanitizeChecklistList = (list?: Checklist[]): Checklist[] => {
     return resetChecklistChecks(merged);
 };
 
-/**
- * Formats flight duration in seconds for UI cards.
- * When flight duration reaches 60 minutes (>= 3600 seconds), formats as '0h 00min 00s'.
- * Otherwise formats as '0m 00s'.
- */
-export function formatFlightDuration(totalSeconds: number): string {
-    if (isNaN(totalSeconds) || totalSeconds < 0) return "0m 00s";
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = Math.floor(totalSeconds % 60);
-
-    if (hours > 0) {
-        const padMin = String(minutes).padStart(2, "0");
-        const padSec = String(seconds).padStart(2, "0");
-        return `${hours}h ${padMin}min ${padSec}s`;
-    }
-
-    return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
-}
-
-/**
- * Formats flight duration for logbook tables and detail views.
- * When flight duration reaches 60 minutes (>= 3600 seconds or totalMins >= 60),
- * formats as '0h 00min' (e.g. '1h 05min', '2h 00min').
- * Otherwise formats as '0min' (e.g. '45min').
- */
-export function formatLogbookDuration(totalSeconds: number): string {
-    if (isNaN(totalSeconds) || totalSeconds <= 0) return "0min";
-    const totalMins = Math.round(totalSeconds / 60);
-    const hours = Math.floor(totalMins / 60);
-    const mins = totalMins % 60;
-
-    if (hours > 0) {
-        return `${hours}h ${String(mins).padStart(2, "0")}min`;
-    }
-
-    return `${mins}min`;
-}
-
-/**
- * Formats aircraft weight in pounds into the target unit string (kilograms 'kg' or pounds 'lbs').
- * Default unit is 'kg'.
- */
-export function formatWeight(
-    weightLbs: number | undefined | null,
-    unit: WeightUnit = "kg",
-): string {
-    if (
-        weightLbs === undefined ||
-        weightLbs === null ||
-        isNaN(weightLbs) ||
-        weightLbs <= 0
-    ) {
-        return "—";
-    }
-    if (unit === "kg") {
-        const kg = Math.round(weightLbs * 0.45359237);
-        return `${kg.toLocaleString()} kg`;
-    }
-    return `${Math.round(weightLbs).toLocaleString()} lbs`;
-}
+export {
+    formatFlightDuration,
+    formatLogbookDuration,
+    formatWeight,
+} from "../utils/flightFormatters";
 
 /**
  * Converts aircraft weight in pounds to the target unit and returns the numeric value and unit label.
@@ -1241,9 +1191,7 @@ const DEFAULT_TELEMETRY: TelemetryData = {
     timestamp: new Date().toISOString(),
 };
 
-// Batch buffer for SQLite writes
-let telemetryBuffer: TelemetryPoint[] = [];
-let lastFlushTimestamp = Date.now();
+// Flight State Machine Tracking
 let stoppedSinceTimestamp: number | null = null;
 let isTurnaroundStay = false;
 let lastFlightLoadCount: number | null = null;
@@ -1257,43 +1205,6 @@ let cruiseWindCount = 0;
 let smoothedVerticalSpeed = 0;
 let hasReachedCruiseOrHighAlt = false;
 let timeOfLastTouchdown: number | null = null;
-
-async function flushTelemetryBuffer() {
-    if (telemetryBuffer.length === 0) return;
-    const toSend = [...telemetryBuffer];
-    telemetryBuffer = [];
-    lastFlushTimestamp = Date.now();
-
-    await safeInvoke("save_telemetry_batch", { points: toSend });
-}
-
-function hydrateSavedRoute(r: any): SavedRoute {
-    let sectors: any[] = [];
-    try {
-        sectors = JSON.parse(r.sectorsJson || "[]");
-    } catch {}
-    const intermediateIcaos =
-        r.intermediateIcaos ||
-        (Array.isArray(sectors) && sectors.length > 1
-            ? JSON.stringify(
-                  sectors
-                      .slice(0, -1)
-                      .map((s: any) => s.arrival?.icao)
-                      .filter(Boolean),
-              )
-            : "[]");
-    return {
-        ...r,
-        aircraftName: r.aircraftName || "Aircraft",
-        sectorCount:
-            r.sectorCount ??
-            (Array.isArray(sectors) && sectors.length > 0 ? sectors.length : 1),
-        includeGroundTime: r.includeGroundTime ?? true,
-        isRoundTrip: r.isRoundTrip ?? false,
-        intermediateIcaos,
-        sectors: Array.isArray(sectors) ? sectors : [],
-    };
-}
 
 async function checkAndMarkFlownSavedRoutes(
     completedFlight: FlightRecord,
@@ -2245,229 +2156,7 @@ export const useFlightStore = create<FlightState>()(
                 }
             },
 
-            fetchSavedRoutes: async () => {
-                try {
-                    const list =
-                        await safeInvoke<SavedRoute[]>("get_saved_routes");
-                    if (list && Array.isArray(list)) {
-                        const hydrated = list.map(hydrateSavedRoute);
-                        if (hydrated.length > 0) {
-                            set({ savedRoutes: hydrated });
-                            return hydrated;
-                        } else if (get().savedRoutes.length > 0) {
-                            // Sync existing cached routes to SQLite backend
-                            for (const r of get().savedRoutes) {
-                                await safeInvoke("save_route", { route: r });
-                            }
-                            return get().savedRoutes;
-                        } else {
-                            set({ savedRoutes: [] });
-                            return [];
-                        }
-                    }
-                } catch (err) {
-                    console.warn(
-                        "[flightStore] Failed to fetch saved routes:",
-                        err,
-                    );
-                }
-                return get().savedRoutes;
-            },
-
-            setCurrentGeneratedRoute: (route) => {
-                set({ currentGeneratedRoute: route });
-            },
-
-            saveRoute: async (routeInput) => {
-                // If an id was provided, check if it exists; otherwise check if an identical route is already saved
-                const existing = get().savedRoutes.find((r) => {
-                    if (routeInput.id && r.id === routeInput.id) return true;
-                    return (
-                        r.departureIcao === routeInput.departureIcao &&
-                        r.arrivalIcao === routeInput.arrivalIcao &&
-                        r.aircraftCategory === routeInput.aircraftCategory &&
-                        r.totalDistanceNm === routeInput.totalDistanceNm &&
-                        (routeInput.intermediateIcaos
-                            ? r.intermediateIcaos ===
-                              routeInput.intermediateIcaos
-                            : true)
-                    );
-                });
-
-                const id =
-                    routeInput.id || existing?.id || `route-${Date.now()}`;
-                const now = new Date().toISOString();
-                const sectors = routeInput.sectors || existing?.sectors || [];
-                const sectorsJson =
-                    routeInput.sectorsJson ||
-                    existing?.sectorsJson ||
-                    JSON.stringify(sectors);
-                const sectorCount =
-                    routeInput.sectorCount ??
-                    (sectors.length > 0 ? sectors.length : 1);
-                const aircraftName =
-                    routeInput.aircraftName ||
-                    existing?.aircraftName ||
-                    "Aircraft";
-                const includeGroundTime =
-                    routeInput.includeGroundTime ??
-                    existing?.includeGroundTime ??
-                    true;
-                const isRoundTrip =
-                    routeInput.isRoundTrip ?? existing?.isRoundTrip ?? false;
-
-                const fullRoute: SavedRoute = {
-                    id,
-                    name:
-                        routeInput.name ||
-                        existing?.name ||
-                        `${routeInput.departureIcao} ➔ ${routeInput.arrivalIcao}`,
-                    aircraftName,
-                    aircraftCategory:
-                        routeInput.aircraftCategory ||
-                        existing?.aircraftCategory ||
-                        "A",
-                    departureIcao: routeInput.departureIcao,
-                    arrivalIcao: routeInput.arrivalIcao,
-                    intermediateIcaos:
-                        routeInput.intermediateIcaos ||
-                        existing?.intermediateIcaos ||
-                        "[]",
-                    sectorCount,
-                    sectorsJson,
-                    sectors: sectors.length > 0 ? sectors : undefined,
-                    totalDistanceNm:
-                        routeInput.totalDistanceNm ??
-                        existing?.totalDistanceNm ??
-                        0,
-                    totalAirborneMinutes:
-                        routeInput.totalAirborneMinutes ??
-                        existing?.totalAirborneMinutes ??
-                        0,
-                    totalGroundMinutes:
-                        routeInput.totalGroundMinutes ??
-                        existing?.totalGroundMinutes ??
-                        0,
-                    totalDurationMinutes:
-                        routeInput.totalDurationMinutes ??
-                        existing?.totalDurationMinutes ??
-                        0,
-                    includeGroundTime,
-                    isRoundTrip,
-                    recommendedAltitudeFt:
-                        routeInput.recommendedAltitudeFt ??
-                        existing?.recommendedAltitudeFt ??
-                        null,
-                    status: routeInput.status || existing?.status || "draft",
-                    isFavorite:
-                        routeInput.isFavorite !== undefined
-                            ? routeInput.isFavorite
-                            : (existing?.isFavorite ?? false),
-                    linkedFlightId:
-                        routeInput.linkedFlightId ??
-                        existing?.linkedFlightId ??
-                        null,
-                    createdAt:
-                        existing?.createdAt || routeInput.createdAt || now,
-                    flownAt: routeInput.flownAt ?? existing?.flownAt ?? null,
-                };
-
-                try {
-                    await safeInvoke("save_route", { route: fullRoute });
-                } catch (err) {
-                    console.warn(
-                        "[flightStore] Failed to save route to SQLite:",
-                        err,
-                    );
-                }
-
-                const hydrated = hydrateSavedRoute(fullRoute);
-                set((state) => ({
-                    savedRoutes: [
-                        hydrated,
-                        ...state.savedRoutes.filter((r) => r.id !== id),
-                    ],
-                }));
-                return hydrated;
-            },
-
-            toggleRouteFavorite: async (id: string) => {
-                let newFav = false;
-                try {
-                    const res = await safeInvoke<boolean>(
-                        "toggle_route_favorite",
-                        { id },
-                    );
-                    if (typeof res === "boolean") {
-                        newFav = res;
-                    } else {
-                        const existing = get().savedRoutes.find(
-                            (r) => r.id === id,
-                        );
-                        newFav = !existing?.isFavorite;
-                    }
-                } catch {
-                    const existing = get().savedRoutes.find((r) => r.id === id);
-                    newFav = !existing?.isFavorite;
-                }
-
-                set((state) => ({
-                    savedRoutes: state.savedRoutes.map((r) =>
-                        r.id === id ? { ...r, isFavorite: newFav } : r,
-                    ),
-                }));
-                return newFav;
-            },
-
-            updateRouteStatus: async (
-                id: string,
-                status: "draft" | "flown",
-                linkedFlightId?: string,
-            ) => {
-                try {
-                    await safeInvoke("update_route_status", {
-                        id,
-                        status,
-                        linkedFlightId,
-                    });
-                } catch (err) {
-                    console.warn(
-                        "[flightStore] Failed to update route status in SQLite:",
-                        err,
-                    );
-                }
-
-                const flownAt =
-                    status === "flown" ? new Date().toISOString() : null;
-                set((state) => ({
-                    savedRoutes: state.savedRoutes.map((r) =>
-                        r.id === id
-                            ? {
-                                  ...r,
-                                  status,
-                                  flownAt: flownAt ?? r.flownAt,
-                                  linkedFlightId:
-                                      linkedFlightId ?? r.linkedFlightId,
-                              }
-                            : r,
-                    ),
-                }));
-            },
-
-            deleteSavedRoute: async (id: string) => {
-                try {
-                    await safeInvoke("delete_saved_route", { id });
-                } catch (err) {
-                    console.warn(
-                        "[flightStore] Failed to delete route from SQLite:",
-                        err,
-                    );
-                }
-
-                set((state) => ({
-                    savedRoutes: state.savedRoutes.filter((r) => r.id !== id),
-                }));
-            },
+            ...createRouteSlice(set, get),
 
             wipeAllUserData: async () => {
                 try {
@@ -2510,26 +2199,6 @@ export const useFlightStore = create<FlightState>()(
                         err,
                     );
                 }
-            },
-
-            updateSavedRoute: async (
-                id: string,
-                updates: Partial<SavedRoute>,
-            ) => {
-                const existing = get().savedRoutes.find((r) => r.id === id);
-                if (!existing) return null;
-                const merged: Partial<SavedRoute> & {
-                    departureIcao: string;
-                    arrivalIcao: string;
-                } = {
-                    ...existing,
-                    ...updates,
-                    id,
-                    departureIcao:
-                        updates.departureIcao || existing.departureIcao,
-                    arrivalIcao: updates.arrivalIcao || existing.arrivalIcao,
-                };
-                return await get().saveRoute(merged);
             },
 
             loadFlightDetails: async (id: string) => {
@@ -2954,7 +2623,7 @@ export const useFlightStore = create<FlightState>()(
                         );
                         stoppedSinceTimestamp = null;
                         isTurnaroundStay = false;
-                        flushTelemetryBuffer();
+                        await flushTelemetryBuffer();
                         set({
                             activeFlight: null,
                             flightStage: "BOARDING",
@@ -3108,7 +2777,7 @@ export const useFlightStore = create<FlightState>()(
                         };
 
                         safeInvoke("save_flight", { flight: newFlight });
-                        telemetryBuffer.push(initialPoint);
+                        pushTelemetryPoint(initialPoint);
                         stoppedSinceTimestamp = null;
 
                         if (depApt) {
@@ -3183,13 +2852,7 @@ export const useFlightStore = create<FlightState>()(
 
                     // Add to telemetry batch buffer (suppressed during replay rewinds / slew)
                     if (!isReplayActive) {
-                        telemetryBuffer.push(newPoint);
-                        if (
-                            telemetryBuffer.length >= 20 ||
-                            Date.now() - lastFlushTimestamp > 5000
-                        ) {
-                            flushTelemetryBuffer();
-                        }
+                        pushTelemetryPoint(newPoint);
                     }
 
                     let distInc = 0;
@@ -4684,206 +4347,7 @@ export const useFlightStore = create<FlightState>()(
                 });
             },
 
-            setActiveChecklistId: (id) => set({ activeChecklistId: id }),
-
-            setChecklists: (checklists) => {
-                set({ checklists });
-                safeInvoke("set_user_setting", {
-                    key: "checklists",
-                    value: JSON.stringify(resetChecklistChecks(checklists)),
-                }).catch(() => {});
-            },
-
-            addChecklist: (checklistData) => {
-                const id =
-                    checklistData.id ||
-                    `chk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-                const now = new Date().toISOString();
-                const newChecklist: Checklist = {
-                    ...checklistData,
-                    id,
-                    createdAt: now,
-                    updatedAt: now,
-                };
-                const updated = [newChecklist, ...get().checklists];
-                set({ checklists: updated, activeChecklistId: id });
-                safeInvoke("set_user_setting", {
-                    key: "checklists",
-                    value: JSON.stringify(resetChecklistChecks(updated)),
-                }).catch(() => {});
-                return newChecklist;
-            },
-
-            updateChecklist: (id, updates) => {
-                const now = new Date().toISOString();
-                const updated = get().checklists.map((c) =>
-                    c.id === id ? { ...c, ...updates, updatedAt: now } : c,
-                );
-                set({ checklists: updated });
-                safeInvoke("set_user_setting", {
-                    key: "checklists",
-                    value: JSON.stringify(resetChecklistChecks(updated)),
-                }).catch(() => {});
-            },
-
-            deleteChecklist: (id) => {
-                const updated = get().checklists.filter((c) => c.id !== id);
-                const activeChecklistId =
-                    get().activeChecklistId === id ? null : get().activeChecklistId;
-                set({ checklists: updated, activeChecklistId });
-                safeInvoke("set_user_setting", {
-                    key: "checklists",
-                    value: JSON.stringify(resetChecklistChecks(updated)),
-                }).catch(() => {});
-            },
-
-            duplicateChecklist: (id) => {
-                const target = get().checklists.find((c) => c.id === id);
-                if (!target) return;
-                const now = new Date().toISOString();
-                const newId = `chk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-                const duplicated: Checklist = {
-                    ...target,
-                    id: newId,
-                    title: `${target.title} (Copy)`,
-                    isDefault: false,
-                    createdAt: now,
-                    updatedAt: now,
-                    sections: target.sections.map((s) => ({
-                        ...s,
-                        id: `sec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                        items: s.items.map((i) => ({
-                            ...i,
-                            id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                            checked: false,
-                        })),
-                    })),
-                };
-                const updated = [duplicated, ...get().checklists];
-                set({ checklists: updated, activeChecklistId: newId });
-                safeInvoke("set_user_setting", {
-                    key: "checklists",
-                    value: JSON.stringify(resetChecklistChecks(updated)),
-                }).catch(() => {});
-            },
-
-            toggleChecklistItem: (checklistId, sectionId, itemId) => {
-                const updated = get().checklists.map((chk) => {
-                    if (chk.id !== checklistId) return chk;
-                    return {
-                        ...chk,
-                        sections: chk.sections.map((sec) => {
-                            if (sec.id !== sectionId) return sec;
-                            return {
-                                ...sec,
-                                items: sec.items.map((it) => {
-                                    if (it.id !== itemId) return it;
-                                    return { ...it, checked: !it.checked };
-                                }),
-                            };
-                        }),
-                    };
-                });
-                set({ checklists: updated });
-            },
-
-            resetChecklist: (checklistId) => {
-                const updated = get().checklists.map((chk) => {
-                    if (chk.id !== checklistId) return chk;
-                    return {
-                        ...chk,
-                        sections: chk.sections.map((sec) => ({
-                            ...sec,
-                            items: sec.items.map((it) => ({
-                                ...it,
-                                checked: false,
-                            })),
-                        })),
-                    };
-                });
-                set({ checklists: updated });
-            },
-
-            resetChecklistSection: (checklistId, sectionId) => {
-                const updated = get().checklists.map((chk) => {
-                    if (chk.id !== checklistId) return chk;
-                    return {
-                        ...chk,
-                        sections: chk.sections.map((sec) => {
-                            if (sec.id !== sectionId) return sec;
-                            return {
-                                ...sec,
-                                items: sec.items.map((it) => ({
-                                    ...it,
-                                    checked: false,
-                                })),
-                            };
-                        }),
-                    };
-                });
-                set({ checklists: updated });
-            },
-
-            importChecklists: (imported) => {
-                const current = get().checklists;
-                const currentMap = new Map(current.map((c) => [c.id, c]));
-                let added = 0;
-                let replaced = 0;
-                const now = new Date().toISOString();
-
-                for (const chk of imported) {
-                    if (!chk.title || !Array.isArray(chk.sections)) continue;
-                    const id =
-                        chk.id ||
-                        `chk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-                    const validItem: Checklist = {
-                        id,
-                        title: chk.title,
-                        aircraftAssociation: chk.aircraftAssociation || undefined,
-                        category: chk.category || "General",
-                        description: chk.description || "",
-                        isDefault: Boolean(chk.isDefault),
-                        createdAt: chk.createdAt || now,
-                        updatedAt: now,
-                        sections: chk.sections.map((sec, sIdx) => ({
-                            id:
-                                sec.id ||
-                                `sec-${sIdx}-${Math.random().toString(36).slice(2, 7)}`,
-                            title: sec.title || `Section ${sIdx + 1}`,
-                            procedureType:
-                                sec.procedureType === "abnormal" ||
-                                sec.procedureType === "emergency"
-                                    ? sec.procedureType
-                                    : "normal",
-                            items: (sec.items || []).map((it, iIdx) => ({
-                                id:
-                                    it.id ||
-                                    `it-${iIdx}-${Math.random().toString(36).slice(2, 7)}`,
-                                challenge: it.challenge || "Item",
-                                response: it.response || "CHECK",
-                                note: it.note,
-                                checked: false,
-                            })),
-                        })),
-                    };
-
-                    if (currentMap.has(id)) {
-                        currentMap.set(id, validItem);
-                        replaced++;
-                    } else {
-                        currentMap.set(id, validItem);
-                        added++;
-                    }
-                }
-
-                const updated = Array.from(currentMap.values());
-                set({ checklists: updated });
-                safeInvoke("set_user_setting", {
-                    key: "checklists",
-                    value: JSON.stringify(resetChecklistChecks(updated)),
-                }).catch(() => {});
-                return { added, replaced };
-            },
+            ...createChecklistSlice(set, get),
         }),
         {
             name: "apollo-flight-store",

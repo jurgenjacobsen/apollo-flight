@@ -6,7 +6,9 @@ pub fn record_airport_visit(
     airport: &Airport,
     timestamp: &str,
 ) -> Result<()> {
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+
+    tx.execute(
         r#"
         INSERT INTO visited_airports (
             icao, name, country_code, country_name, latitude, longitude,
@@ -27,7 +29,7 @@ pub fn record_airport_visit(
         ],
     )?;
 
-    conn.execute(
+    tx.execute(
         r#"
         INSERT INTO visited_countries (
             iso_a2, name, first_visited, last_visited, flight_count
@@ -39,6 +41,7 @@ pub fn record_airport_visit(
         params![airport.country_code, airport.country_name, timestamp],
     )?;
 
+    tx.commit()?;
     Ok(())
 }
 

@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useFlightStore } from './flightStore';
+import {
+  pushTelemetryPoint,
+  flushTelemetryBuffer,
+  resetTelemetryBuffer,
+  getTelemetryBufferLength,
+} from './slices/telemetryBuffer';
 
 describe('flightStore flight state machine', () => {
   beforeEach(async () => {
@@ -210,5 +216,47 @@ describe('flightStore flight state machine', () => {
     expect(useFlightStore.getState().flightStage).toBe('ARRIVED');
     expect(useFlightStore.getState().flights).toHaveLength(1);
     expect(useFlightStore.getState().flights[0].status).toBe('COMPLETED');
+  });
+});
+
+describe('telemetryBuffer batching', () => {
+  beforeEach(() => {
+    resetTelemetryBuffer();
+  });
+
+  it('batches 20 points and flushes remaining points without duplication', async () => {
+    const batches: Array<Array<{ timestamp: string }>> = [];
+    const mockInvoker = vi.fn(async (_cmd: string, args: { points: any[] }) => {
+      batches.push(args.points);
+    });
+
+    const makePoint = (i: number) => ({
+      flightId: 'test-flight-1',
+      timestamp: `2026-11-25T10:00:${String(i).padStart(2, '0')}Z`,
+      latitude: 51.47,
+      longitude: -0.45,
+      altitudeMsl: 1000,
+      indicatedAirspeed: 100,
+      groundSpeed: 100,
+      heading: 90,
+      isOnGround: false,
+    });
+
+    for (let i = 0; i < 25; i++) {
+      await pushTelemetryPoint(makePoint(i), mockInvoker);
+    }
+
+    expect(mockInvoker).toHaveBeenCalledTimes(1);
+    expect(batches[0]).toHaveLength(20);
+    expect(getTelemetryBufferLength()).toBe(5);
+
+    await flushTelemetryBuffer(mockInvoker);
+    expect(mockInvoker).toHaveBeenCalledTimes(2);
+    expect(batches[1]).toHaveLength(5);
+    expect(getTelemetryBufferLength()).toBe(0);
+
+    // Calling flush again is a no-op
+    await flushTelemetryBuffer(mockInvoker);
+    expect(mockInvoker).toHaveBeenCalledTimes(2);
   });
 });

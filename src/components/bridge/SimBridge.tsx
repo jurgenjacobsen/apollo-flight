@@ -63,6 +63,7 @@ export const SimBridge: React.FC = () => {
 
     // Listen to live FSUIPC7 telemetry and system tray events from Tauri Rust backend
     useEffect(() => {
+        let cancelled = false;
         let unlistenTelemetry: (() => void) | undefined;
         let unlistenStartRec: (() => void) | undefined;
         let unlistenStopRec: (() => void) | undefined;
@@ -70,9 +71,10 @@ export const SimBridge: React.FC = () => {
         async function setupTauriListeners() {
             try {
                 const { listen } = await import("@tauri-apps/api/event");
+                if (cancelled) return;
 
                 // 1. Live FSUIPC telemetry stream
-                unlistenTelemetry = await listen(
+                const u1 = await listen(
                     "fsuipc-telemetry",
                     (event: any) => {
                         if (event?.payload) {
@@ -93,9 +95,14 @@ export const SimBridge: React.FC = () => {
                         }
                     },
                 );
+                if (cancelled) {
+                    u1();
+                    return;
+                }
+                unlistenTelemetry = u1;
 
                 // 2. System tray: Start flight recording
-                unlistenStartRec = await listen("tray-start-recording", () => {
+                const u2 = await listen("tray-start-recording", () => {
                     const state = useFlightStore.getState();
                     if (!state.activeFlight) {
                         const depIcao = state.nearestAirport?.icao || "LOWI";
@@ -107,14 +114,24 @@ export const SimBridge: React.FC = () => {
                         state.startManualFlight(depIcao, "TBD", aircraft);
                     }
                 });
+                if (cancelled) {
+                    u2();
+                    return;
+                }
+                unlistenStartRec = u2;
 
                 // 3. System tray: Stop flight recording
-                unlistenStopRec = await listen("tray-stop-recording", () => {
+                const u3 = await listen("tray-stop-recording", () => {
                     const state = useFlightStore.getState();
                     if (state.activeFlight) {
                         state.endActiveFlight();
                     }
                 });
+                if (cancelled) {
+                    u3();
+                    return;
+                }
+                unlistenStopRec = u3;
 
                 console.log("[SimBridge] Tauri IPC listeners registered.");
             } catch (err) {
@@ -128,6 +145,7 @@ export const SimBridge: React.FC = () => {
         setupTauriListeners();
 
         return () => {
+            cancelled = true;
             if (unlistenTelemetry) unlistenTelemetry();
             if (unlistenStartRec) unlistenStartRec();
             if (unlistenStopRec) unlistenStopRec();
