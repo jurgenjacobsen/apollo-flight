@@ -214,6 +214,9 @@ const UNIT_NORMALIZATIONS: Array<[RegExp, string]> = [
     [/\b(km|kilometer)\b/gi, "kilometers"],
     [/\b(meter)\b/gi, "meters"],
     [/\b(nmi|nautical mile)\b/gi, "nautical miles"],
+    [/\b(ft|foot)\b/gi, "feet"],
+    [/\b(yd|yard)\b/gi, "yards"],
+    [/\bmile\b/gi, "miles"],
     [/\b(kt|kts|knot)\b/gi, "knots"],
     [/\b(kph|kmh)\b/gi, "kilometers per hour"],
     [/\bmph\b/gi, "miles per hour"],
@@ -389,9 +392,9 @@ export function buildChecklistGrammar(checklist: Checklist | null): string[] {
         for (const sec of checklist.sections) {
             const normTitle = normalizeVoiceText(sec.title);
             if (normTitle) {
-                addPhraseAndTokens(normTitle);
+                addPhraseAndTokens(sec.title);
                 if (!normTitle.endsWith("checklist")) {
-                    addPhraseAndTokens(`${normTitle} checklist`);
+                    addPhraseAndTokens(`${sec.title} checklist`);
                 }
             }
             for (const item of sec.items) {
